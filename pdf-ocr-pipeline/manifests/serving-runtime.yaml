@@ -1,0 +1,51 @@
+apiVersion: serving.kserve.io/v1alpha1
+kind: ServingRuntime
+metadata:
+  name: pdf-ocr-pipeline
+  annotations:
+    openshift.io/display-name: PDF OCR Pipeline
+    opendatahub.io/apiProtocol: REST
+  labels:
+    opendatahub.io/dashboard: "true"
+spec:
+  supportedModelFormats:
+    - name: python
+      autoSelect: true
+  multiModel: false
+  containers:
+    - name: kserve-container
+      image: quay.io/modh/odh-workbench-jupyter-minimal-cpu-py311-ubi9@sha256:0ea737f6c626d5d01b44fc8c6537a193ad45c378aed9ff98b209968dff418075
+      command:
+        - /bin/bash
+        - -lc
+      args:
+        - >
+          set -euo pipefail
+
+          export HOME=/tmp
+
+          export PYTHONPATH=/mnt/models:${PYTHONPATH:-}
+
+
+          # Install dependencies (prefer offline wheels)
+
+          if [ -d /mnt/models/wheels ]; then
+            python -m pip install --no-index --find-links=/mnt/models/wheels kserve pyMuPDF openai pillow python-dotenv
+          else
+            python -m pip install kserve pyMuPDF openai pillow python-dotenv
+          fi
+
+
+          python /mnt/models/pdf-ocr-pipeline/predictor.py
+      envFrom:
+        - secretRef:
+            name: pdf-ocr-pipeline-env
+      ports:
+        - containerPort: 8080
+      resources:
+        requests:
+          cpu: "1"
+          memory: 4Gi
+        limits:
+          cpu: "2"
+          memory: 8Gi
