@@ -5,6 +5,12 @@ from kserve import Model, ModelServer
 from preprocessing.pipeline import run_pipeline
 
 import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(name)s %(levelname)s %(message)s",
+)
+
 logger = logging.getLogger("pdf-ocr-predictor")
 
 class PdfOCRModel(Model):
