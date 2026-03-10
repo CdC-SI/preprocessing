@@ -35,6 +35,28 @@ cp .env.example .env  # fill in your values
 python predictor.py
 ```
 
+## Generating offline wheels
+
+When the pod has no internet access or no trusted certificates, dependencies are installed from pre-downloaded wheels stored in the model bucket alongside the code. Generate them on a machine that **does** have internet access and the same Python version as the pod image (Python 3.11):
+
+```bash
+mkdir -p pdf-ocr-pipeline/wheels
+pip download \
+  -r pdf-ocr-pipeline/requirements.txt \
+  --dest pdf-ocr-pipeline/wheels \
+  --platform manylinux2014_x86_64 \
+  --python-version 3.11 \
+  --only-binary=:all:
+```
+
+The `wheels/` folder is then uploaded to S3 alongside the rest of the model files (see [Deploy on OpenShift](#deploy-on-openshift)). The ServingRuntime startup script detects the folder and installs from it:
+
+```bash
+if [ -d /mnt/models/wheels ]; then
+  pip install --no-index --find-links=/mnt/models/wheels ...
+fi
+```
+
 ## Deploy on OpenShift
 
 ### Prerequisites
