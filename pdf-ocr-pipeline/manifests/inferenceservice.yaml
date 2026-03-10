@@ -1,0 +1,31 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: pdf-ocr-pipeline
+  annotations:
+    haproxy.router.openshift.io/timeout: 600s
+    openshift.io/display-name: pdf-ocr-pipeline
+    serving.kserve.io/deploymentMode: RawDeployment
+  labels:
+    networking.kserve.io/visibility: exposed
+    opendatahub.io/dashboard: "true"
+spec:
+  predictor:
+    automountServiceAccountToken: false
+    maxReplicas: 1
+    minReplicas: 1
+    model:
+      modelFormat:
+        name: python
+      name: ""
+      resources:
+        limits:
+          cpu: "10"
+          memory: 20Gi
+        requests:
+          cpu: "6"
+          memory: 16Gi
+      runtime: pdf-ocr-pipeline
+      storage:
+        key: zas-vison-connexion
+        path: models/pdf-ocr-pipeline
