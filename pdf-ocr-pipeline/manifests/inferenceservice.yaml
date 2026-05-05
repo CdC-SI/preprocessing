@@ -27,5 +27,5 @@ spec:
           memory: 16Gi
       runtime: pdf-ocr-pipeline
       storage:
-        key: zas-vison-connexion
+        key: s3-connection
         path: models/pdf-ocr-pipeline
