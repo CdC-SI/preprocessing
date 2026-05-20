@@ -1,6 +1,6 @@
 .env
 RUNBOOK.md
-.env.exemple
+.env.example
 .env.test
 preprocessing/matthias_guideline_preprocessing/backup_zia/matthias_guideline_preprocessing/data
 matthias_guideline_preprocessing/data
