@@ -41,7 +41,7 @@ stage 3 : Extraction des lien URL et ajout du lien dans le doctags:
 DOC_NAME = "Confirmer l'adhésion" # CHANGER SELON LES TESTS
 ```
 
-- lancer **matchURL.py** pour réinjecter dans le fichier doctag le lien url au format markdown comme suit : **[DAF] (https://www.bsvlive.admin.ch/vollzug/documents/view/1699/lang:fre/category:22)**.</br>
+- lancer **matchURL.py** pour réinjecter dans le fichier doctag le lien url au format markdown.</br>
 ```python
 DOC_NAME = "Confirmer l'adhésion" # CHANGER SELON LES TESTS
 ```
