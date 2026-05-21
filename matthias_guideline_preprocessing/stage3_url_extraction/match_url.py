@@ -5,12 +5,12 @@ import jsonlines
 import fitz  # PyMuPDF
 
 # Root
-DOC_NAME = "Confirmer l'adhésion" # CHANGER SELON LES TESTS
+DOC_NAME = "Adhésion traitement" # CHANGER SELON LES TESTS
 project_root = Path(__file__).resolve().parent.parent
 pdf_path = project_root / "data" / "input_files" / f"{DOC_NAME}.pdf"
-doctags_path = project_root / "data" / "output_files" / "stage2_test" / DOC_NAME / f"{DOC_NAME}_with_pictures_tables.doctags"
+doctags_path = project_root / "data" / "output_files" / "stage2_test" / DOC_NAME / f"{DOC_NAME}_reordered_with_tables_pictures.doctags"
 hyperlinks_path = project_root / "data" / "output_files" / "stage3_test" / DOC_NAME /f"hyperlinks_data_{DOC_NAME}.jsonl"
-output_path = project_root / "data" / "output_files" / "stage3_test" / DOC_NAME /f"{DOC_NAME}_with_pictures_tables_url.doctags"
+output_path = project_root / "data" / "output_files" / "stage3_test" / DOC_NAME /f"{DOC_NAME}_reordered_with_tables_pictures_url.doctags"
 
 # Charge les liens extraits du PDF (get_url.py)
 def load_hyperlinks(jsonl_path: Path) -> list:

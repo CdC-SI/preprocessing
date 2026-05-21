@@ -27,7 +27,6 @@ Il y a 3 scripts dans cette étape:
    - Les informations extraites sont affichées dans la console pour vérification rapide.
    - Tous les liens sont sauvegardés dans un fichier au format JSONLines (`.jsonl`), chaque ligne correspondant à un lien détecté.
 
----
 
 ### 2. `matchURL.py` — Association et enrichissement des liens
 

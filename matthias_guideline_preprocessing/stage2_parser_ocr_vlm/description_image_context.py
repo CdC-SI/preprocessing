@@ -1,466 +1,531 @@
 import logging
 import os
 import re
-import tempfile
+import base64
+import queue
+import threading
+from dataclasses import dataclass
 from pathlib import Path
 import fitz
+import requests
 import certifi
-from docling_core.types.doc import PictureItem
 from dotenv import load_dotenv
-from docling.datamodel.base_models import InputFormat
-from docling.datamodel.pipeline_options import (
-    PdfPipelineOptions,
-    PictureDescriptionVlmEngineOptions,
-)
-from docling.datamodel.vlm_engine_options import ApiVlmEngineOptions, VlmEngineType
-from docling.document_converter import (
-    DocumentConverter,
-    PdfFormatOption,
-    ImageFormatOption,
-)
 
+# Logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%H:%M:%S",
+)
 _log = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
 
-# Certification et .env
+# Environnement & certificats
 dotenv_path = Path(__file__).resolve().parent.parent / ".env.test"
-print("Loading dotenv from:", dotenv_path.resolve(), "exists:", dotenv_path.exists())
+_log.info("Loading dotenv from: %s (exists: %s)", dotenv_path.resolve(), dotenv_path.exists())
 load_dotenv(dotenv_path=dotenv_path)
 
 custom_ca = os.environ.get("VLM_CA_PEM")
-if custom_ca:
-    os.environ.setdefault("SSL_CERT_FILE", custom_ca)
-    os.environ.setdefault("REQUESTS_CA_BUNDLE", custom_ca)
-else:
-    os.environ.setdefault("SSL_CERT_FILE", certifi.where())
-    os.environ.setdefault("REQUESTS_CA_BUNDLE", certifi.where())
+CA_PATH = custom_ca if custom_ca and Path(custom_ca).exists() else certifi.where()
+_log.info("CA bundle : %s", CA_PATH)
 
 VLM_URL = os.environ.get("VLM_URL", "")
 VLM_MODEL_NAME = os.environ.get("VLM_MODEL_NAME", "")
 if not VLM_URL:
     raise RuntimeError(f"VLM_URL not set. Ensure {dotenv_path} exists and contains VLM_URL.")
+_log.info("VLM_URL : %s", VLM_URL)
+_log.info("VLM_MODEL_NAME : %s", VLM_MODEL_NAME)
 
-print(f"VLM_URL: {VLM_URL}\nVLM_MODEL_NAME: {VLM_MODEL_NAME}")
+# Constantes
+NORM = 500
+DPI = 150 # Norme Qwen3.5
+N_BEFORE = 5
+N_AFTER  = 5
 
-# PROMPT — str classique (pas f-string)
-# {context_before} et {context_after} injectés par image via .format()
 language = "french"
 
-WIKI_PROMPT = """
+# Prompt
+# {context_before} et {context_after} sont injectés dynamiquement par image
+WIKI_PROMPT_TEMPLATE = """
 Role
-You are a document analysis assistant.
+You are a multimodal document analysis assistant.
 
-Objective: Your task is to analyse an image in the context of the associated document or conversation.
-You should not aim to provide a systematic description of the image.
-Rather, you should determine whether the image provides additional useful information for a business user.
+Objective
+Analyse the image in the context of the associated document or conversation.
 
+Your goal is NOT to provide a full visual description.
+Your goal is to determine whether the image contributes useful operational, analytical, contextual, or decision-relevant information beyond the surrounding text.
 
-## Document Context
-**Instructions**: Use this context to better understand the image.
-If the surrounding text already explains the image fully, only add visual details that bring new information not present in the text.
-Here are the guidelines to determine the usefulness of the image and how to describe it:
+## Context
 
-### Text appearing BEFORE this image in the document:
+### Text BEFORE the image
 {context_before}
 
-### Text appearing AFTER this image in the document:
+### Text AFTER the image
 {context_after}
 
-In addition to the textual context, you can also consider the following elements if available:
-Definition of useful information
-Visual information is considered useful if:
-- it provides new information absent from the text;
-- it confirms or refutes important information;
-- it aids professional understanding;
-- it contains details necessary for decision-making;
-- it reduces the risk of misinterpretation;
-- it has operational or contextual value.
+## Analysis Process
 
-SITUATIONS WHERE IT IS NOT NECESSARY TO DESCRIBE THE IMAGE:
-Do not describe the image if:
-- it simply repeats the content of the text;
-- it is decorative;
-- it does not provide any new information;
-- the visible details are not relevant to the user;
-- a business user would not need this visual information.
+Step 1 — Context understanding
+Understand the surrounding text and identify:
+- key topics;
+- business objectives;
+- claims;
+- decisions;
+- operational context.
 
-Process of decision:
-Step 1: analyse the textual context.
-Step 2: analyse the image.
-Step 3: Determine whether the image adds any business value.
-Step 4:
-  If yes, produce a targeted and useful description.
-  If not, do not add any information about the image.
+Step 2 — Visual inventory
+Before judging usefulness, identify all potentially informative visual elements, including:
+- text;
+- numbers;
+- tables;
+- charts;
+- diagrams;
+- UI elements;
+- labels;
+- warnings;
+- anomalies;
+- relationships between elements;
+- spatial organization;
+- unexpected or secondary details.
 
-IMPORTANT RULES:
-- Never provide generic descriptions.
-- Never describe details that are not valuable.
-- Be concise.
-- Prioritise business relevance.
-- Avoid purely aesthetic descriptions.
+Step 3 — Cross-analysis
+Determine whether the image:
+- adds information absent from the text;
+- clarifies ambiguity;
+- confirms or contradicts claims;
+- provides operational detail;
+- adds contextual understanding;
+- reveals constraints, risks, or exceptions;
+- contains unexpected but relevant information.
 
-Output format:
-If the image is relevant:
-[VISUAL INFORMATION] Concise, business-oriented description.
-Otherwise, do not include any additional relevant visual information.
-Always respond in **{language}**.
+Pay attention to secondary details that may still be operationally important even if not explicitly referenced in the text.
+
+Prefer inclusion when omission could lead to misunderstanding or loss of context.
+
+If information is uncertain or partially visible, mention it cautiously rather than omitting it.
+
+Step 4 — Contribution assessment
+
+Classify the image contribution as:
+- redundant;
+- complementary;
+- clarifying;
+- critical;
+- contradictory.
+
+If redundant:
+Do not provide an image description.
+
+Otherwise:
+Provide a concise business-oriented summary focused only on useful information.
+
+## Rules
+- Avoid aesthetic descriptions.
+- Avoid exhaustive scene descriptions.
+- Focus on operationally relevant details.
+- Include contradictions or discrepancies when present.
+- Be concise but information-dense.
+
+## Output
+
+If relevant:
+[IMAGE DESCRIPTION] ...
+
+Otherwise:
+No additional relevant visual information.
+
+Always respond in {language}.
 """
 
-# HELPER : retrouve une description par coordonnées
-def _find_description(pic: dict, descriptions: dict, tolerance: int = 10) -> str:
-    # Lookup exact puis fallback avec tolérance.
-    # Factorisé pour éviter la duplication entre replace et export.
-    key = (pic["page"], pic["x0"], pic["y0"], pic["x1"], pic["y1"])
-    if key in descriptions:
-        return descriptions[key]
-    for (pg, dx0, dy0, dx1, dy1), desc in descriptions.items():
-        if pg != pic["page"]:
-            continue
-        if all(abs(a - b) <= tolerance for a, b in [
-            (dx0, pic["x0"]), (dy0, pic["y0"]),
-            (dx1, pic["x1"]), (dy1, pic["y1"]),
-        ]):
-            return desc
-    return ""
+# Dataclass pour la queue des tâches d'images à traiter
+@dataclass
+class ImageTask:
+    index: int
+    total: int
+    page: int
+    x0: int
+    y0: int
+    x1: int
+    y1: int
+    image_b64: str
+    prompt: str # prompt contextualisé pour cette image
+    raw_tag: str # balise <picture>...</picture> originale
 
-# FACTORY : converter Docling avec prompt injecté
-def make_converter(prompt: str) -> DocumentConverter:
-    picture_desc_options = PictureDescriptionVlmEngineOptions.from_preset(
-        "qwen",
-        engine_options=ApiVlmEngineOptions(
-            runtime_type=VlmEngineType.API,
-            url=VLM_URL,
-            params={
-                "model": VLM_MODEL_NAME,
-                "max_tokens": 5000, # ajusté pour éviter les coupures sur les descriptions longues avec contexte (à revoir selon les tests)
-                "skip_special_tokens": True,
-            },
-            timeout=120,
-        ),
-    )
-    picture_desc_options.prompt = prompt
-
-    pipeline_options = PdfPipelineOptions()
-    pipeline_options.do_picture_description      = True
-    pipeline_options.picture_description_options = picture_desc_options
-    pipeline_options.enable_remote_services      = True
-
-    return DocumentConverter(
-        format_options={
-            InputFormat.IMAGE: ImageFormatOption(pipeline_options=pipeline_options),
-            InputFormat.PDF:   PdfFormatOption(pipeline_options=pipeline_options),
-        }
-    )
-
-# PARSE DES BALISES <picture> + éléments textuels
+# Tags textuels à inclure dans le contexte
 TEXT_TAGS = {
     "text", "section_header_level_1", "section_header_level_2",
     "section_header_level_3", "list_item", "caption", "footnote",
     "page_header", "page_footer",
 }
 
-def parse_picture_tags(doctags_path: Path) -> tuple[list, str]:
+# ÉTAPE 1 — Parsing du doctags
+def parse_picture_tags(doctags_path: Path) -> tuple[list[dict], str]:
     # Retourne la liste des <picture> et le contenu brut du doctags.
-    content = doctags_path.read_text(encoding="utf-8")
+    content  = doctags_path.read_text(encoding="utf-8")
     pictures = []
-    current_page = 0
+    page     = 0
 
     for line in content.splitlines():
-        line_clean = line.replace("<doctag>", "").replace("</doctag>", "").strip()
+        line_clean = re.sub(r"</?doctag>", "", line).strip()
         if not line_clean:
             continue
         if "<page_footer>" in line_clean:
-            current_page += 1
-        for match in re.finditer(
-            r'(<picture><loc_(\d+)><loc_(\d+)><loc_(\d+)><loc_(\d+)></picture>)',
-            line_clean
+            page += 1
+        for m in re.finditer(
+            r"(<picture><loc_(\d+)><loc_(\d+)><loc_(\d+)><loc_(\d+)></picture>)",
+            line_clean,
         ):
-            x0, y0, x1, y1 = int(match.group(2)), int(match.group(3)), \
-                              int(match.group(4)), int(match.group(5))
+            x0, y0, x1, y1 = int(m.group(2)), int(m.group(3)), int(m.group(4)), int(m.group(5))
             pictures.append({
-                "page": current_page,
-                "x0": x0, "y0": y0, "x1": x1, "y1": y1,
-                "raw_tag": match.group(1),
+                "page": page, "x0": x0, "y0": y0, "x1": x1, "y1": y1,
+                "raw_tag": m.group(1),
             })
-            _log.info("Found <picture> page=%d loc=(%d,%d,%d,%d)", current_page, x0, y0, x1, y1)
+            _log.debug("<picture> trouvée page=%d loc=(%d,%d,%d,%d)", page, x0, y0, x1, y1)
 
-    print(f"→ {len(pictures)} balise(s) <picture> trouvée(s)")
+    _log.info("OK %d balise(s) <picture> trouvée(s)", len(pictures))
     return pictures, content
 
 
-def extract_document_elements(doctags_path: Path) -> list:
+def extract_document_elements(doctags_path: Path) -> list[dict]:
     # Parse tous les éléments (textes + images) dans l'ordre d'apparition.
-    # Fix : une seule passe regex pour éviter les doublons <picture>.
     content = doctags_path.read_text(encoding="utf-8")
     elements = []
-    current_page = 0
+    page = 0
 
     for line in content.splitlines():
-        line_clean = line.replace("<doctag>", "").replace("</doctag>", "").strip()
+        line_clean = re.sub(r"</?doctag>", "", line).strip()
         if not line_clean:
             continue
         if "<page_footer>" in line_clean:
-            current_page += 1
+            page += 1
 
-        # Textes avec coordonnées
-        for match in re.finditer(
-            r'<(?!/)(\w+)><loc_(\d+)><loc_(\d+)><loc_(\d+)><loc_(\d+)>(.*?)(?=<(?!loc_)\w|$)',
+        # Éléments textuels
+        for m in re.finditer(
+            r"<(?!/)(\w+)><loc_(\d+)><loc_(\d+)><loc_(\d+)><loc_(\d+)>(.*?)(?=<(?!loc_)\w|$)",
             line_clean, re.DOTALL,
         ):
-            tag = match.group(1)
+            tag = m.group(1)
             if tag == "picture":
-                continue  # géré séparément ci-dessous (pas de contenu textuel)
-            x0, y0, x1, y1 = int(match.group(2)), int(match.group(3)), \
-                              int(match.group(4)), int(match.group(5))
-            raw_text = re.sub(r'<[^>]+>', '', match.group(6)).strip()
+                continue
+            x0, y0, x1, y1 = int(m.group(2)), int(m.group(3)), int(m.group(4)), int(m.group(5))
+            raw_text = re.sub(r"<[^>]+>", "", m.group(6)).strip()
             elements.append({
                 "type": "text" if tag in TEXT_TAGS else "other",
-                "tag": tag, "page": current_page,
+                "tag": tag, "page": page,
                 "x0": x0, "y0": y0, "x1": x1, "y1": y1,
                 "text": raw_text,
             })
 
-        # Images (pas de contenu textuel → regex dédiée)
-        for match in re.finditer(
-            r'<picture><loc_(\d+)><loc_(\d+)><loc_(\d+)><loc_(\d+)></picture>',
-            line_clean
+        # Images
+        for m in re.finditer(
+            r"<picture><loc_(\d+)><loc_(\d+)><loc_(\d+)><loc_(\d+)></picture>",
+            line_clean,
         ):
-            x0, y0, x1, y1 = int(match.group(1)), int(match.group(2)), \
-                              int(match.group(3)), int(match.group(4))
+            x0, y0, x1, y1 = int(m.group(1)), int(m.group(2)), int(m.group(3)), int(m.group(4))
             elements.append({
-                "type": "picture", "tag": "picture", "page": current_page,
+                "type": "picture", "tag": "picture", "page": page,
                 "x0": x0, "y0": y0, "x1": x1, "y1": y1, "text": "",
             })
 
+    _log.info("OK %d élément(s) total parsé(s) dans le doctags", len(elements))
     return elements
 
-# DESCRIPTION DES IMAGES AVEC CONTEXTE
-def describe_pictures_with_context(
+def build_context(pic: dict, doc_elements: list, n_before: int, n_after: int) -> tuple[str, str]:
+    # Retourne le contexte textuel avant/après une image.
+    pic_index = next((
+        idx for idx, e in enumerate(doc_elements)
+        if e["type"] == "picture"
+        and e["page"] == pic["page"]
+        and e["x0"]  == pic["x0"]
+        and e["y0"]  == pic["y0"]
+    ), None)
+
+    if pic_index is not None:
+        before = [e["text"] for e in doc_elements[:pic_index] if e["type"] == "text" and e["text"]][-n_before:]
+        after = [e["text"] for e in doc_elements[pic_index + 1:] if e["type"] == "text" and e["text"]][:n_after]
+    else:
+        before, after = [], []
+
+    ctx_before = "\n".join(f"> {t}" for t in before) if before else "> No context available before this image."
+    ctx_after = "\n".join(f"> {t}" for t in after) if after else "> No context available after this image."
+    return ctx_before, ctx_after
+
+# ÉTAPE 2 — Export des PNG (nommés avec les coordonnées du doctags)
+def export_picture_images(
     pdf_path: Path,
-    pictures: list,
-    doc_elements: list,
-    n_before: int = 5,
-    n_after: int = 5,
-    norm: int = 500,
-    dpi: int = 150, # Voir pour qwen 3.5 
-) -> dict:
+    pictures: list[dict],
+    doc_name: str,
+    output_dir: Path,
+    norm: int = NORM,
+    dpi: int = DPI,
+) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
     doc = fitz.open(str(pdf_path))
-    descriptions = {}
+    _log.info("Export des PNG dans : %s", output_dir)
 
     for i, pic in enumerate(pictures, start=1):
-        print(f"\n  [{i}/{len(pictures)}] Page {pic['page']+1} "
-              f"loc=({pic['x0']},{pic['y0']},{pic['x1']},{pic['y1']})")
-
-        # Crop
         page = doc[pic["page"]]
         pw, ph = page.rect.width, page.rect.height
         pix = page.get_pixmap(dpi=dpi, clip=fitz.Rect(
             pic["x0"] / norm * pw, pic["y0"] / norm * ph,
             pic["x1"] / norm * pw, pic["y1"] / norm * ph,
         ))
-        image_bytes = pix.tobytes("png")
+        # Nom basé sur les coordonnées du doctags (pas normalisées)
+        img_path = output_dir / (
+            f"{doc_name}_page{pic['page']+1}_"
+            f"x{pic['x0']}_y{pic['y0']}_x{pic['x1']}_y{pic['y1']}.png"
+        )
+        img_path.write_bytes(pix.tobytes("png"))
+        _log.info("  [%d/%d] PNG exporté : %s", i, len(pictures), img_path.name)
 
-        # Contexte textuel
-        pic_index = next((
-            idx for idx, e in enumerate(doc_elements)
-            if e["type"] == "picture"
-            and e["page"] == pic["page"]
-            and e["x0"] == pic["x0"]
-            and e["y0"] == pic["y0"]
-        ), None)
+    doc.close()
+    _log.info("OK %d PNG exporté(s)", len(pictures))
 
-        if pic_index is not None:
-            before_texts = [
-                e["text"] for e in doc_elements[:pic_index]
-                if e["type"] == "text" and e["text"]
-            ][-n_before:]
-            after_texts = [
-                e["text"] for e in doc_elements[pic_index + 1:]
-                if e["type"] == "text" and e["text"]
-            ][:n_after]
+# ÉTAPE 3 — Crop en mémoire + mise en queue + appel VLM direct
+def crop_to_b64(pdf_doc: fitz.Document, pic: dict, norm: int = NORM, dpi: int = DPI) -> str:
+    # Crop une image du PDF et retourne le base64 en mémoire.
+    page = pdf_doc[pic["page"]]
+    pw, ph = page.rect.width, page.rect.height
+    pix = page.get_pixmap(dpi=dpi, clip=fitz.Rect(
+        pic["x0"] / norm * pw, pic["y0"] / norm * ph,
+        pic["x1"] / norm * pw, pic["y1"] / norm * ph,
+    ))
+    return base64.b64encode(pix.tobytes("png")).decode("utf-8")
+
+
+def describe_image_b64(image_b64: str, prompt: str) -> str:
+    # Envoie une image (base64) + prompt au VLM et retourne la description.
+    payload = {
+        "model": VLM_MODEL_NAME,
+        "messages": [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_b64}"}},
+            ],
+        }],
+        "max_tokens": 3000, # Qwen 3.5 accepte plus si necessaire
+    }
+    try:
+        response = requests.post(VLM_URL, json=payload, verify=CA_PATH, timeout=120)
+        data = response.json()
+        return data["choices"][0]["message"]["content"].strip()
+    except Exception as e:
+        _log.error("Erreur API VLM : %s", e)
+        return ""
+
+
+# Worker thread consommateur de la queue
+_results: dict[int, dict] = {}
+_results_lock = threading.Lock()
+
+def _vlm_worker(task_queue: queue.Queue) -> None:
+    while True:
+        task: ImageTask | None = task_queue.get()
+        if task is None:
+            _log.info("Worker VLM arrêté.")
+            break
+
+        _log.info(
+            "  [%d/%d] -> Envoi au VLM — Page %d loc=(%d,%d,%d,%d)",
+            task.index, task.total, task.page + 1,
+            task.x0, task.y0, task.x1, task.y1,
+        )
+        description = describe_image_b64(task.image_b64, task.prompt)
+
+        with _results_lock:
+            _results[task.index] = {
+                "page": task.page,
+                "x0": task.x0, "y0": task.y0,
+                "x1": task.x1, "y1": task.y1,
+                "description": description,
+                "raw_tag": task.raw_tag,
+            }
+
+        if description:
+            _log.info(" [%d/%d] OK Description reçue (%d chars)", task.index, task.total, len(description))
         else:
-            before_texts, after_texts = [], []
+            _log.warning(" [%d/%d] WARNING  Aucune description retournée par le VLM", task.index, task.total)
 
-        print(f"  → Contexte : {len(before_texts)} texte(s) avant, {len(after_texts)} texte(s) après")
-        if before_texts:
-            print(f"    Avant  : « {before_texts[-1][:80]}... »")
-        if after_texts:
-            print(f"    Après  : « {after_texts[0][:80]}... »")
+        task_queue.task_done()
 
-        # Prompt contextualisé
-        context_before = "\n".join(f"> {t}" for t in before_texts) \
-                         if before_texts else "> No context available before this image."
-        context_after = "\n".join(f"> {t}" for t in after_texts) \
-                         if after_texts  else "> No context available after this image."
 
-        prompt = WIKI_PROMPT.format(
-            context_before=context_before,
-            context_after=context_after,
+def describe_all_pictures(
+    pdf_path: Path,
+    pictures: list[dict],
+    doc_elements: list[dict],
+    n_before: int = N_BEFORE,
+    n_after:  int = N_AFTER,
+) -> dict[int, dict]:
+    
+    # Crop chaque image en mémoire, construit le prompt contextualisé,
+    # met en queue et envoie au VLM via requests (pas Docling).
+    # Retourne un dict indexé par position (1-based).
+    _results.clear()
+    total = len(pictures)
+    pdf_doc = fitz.open(str(pdf_path))
+    task_q = queue.Queue()
+
+    worker = threading.Thread(target=_vlm_worker, args=(task_q,), daemon=True)
+    worker.start()
+    _log.info("Mise en queue de %d image(s) (crop mémoire → base64)", total)
+
+    for i, pic in enumerate(pictures, start=1):
+        # Contexte textuel
+        ctx_before, ctx_after = build_context(pic, doc_elements, n_before, n_after)
+        _log.info(
+            "  [%d/%d] Contexte — %d texte(s) avant / %d texte(s) après",
+            i, total,
+            ctx_before.count("\n> ") + 1 if ctx_before.startswith(">") else 0,
+            ctx_after.count("\n> ")  + 1 if ctx_after.startswith(">")  else 0,
+        )
+
+        # Prompt contextualisé pour cette image
+        prompt = WIKI_PROMPT_TEMPLATE.format(
+            context_before=ctx_before,
+            context_after=ctx_after,
             language=language,
         )
 
-        # Conversion via Docling
-        converter = make_converter(prompt)
-        try:
-            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-                tmp.write(image_bytes)
-                tmp_path = Path(tmp.name)
+        # Crop en mémoire → base64
+        image_b64 = crop_to_b64(pdf_doc, pic)
+        _log.info("  [%d/%d] OK - Image croppée et encodée en base64", i, total)
 
-            result = converter.convert(str(tmp_path))
-            tmp_path.unlink(missing_ok=True)
+        task_q.put(ImageTask(
+            index=i, total=total,
+            page=pic["page"],
+            x0=pic["x0"], y0=pic["y0"],
+            x1=pic["x1"], y1=pic["y1"],
+            image_b64=image_b64,
+            prompt=prompt,
+            raw_tag=pic["raw_tag"],
+        ))
+        _log.info("  [%d/%d] -> Image mise en queue (page %d)", i, total, pic["page"] + 1)
 
-            description = next((
-                annotation.text.strip()
-                for element, _ in result.document.iterate_items()
-                if isinstance(element, PictureItem)
-                for annotation in element.annotations
-                if hasattr(annotation, "text") and annotation.text
-            ), "")
+    pdf_doc.close()
 
-            if description:
-                descriptions[(pic["page"], pic["x0"], pic["y0"], pic["x1"], pic["y1"])] = description
-                print(f"  → Description ({len(description)} chars)")
-            else:
-                print("  → Aucune description retournée par le VLM")
+    _log.info("Attente de la fin du traitement VLM...")
+    task_q.join()
+    task_q.put(None) # signal d'arrêt du worker
+    worker.join()
 
-        except Exception as e:
-            _log.error("Erreur Docling pour image %d : %s", i, e)
-            if 'tmp_path' in locals():
-                tmp_path.unlink(missing_ok=True)
+    described = sum(1 for r in _results.values() if r["description"])
+    _log.info("OK %d/%d image(s) décrite(s) avec contexte", described, total)
+    return dict(_results)
 
-    doc.close()
-    print(f"\n→ {len(descriptions)} image(s) décrite(s) avec contexte")
-    return descriptions
-
-# REMPLACEMENT DES BALISES <picture>
-def replace_picture_tags_docling(
+# ÉTAPE 4 — Remplacement des balises <picture> dans le doctags
+def replace_picture_tags(
     content: str,
-    pictures: list,
-    descriptions: dict,
-    tolerance: int = 10, # vérifier fallback avec tolérance pour éviter les tags non remplacés
+    results: dict[int, dict],
 ) -> str:
-    for pic in pictures:
-        matched_desc = _find_description(pic, descriptions, tolerance)
-        if not matched_desc:
-            _log.warning("Pas de description pour <picture> page=%d loc=(%d,%d,%d,%d)",
-                         pic["page"], pic["x0"], pic["y0"], pic["x1"], pic["y1"])
+    """Remplace chaque <picture> par une balise <text> avec la description."""
+    replaced = 0
+    for idx in sorted(results.keys()):
+        r = results[idx]
+        if not r["description"]:
+            _log.warning(
+                "Warning - Pas de description pour <picture> page=%d loc=(%d,%d,%d,%d) — tag conservé",
+                r["page"], r["x0"], r["y0"], r["x1"], r["y1"],
+            )
             continue
-        new_tag = f"<text>\n{matched_desc}\n</text>"
-        content = content.replace(pic["raw_tag"], new_tag, 1)
-        _log.info("Replaced <picture> (%d chars)", len(matched_desc))
+        new_tag = f"<text>\n{r['description']}\n</text>"
+        content = content.replace(r["raw_tag"], new_tag, 1)
+        replaced += 1
+        _log.info(
+            "  [%d] OK <picture> remplacée par <text> (%d chars)",
+            idx, len(r["description"]),
+        )
+
+    _log.info("OK %d/%d balise(s) <picture> remplacée(s)", replaced, len(results))
     return content
 
-# EXPORT MARKDOWN
+# ÉTAPE 5 — Export Markdown
 def export_descriptions_to_markdown(
-    pictures: list,
-    descriptions: dict,
+    results: dict[int, dict],
     doc_name: str,
     output_path: Path,
-    tolerance: int = 10,
 ) -> None:
-    matched_count = 0
-    lines = [
-        f"# Descriptions des images — *{doc_name}*\n",
-        f"> Généré automatiquement par le pipeline VLM  ",
-        f"> Document source : `{doc_name}.pdf`  ",
-        f"> Nombre d'images détectées : **{len(pictures)}**  ",
-        f"> Modèle VLM : `{VLM_MODEL_NAME}`\n",
-        "---\n",
-    ]
+    total = len(results)
+    nb_described = sum(1 for r in results.values() if r["description"])
+    nb_missing = total - nb_described
+    sections = []
 
-    for i, pic in enumerate(pictures, start=1):
-        matched_desc = _find_description(pic, descriptions, tolerance)  # ← helper réutilisé
-        status = "OK" if matched_desc else "Warning"
-        lines.append(
-            f"## {status} Image {i}/{len(pictures)} "
-            f"— Page {pic['page'] + 1} "
-            f"| `loc({pic['x0']}, {pic['y0']}, {pic['x1']}, {pic['y1']})`\n"
-        )
-        if matched_desc:
-            lines.append(matched_desc)
-            matched_count += 1
-        else:
-            lines.append(
-                "> **Aucune description générée.**\n"
-                "> *Vérifier le matching des coordonnées ou la réponse du VLM.*\n"
+    for i in sorted(results.keys()):
+        r = results[i]
+        loc_str = f"loc({r['x0']}, {r['y0']}, {r['x1']}, {r['y1']})"
+        page_str = f"Page {r['page'] + 1}"
+
+        if r["description"]:
+            sections.append(
+                f"## OK - Image {i}/{total} — {page_str} | `{loc_str}`\n\n"
+                f"{r['description']}\n"
             )
-        lines.append("\n---\n")
+        else:
+            sections.append(
+                f"## WARNING - Image {i}/{total} — {page_str} | `{loc_str}`\n\n"
+                f"> **Aucune description générée.**\n"
+                f"> *Vérifier les coordonnées ou la réponse du VLM.*\n"
+            )
 
-    lines += [
-        "\n## Résumé\n",
-        f"- Images détectées  : **{len(pictures)}**",
-        f"- Images décrites   : **{matched_count}**",
-        f"- Images manquantes : **{len(pictures) - matched_count}**\n",
-    ]
-    output_path.write_text("\n".join(lines), encoding="utf-8")
-    print(f"→ Markdown exporté ({matched_count}/{len(pictures)} images décrites) : {output_path}")
+    header = (
+        f"# Descriptions des images — *{doc_name}*\n\n"
+        f"> Généré automatiquement par le pipeline VLM  \n"
+        f"> Document source : `{doc_name}.pdf`  \n"
+        f"> Nombre d'images détectées : **{total}**  \n"
+        f"> Modèle VLM : `{VLM_MODEL_NAME}`\n\n"
+        f"---\n\n"
+    )
+    summary = (
+        f"## Résumé\n\n"
+        f"- Images détectées  : **{total}**\n"
+        f"- Images décrites   : **{nb_described}**\n"
+        f"- Images manquantes : **{nb_missing}**\n"
+    )
 
-# EXPORT DES IMAGES CROPPÉES
-def export_picture_images(
-    pdf_path: Path,
-    pictures: list,
-    doc_name: str,
-    output_dir: Path,
-    norm: int = 500,
-    dpi: int = 200,
-):
-    output_dir.mkdir(parents=True, exist_ok=True)
-    doc = fitz.open(str(pdf_path))
-    for pic in pictures:
-        page = doc[pic["page"]]
-        pw, ph = page.rect.width, page.rect.height
-        x0, y0 = pic["x0"] / norm * pw, pic["y0"] / norm * ph
-        x1, y1 = pic["x1"] / norm * pw, pic["y1"] / norm * ph
-        pix = page.get_pixmap(dpi=dpi, clip=fitz.Rect(x0, y0, x1, y1))
-        img_path = output_dir / (
-            f"{doc_name}_page{pic['page']+1}_"
-            f"x{x0:.0f}_y{y0:.0f}_x{x1:.0f}_y{y1:.0f}.png"
-        )
-        img_path.write_bytes(pix.tobytes("png"))
-        _log.info("Image exportée : %s", img_path)
-    doc.close()
+    md_content = header + "\n\n---\n\n".join(sections) + "\n\n---\n\n" + summary
+    output_path.write_text(md_content, encoding="utf-8")
+    _log.info("OK - Markdown exporté (%d/%d images décrites) : %s", nb_described, total, output_path)
 
 # PIPELINE PRINCIPAL
 def main():
     PROJECT_ROOT = Path(__file__).resolve().parents[1]
-    DOC_NAME = "Confirmer l'adhésion"
+    DOC_NAME = "Adhésion traitement"
 
-    pdf_path = PROJECT_ROOT / "data" / "input_files"  / f"{DOC_NAME}.pdf"
-    doctags_path = PROJECT_ROOT / "data" / "output_files" / "stage1_test" / DOC_NAME / f"{DOC_NAME}.doctags"
-    output_path = PROJECT_ROOT / "data" / "output_files" / "stage2_test" / DOC_NAME / f"{DOC_NAME}_with_pictures.doctags"
+    pdf_path = PROJECT_ROOT / "data" / "input_files" / f"{DOC_NAME}.pdf"
+    doctags_path = PROJECT_ROOT / "data" / "output_files" / "stage2_test" / DOC_NAME / f"{DOC_NAME}_reordered_with_tables.doctags"
+    output_path = PROJECT_ROOT / "data" / "output_files" / "stage2_test" / DOC_NAME / f"{DOC_NAME}_reordered_with_tables_pictures.doctags"
     markdown_path = PROJECT_ROOT / "data" / "output_files" / "stage2_test" / DOC_NAME / f"{DOC_NAME}_image_descriptions.md"
     images_dir = PROJECT_ROOT / "data" / "output_files" / "stage2_test" / DOC_NAME / "used_images"
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    print("\n" + "=" * 60)
-    print("ÉTAPE 1 — Parsing des balises <picture> + éléments du doctags")
-    print("=" * 60)
+    # ÉTAPE 1 : Parsing
+    _log.info("ÉTAPE 1 — Parsing des balises <picture> + éléments du doctags")
     pictures, content = parse_picture_tags(doctags_path)
     doc_elements = extract_document_elements(doctags_path)
-    print(f"→ {len(doc_elements)} élément(s) total parsé(s) dans le doctags")
-    export_picture_images(pdf_path, pictures, DOC_NAME, images_dir)
 
     if not pictures:
-        print("Aucune balise <picture> trouvée, fin du script.")
+        _log.warning("Aucune balise <picture> trouvée, fin du script.")
         return
 
-    print("\n" + "=" * 60)
-    print("ÉTAPE 2 — Description des images avec contexte textuel")
-    print("=" * 60)
-    descriptions = describe_pictures_with_context(pdf_path, pictures, doc_elements)
+    # ÉTAPE 2 : Export PNG
 
-    print("\n" + "=" * 60)
-    print("ÉTAPE 3 — Remplacement des balises <picture> dans le doctags")
-    print("=" * 60)
-    enriched_content = replace_picture_tags_docling(content, pictures, descriptions)
+    _log.info("ÉTAPE 2 — Export des images PNG (coordonnées doctags)")
+    export_picture_images(pdf_path, pictures, DOC_NAME, images_dir)
+
+    # ÉTAPE 3 : Description VLM via queue
+    _log.info("ÉTAPE 3 — Description des images avec contexte textuel (queue → VLM direct)")
+    results = describe_all_pictures(pdf_path, pictures, doc_elements)
+
+    # ÉTAPE 4 : Remplacement des <picture> dans le doctags
+  
+    _log.info("ÉTAPE 4 — Remplacement des balises <picture> dans le doctags")
+    enriched_content = replace_picture_tags(content, results)
     output_path.write_text(enriched_content, encoding="utf-8")
-    print(f"Doctags enrichi sauvegardé : {output_path}")
+    _log.info("OK - Doctags enrichi sauvegardé : %s", output_path)
 
-    print("\n" + "=" * 60)
-    print("ÉTAPE 4 — Export des descriptions en Markdown")
-    print("=" * 60)
-    export_descriptions_to_markdown(pictures, descriptions, DOC_NAME, markdown_path)
-    print(f"Markdown sauvegardé : {markdown_path}")
+    #ÉTAPE 5 : Export Markdown
+    _log.info("ÉTAPE 5 — Export des descriptions en Markdown")
+    export_descriptions_to_markdown(results, DOC_NAME, markdown_path)
 
 if __name__ == "__main__":
     main()

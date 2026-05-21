@@ -86,7 +86,7 @@ def main():
     logging.basicConfig(level=logging.INFO)
 
     # Root
-    DOC_NAME = "Domicilié dans les DOM-TOM, UE" # CHANGER SELON LES TESTS
+    DOC_NAME = "Adhésion traitement" # CHANGER SELON LES TESTS
     project_root = Path(__file__).resolve().parent.parent # Récupère le dossier racine du projet ici matthias_guideline_preprocessing (Chemin absolu)
     data_folder = project_root / "data" / "input_files"
     input_doc_path = data_folder / f"{DOC_NAME}.pdf"

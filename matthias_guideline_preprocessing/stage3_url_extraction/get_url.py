@@ -39,11 +39,11 @@ def extract_url_links(pdf_path):
     return results
 
 # Root
-DOC_NAME = "Confirmer l'adhésion" # CHANGER SELON LES TESTS
+DOC_NAME = "Adhésion traitement" # CHANGER SELON LES TESTS
 project_root = Path(__file__).resolve().parent.parent
 pdf_path = project_root / "data" / "input_files" / f"{DOC_NAME}.pdf"
 hyperlink_data_path = project_root / "data" / "output_files" / "stage3_test" / DOC_NAME /f"hyperlinks_data_{DOC_NAME}.json"
-
+hyperlink_data_path.mkdir(parents=True, exist_ok=True)
 # Extract and debug hyperlinks
 hyperlinks_data = extract_url_links(pdf_path)
 for data in hyperlinks_data:

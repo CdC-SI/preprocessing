@@ -3,7 +3,7 @@ import jsonlines
 from pathlib import Path
 
 # Root
-DOC_NAME = "Confirmer l'adhésion" # CHANGER SELON LES TESTS
+DOC_NAME = "Adhésion traitement" # CHANGER SELON LES TESTS
 csv_path = Path(f"preprocessing/matthias_guideline_preprocessing/data/output_files/stage2_test/{DOC_NAME}/tables/{DOC_NAME}-table-1.csv") # CHANGER CHEMIN POUR CHAQUE TEST
 
 # Lecture du CSV en gardant toutes les colonnes (y compris l'ID)

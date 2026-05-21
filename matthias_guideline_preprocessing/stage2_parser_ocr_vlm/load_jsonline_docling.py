@@ -86,11 +86,11 @@ def replace_otsl_with_jsonl(
 
 
 if __name__ == "__main__":
-    DOC_NAME = "Confirmer l'adhésion"   # CHANGER SELON LES TESTS
+    DOC_NAME = "Adhésion traitement"   # CHANGER SELON LES TESTS
     PROJECT_ROOT = Path(__file__).resolve().parents[1]
-    doctags_path = PROJECT_ROOT / "data" / "output_files" / "stage2_test"/ DOC_NAME / f"{DOC_NAME}_with_pictures.doctags"
+    doctags_path = PROJECT_ROOT / "data" / "output_files" / "stage1_test"/ DOC_NAME / f"{DOC_NAME}_reordered.doctags"
     jsonl_path = PROJECT_ROOT / "data" / "output_files" / "stage2_test"/ DOC_NAME / "tables" / f"{DOC_NAME}_table.jsonl"
-    output_path = PROJECT_ROOT / "data" / "output_files" / "stage2_test"/ DOC_NAME / f"{DOC_NAME}_with_pictures_tables.doctags"
+    output_path = PROJECT_ROOT / "data" / "output_files" / "stage2_test"/ DOC_NAME / f"{DOC_NAME}_reordered_with_tables.doctags"
 
     print("\n" + "=" * 60)
     print(f"Remplacement des tables dans : {doctags_path.name}")

@@ -2,16 +2,16 @@
 
 Cette étape est dédiée à la **détection et à l’extraction du contenu structuré** des documents PDF grâce à une approche multi-étapes. L’objectif est de préparer les données pour les traitements ultérieurs : OCR, extraction de tableaux, enrichissement sémantique, etc.
 Il y a 4 scripts dans cette étape:
-- **OpenCV_test_checker_single.py** : Créé des boxes autour de tous les éléments détectés par l'OCR docling pour vérifier s'il y a des erreurs de détection (première page du PDF)
-- **OpenCV_test_checker.py** : Créé des boxes autour de tous les éléments détectés par l'OCR docling pour vérifier s'il y a des erreurs de détection (toutes les page du PDF)
+- **OpenCV_checker_single.py** : Créé des boxes autour de tous les éléments détectés par l'OCR docling pour vérifier s'il y a des erreurs de détection (première page du PDF)
+- **OpenCV_checker.py** : Créé des boxes autour de tous les éléments détectés par l'OCR docling pour vérifier s'il y a des erreurs de détection (toutes les page du PDF)
 - **pipeline_multietape.py** : Pipeline de docling qui extrait dans différents format l'extraction EasyOCR, ici en Json, markdown, text et doctags.
-- **stage1_csv_jsonline.py** : Convertie le doctags en Jsonline
+- **control_doctags_balise_loc_y0.py** : Ce script, regarde la position y0 des balises dans le doctags et repositionne les balises si necessaire dans le bon ordre d'apparition des éléments (necessaire pour avoir une structure fidèle au PDF initial, pour le fichier markdown final).
 
 ## Objectifs principaux
 
    - Détecter et extraire tous les blocs de contenu pertinents (textes, tableaux, images, liens) à partir des PDF.
    - Générer des fichiers intermédiaires dans différents formats pour faciliter les étapes suivantes.
-   - /!\ ATTEMTION, le contenu descriptif des images n'est pas extrait avec ce processus. Docling EasyOCR permet de déecter les images (balise "picture" dans le .doctags), cependant, nous n'en extrayons pas le contenu. Pour cela, il faut utiliser l'étape 2 avec la pipeline VLM de docling et les prompts pour décrire l'image. De là, on peut retrouver l'image décrite et repositionner le contenu dans la bonne balise avec le processus de matching des boxs.
+   - /!\ ATTENTION, le contenu descriptif des images n'est pas extrait avec ce processus. Docling EasyOCR permet de déecter les images (balise "picture" dans le .doctags), cependant, nous n'en n'extrayons pas le contenu. Pour cela, il faut utiliser l'étape 2 avec la pipeline VLM de docling et les prompts pour décrire l'image. De là, on peut retrouver l'image décrite et repositionner le contenu dans la bonne balise avec le processus de matching des boxs.
 
 ## Étapes de la pipeline
 
@@ -24,13 +24,12 @@ Il y a 4 scripts dans cette étape:
       - Les blocs de texte (paragraphes, titres, listes)
       - Les tableaux (avec leur structure)
       - Les images et figures /!\ EasyOCR détecte la présence de l'image (balise "picture"), mais ne la décrit pas.
-      - Les liens hypertextes et annotations
+      - Les liens hypertextes et annotations /!\ un autre script permet d'extraire les liens URL et de les associer au texte correspondant.
 
 3. **Export multi-format**
    - Exporter le contenu détecté dans plusieurs formats :
       - **Doctags** : pour le post-traitement avancé et le matching de zones/boîtes.
       - **JSON** : pour des données structurées, exploitables par des scripts.
-      - **JSONL** : pour les données structurées de façon séquentielle pour aider **GPT OSS** (lecture séquentielle et ligne par ligne)
       - **Markdown** : pour une structure lisible par l’humain et une relecture rapide.
       - **Texte brut** : pour une analyse textuelle simple.
  
@@ -41,16 +40,15 @@ Il y a 4 scripts dans cette étape:
 ## Fichiers générés
    - `*.doctags` : Tags Docling avec coordonnées et types de contenu.
    - `*.json` : Export structuré JSON.
-   - `*.jsonl` : Reformatage pour une lecture linéaire.
    - `*.md` :  Export Markdown de la structure du document.
    - `*.txt` : Export texte brut.
 
 
 ## Utilisation typique
 
-1. Placer votre PDF dans le dossier `data/input_files/`.
+1. Placer votre PDF dans le dossier dans le dossier d'entrée configuré.
 2. Lancer le script de pipeline de l’étape 1.
-3. Retrouver les fichiers exportés dans `data/output_files/stage1_test/` ou dans le dossier de sortie configuré.
+3. Retrouver les fichiers exportés dans le dossier de sortie configuré.
 
 ## Remarques
    - Cette étape est conçue pour être modulaire et extensible.
