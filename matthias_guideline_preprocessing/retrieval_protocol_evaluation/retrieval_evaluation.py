@@ -1,7 +1,7 @@
-from sentence_transformer import SentenceTransformer
+from sentence_transformers import CrossEncoder
 import numpy as np
 import faiss
-from sentece_transformers import CrossEncoder
+from sentence_transformers import CrossEncoder
 import math
 import pandas as pd
 
@@ -33,7 +33,7 @@ documents = [
 ]
 
 # Embeddings
-doc_text = [d["test"] for d in documents]
+doc_text = [d["text"] for d in documents]
 doc_idst = [d["id"] for d in documents]
 
 doc_embeddings = embedding_model.encode(
@@ -118,7 +118,7 @@ def precision_at_k(retrieved, relevant, k):
     retrieved_k = retrieved[:k]
 
     retrieved_ids = {d["doc_id"] for d in retrieved_k}
-    return len(retrieved_ids & relevant) / k
+    return len(retrieved_ids.intersection(relevant)) / k
 
 # MRR@k
 def mrr_at_k(retrieved, relevant, k):
@@ -176,5 +176,5 @@ for sample in evaluation_dataset:
 
     results.append(metrics)
 
-    df = pd.DataFrame(results)
-    print(df.mean(numeric_only=True))
+df = pd.DataFrame(results)
+print(df.mean(numeric_only=True))
