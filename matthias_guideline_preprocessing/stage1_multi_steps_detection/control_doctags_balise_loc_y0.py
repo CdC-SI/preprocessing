@@ -1,65 +1,86 @@
-import re
 from pathlib import Path
+import re
+from dotenv import load_dotenv
+import os
 
-def parse_doctags_elements(lines):
-    elements = []
-    for line in lines:
-        line_clean = re.sub(r"</?doctag>", "", line).strip()
-        locs = re.findall(r"<loc_(\d+)>", line_clean)
-        y0 = int(locs[1]) if len(locs) >= 2 else None
-        x0 = int(locs[0]) if len(locs) >= 1 else None
-        elements.append({
-            "y0": y0,
-            "x0": x0,
-            "raw": line,
-        })
-    return elements
+# Chargement de .env.test
+dotenv_path = Path(__file__).resolve().parent.parent / ".env.test"
+print("Loading dotenv from:", dotenv_path.resolve(), "exists:", dotenv_path.exists())
+load_dotenv(dotenv_path=dotenv_path)
+load_dotenv()
 
-def regroup_by_page(elements):
-    # Regroupe les éléments par page (détecte <page_header> ou <page_footer> pour changer de page)
-    pages = []
-    current_page = []
-    for el in elements:
-        if "<page_header>" in el["raw"] and current_page:
-            pages.append(current_page)
-            current_page = [el]
-        else:
-            current_page.append(el)
-        if "<page_footer>" in el["raw"]:
-            pages.append(current_page)
-            current_page = []
-    if current_page:
-        pages.append(current_page)
-    return pages
 
-def sort_page_elements(page):
-    # Trie les éléments avec y0, les autres restent à leur place d'origine
-    with_y0 = [el for el in page if el["y0"] is not None]
-    with_y0_sorted = sorted(with_y0, key=lambda el: (el["y0"], el["x0"] if el["x0"] is not None else 0))
+def extract_y0(line: str) -> int | None:
+    # Extrait le y0 (2ème <loc_N>) d'une ligne. Retourne None si absent.
+    m = re.search(r"<loc_\d+><loc_(\d+)>", line)
+    return int(m.group(1)) if m else None
+
+
+def merge_closing_tags(lines: list[str]) -> list[str]:
+    # Fusionne les balises fermantes seules sur une ligne avec la ligne précédente.
+    # Ex: </unordered_list> seul → collé à la fin de la ligne précédente.
     result = []
-    idx = 0
-    for el in page:
-        if el["y0"] is not None:
-            result.append(with_y0_sorted[idx])
-            idx += 1
+    for line in lines:
+        stripped = line.strip()
+        # Balise fermante seule sur la ligne (ex: </unordered_list>)
+        if re.match(r"^</[\w_]+>$", stripped) and result:
+            result[-1] = result[-1] + stripped
         else:
-            result.append(el)
+            result.append(line)
     return result
 
-def reorder_doctags_by_y0(doctags_path: Path, output_path: Path):
-    lines = doctags_path.read_text(encoding="utf-8").splitlines()
-    elements = parse_doctags_elements(lines)
-    pages = regroup_by_page(elements)
-    pages_sorted = [sort_page_elements(page) for page in pages]
-    new_lines = [el["raw"] for page in pages_sorted for el in page]
-    output_path.write_text("\n".join(new_lines), encoding="utf-8")
-    print(f"Doctags réorganisé sauvegardé : {output_path}")
+
+def reorder_page(lines: list[str]) -> list[str]:
+
+    # Trie les lignes d'une page par y0 croissant.
+    # Les lignes sans y0 sont conservées en tête dans leur ordre d'origine.
+    with_y0  = [(extract_y0(l), l) for l in lines]
+    no_y0    = [l for y0, l in with_y0 if y0 is None]
+    sortable = [(y0, l) for y0, l in with_y0 if y0 is not None]
+    sortable.sort(key=lambda x: x[0])
+    return no_y0 + [l for _, l in sortable]
+
+
+def reorder_doctags(input_path: Path, output_path: Path) -> None:
+    content = input_path.read_text(encoding="utf-8")
+
+    # 1. Supprime les balises <doctag> et </doctag> existantes pour retravailler proprement
+    content = re.sub(r"</?doctag>", "", content).strip()
+
+    lines = content.splitlines()
+
+    # 2. Fusionne les balises fermantes seules avec la ligne précédente
+    lines = merge_closing_tags(lines)
+
+    # 3. Découpe en pages (chaque page_footer ou page_break = fin de page)
+    pages        = []
+    current_page = []
+
+    for line in lines:
+        current_page.append(line)
+        if "<page_break>" in line or "<page_footer>" in line:
+            pages.append(current_page)
+            current_page = []
+
+    if current_page:
+        pages.append(current_page)
+
+    # 4. Tri de chaque page indépendamment par y0
+    result = []
+    for page in pages:
+        result.extend(reorder_page(page))
+
+    # 5. Réenveloppe dans <doctag>...</doctag>
+    final = "<doctag>" + "\n".join(result) + "\n</doctag>"
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(final, encoding="utf-8")
+    print(f"Doctags réordonné : {output_path}")
+
 
 if __name__ == "__main__":
-    DOC_NAME = "Adhésion traitement" # CHANGER SELON LES TESTS
-    PROJECT_ROOT = Path(__file__).resolve().parents[2]
-    doctags_path = PROJECT_ROOT / "matthias_guideline_preprocessing/data/output_files/stage1_test" / DOC_NAME / f"{DOC_NAME}.doctags"
-    output_dir = Path(f"preprocessing/matthias_guideline_preprocessing/data/output_files/stage1_test/{DOC_NAME}")
-    output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / f"{DOC_NAME}_reordered.doctags"
-    reorder_doctags_by_y0(doctags_path, output_path)
+    DOC_NAME = os.environ.get("DOC_NAME", "")
+    base = Path("preprocessing/matthias_guideline_preprocessing/data/output_files/stage1_test")
+    src = base / DOC_NAME / f"{DOC_NAME}.doctags"
+    dst = base / DOC_NAME / f"{DOC_NAME}_reordered.doctags"
+    reorder_doctags(src, dst)

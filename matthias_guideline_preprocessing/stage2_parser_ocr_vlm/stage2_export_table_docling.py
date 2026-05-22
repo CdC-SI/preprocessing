@@ -40,7 +40,7 @@ def main():
     logging.basicConfig(level=logging.INFO)
 
     # Root
-    DOC_NAME = "Adhésion traitement" # CHANGER SELON LES TESTS
+    DOC_NAME = os.environ.get("DOC_NAME", "") # CHANGER SELON LES TESTS
     project_root = Path(__file__).resolve().parent.parent
     data_folder = project_root / "data" / "input_files"
     input_doc_path = data_folder / f"{DOC_NAME}.pdf" # CHANGER CHEMIN POUR CHAQUE TEST

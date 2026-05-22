@@ -3,9 +3,16 @@ import re
 import json
 import jsonlines
 import fitz  # PyMuPDF
+from dotenv import load_dotenv
+import os
 
+load_dotenv()
+# Chargement de .env.test
+dotenv_path = Path(__file__).resolve().parent.parent / ".env.test" # Je suis sur l'.env.test qui est le même que le .env
+print("Loading dotenv from:", dotenv_path.resolve(), "exists:", dotenv_path.exists())
+load_dotenv(dotenv_path=dotenv_path)
 # Root
-DOC_NAME = "Adhésion traitement" # CHANGER SELON LES TESTS
+DOC_NAME = os.environ.get("DOC_NAME", "") # CHANGER SELON LES TESTS
 project_root = Path(__file__).resolve().parent.parent
 pdf_path = project_root / "data" / "input_files" / f"{DOC_NAME}.pdf"
 doctags_path = project_root / "data" / "output_files" / "stage2_test" / DOC_NAME / f"{DOC_NAME}_reordered_with_tables_pictures.doctags"
@@ -185,32 +192,21 @@ def inject_links_in_doctags(content: str, matches: list) -> str:
     return content
 
 if __name__ == "__main__":
-    print("=" * 60)
     print("ÉTAPE 1 — Chargement des liens JSONL")
-    print("=" * 60)
     links = load_hyperlinks(hyperlinks_path)
 
-    print("\n" + "=" * 60)
-    print("ÉTAPE 2 — Tailles des pages PDF")
-    print("=" * 60)
     page_sizes = get_page_sizes(pdf_path)
     for p, s in page_sizes.items():
         print(f"  Page {p+1} : {s[0]:.1f} x {s[1]:.1f} pts")
 
-    print("\n" + "=" * 60)
     print("ÉTAPE 3 — Parsing des doctags")
-    print("=" * 60)
     elements, content = parse_doctags(doctags_path)
 
-    print("\n" + "=" * 60)
     print("ÉTAPE 4 — Matching liens ↔ doctags")
-    print("=" * 60)
     matches = match_links_to_elements(links, elements, page_sizes, threshold=0.1)
     print(f"\n→ {len(matches)} match(s) trouvé(s)")
 
-    print("\n" + "=" * 60)
     print("ÉTAPE 5 — Réinjection dans les doctags")
-    print("=" * 60)
     enriched_content = inject_links_in_doctags(content, matches)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)

@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 
 # Root
-DOC_NAME = "Confirmer l'adhésion.pdf" # Modifie le nom du PDF si nécessaire
+DOC_NAME = "Confirmer l'adhésion" # Modifie le nom du PDF si nécessaire
 project_root = Path(__file__).resolve().parent.parent # Récupère le dossier racine du projet ici matthias_guideline_preprocessing (Chemin absolu)
 pdf_path = project_root / "data" / "input_files" / f"{DOC_NAME}.pdf"
 doctag_path = project_root / "data" / "output_files" / "stage1_test" / DOC_NAME / f"{DOC_NAME}.doctags" 

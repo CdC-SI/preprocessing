@@ -128,7 +128,7 @@ Provide a concise business-oriented summary focused only on useful information.
 
 ## Output
 
-If relevant:
+If relevant ALWAYS START YOUR IMAGE REVIEW WITH:
 [IMAGE DESCRIPTION] ...
 
 Otherwise:
@@ -414,29 +414,58 @@ def describe_all_pictures(
     return dict(_results)
 
 # ÉTAPE 4 — Remplacement des balises <picture> dans le doctags
-def replace_picture_tags(
-    content: str,
-    results: dict[int, dict],
-) -> str:
-    """Remplace chaque <picture> par une balise <text> avec la description."""
+def replace_picture_tags(content: str, results: dict[int, dict]) -> str:
     replaced = 0
     for idx in sorted(results.keys()):
         r = results[idx]
         if not r["description"]:
-            _log.warning(
-                "Warning - Pas de description pour <picture> page=%d loc=(%d,%d,%d,%d) — tag conservé",
-                r["page"], r["x0"], r["y0"], r["x1"], r["y1"],
-            )
+            _log.warning("Pas de description pour <picture> idx=%d — tag conservé", idx)
             continue
-        new_tag = f"<text>\n{r['description']}\n</text>"
-        content = content.replace(r["raw_tag"], new_tag, 1)
-        replaced += 1
-        _log.info(
-            "  [%d] OK <picture> remplacée par <text> (%d chars)",
-            idx, len(r["description"]),
-        )
 
-    _log.info("OK %d/%d balise(s) <picture> remplacée(s)", replaced, len(results))
+        if r["raw_tag"] not in content:
+            _log.error("raw_tag introuvable : %s", r["raw_tag"])
+            continue
+
+        desc       = r["description"]
+        raw_tag    = re.escape(r["raw_tag"])
+        desc_inline = desc.replace("\n", " ").strip()
+
+        # Cas 1 : <list_item><picture/></list_item>
+        pattern_in_item = re.compile(
+            r"<list_item>\s*" + raw_tag + r"\s*</list_item>",
+            re.DOTALL
+        )
+        if pattern_in_item.search(content):
+            content = pattern_in_item.sub(
+                f"<list_item>{desc_inline}</list_item>",
+                content, count=1
+            )
+            _log.info("[%d] <picture> dans <list_item> → texte inline", idx)
+
+        # Cas 2 : <picture/> entre des <list_item> dans une liste
+        elif re.search(
+            r"<list_item[^>]*>.*?</list_item>\s*" + raw_tag,
+            content, re.DOTALL
+        ):
+            content = content.replace(
+                r["raw_tag"],
+                f"<list_item>{desc_inline}</list_item>",
+                1
+            )
+            _log.info("[%d] <picture> entre list_items → <list_item> texte inline", idx)
+
+        # Cas 3 : <picture/> standalone (hors liste)
+        else:
+            content = content.replace(
+                r["raw_tag"],
+                f"<text>\n{desc}\n</text>",
+                1
+            )
+            _log.info("[%d] <picture> standalone → <text>", idx)
+
+        replaced += 1
+
+    _log.info(" %d/%d balise(s) <picture> remplacée(s)", replaced, len(results))
     return content
 
 # ÉTAPE 5 — Export Markdown
@@ -489,7 +518,7 @@ def export_descriptions_to_markdown(
 # PIPELINE PRINCIPAL
 def main():
     PROJECT_ROOT = Path(__file__).resolve().parents[1]
-    DOC_NAME = "Adhésion traitement"
+    DOC_NAME = os.environ.get("DOC_NAME", "")
 
     pdf_path = PROJECT_ROOT / "data" / "input_files" / f"{DOC_NAME}.pdf"
     doctags_path = PROJECT_ROOT / "data" / "output_files" / "stage2_test" / DOC_NAME / f"{DOC_NAME}_reordered_with_tables.doctags"
