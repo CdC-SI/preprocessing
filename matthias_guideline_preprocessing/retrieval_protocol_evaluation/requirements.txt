@@ -1,10 +1,7 @@
-docling==2.93.0
-pandas==3.0.2
-python-dotenv==1.2.2
-
 # requirements.txt pour pipeline de retrieval et extraction documentaire
 
 # Utilitaires généraux
+python-dotenv==1.2.2
 pillow==12.1.1
 
 # PDF et OCR
@@ -26,6 +23,7 @@ faiss-cpu==1.8.0
 
 # Évaluation et ML
 scikit-learn==1.4.2
+pandas==2.2.2
 numpy==1.26.4
 
 # JSONL et manipulation fichiers

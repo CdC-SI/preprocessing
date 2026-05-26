@@ -9,7 +9,7 @@ dotenv_path = Path(__file__).resolve().parent.parent / ".env.test"
 print("Loading dotenv from:", dotenv_path.resolve(), "exists:", dotenv_path.exists())
 load_dotenv(dotenv_path=dotenv_path)
 
-DOC_NAME   = os.environ.get("DOC_NAME", "")
+DOC_NAME = os.environ.get("DOC_NAME", "")
 tables_dir = Path(f"preprocessing/matthias_guideline_preprocessing/data/output_files/stage2_test/{DOC_NAME}/tables")
 
 # Parcours de tous les CSV du dossier tables

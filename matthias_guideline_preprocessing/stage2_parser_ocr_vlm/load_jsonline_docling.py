@@ -4,6 +4,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 import os
 
+# Path
 load_dotenv()
 dotenv_path = Path(__file__).resolve().parent.parent / ".env.test"
 print("Loading dotenv from:", dotenv_path.resolve(), "exists:", dotenv_path.exists())
@@ -13,9 +14,9 @@ load_dotenv(dotenv_path=dotenv_path)
 def load_jsonl_rows(jsonl_path: Path) -> list[dict]:
     # Charge toutes les lignes d'un fichier JSONL.
     rows = []
-    with open(jsonl_path, encoding="utf-8") as f:
+    with open(jsonl_path, encoding="utf-8") as f: # Vérifier le type d'encodage du fichier source UTF-8, Unicode ou autre
         for line in f:
-            line = line.strip()
+            line = line.strip() # Nettoie les espaces et les retours à la ligne
             if line:
                 rows.append(json.loads(line))
     return rows
@@ -24,7 +25,6 @@ def load_jsonl_rows(jsonl_path: Path) -> list[dict]:
 def jsonl_rows_to_block(rows: list[dict]) -> str:
     # Convertit une liste de dicts en bloc texte JSONL.
     return "\n".join(json.dumps(row, ensure_ascii=False) for row in rows)
-
 
 def replace_otsl_with_jsonl(
     doctags_path: Path,
@@ -78,20 +78,20 @@ def replace_otsl_with_jsonl(
     result = content
     offset = 0
 
-    for i, match in enumerate(matches):
+    for i, match in enumerate(matches): # Pour chaque balise <otsl> trouvée, on remplace par la table JSONL correspondante dans l'ordre
         if i >= len(all_tables):
             print(f" Pas de table JSONL pour la balise <otsl> n°{i+1}, ignorée.")
             break
 
-        jsonl_name, rows = all_tables[i]
-        jsonl_block = jsonl_rows_to_block(rows)
-        new_tag = f"<text>\n{jsonl_block}\n</text>"
+        jsonl_name, rows = all_tables[i] # Récupère le nom et les lignes de la table JSONL correspondante
+        jsonl_block = jsonl_rows_to_block(rows) # Convertit les lignes JSONL en bloc de texte à insérer
+        new_tag = f"<text>\n{jsonl_block}\n</text>" # Nouveau contenu à insérer à la place de <otsl>...</otsl>
 
         start = match.start() + offset
-        end = match.end()   + offset
+        end = match.end() + offset
 
-        result = result[:start] + new_tag + result[end:]
-        offset += len(new_tag) - (match.end() - match.start())
+        result = result[:start] + new_tag + result[end:] # Remplace la balise <otsl>...</otsl> par le nouveau contenu JSONL
+        offset += len(new_tag) - (match.end() - match.start()) # Met à jour l'offset pour les remplacements suivants
 
         print(
             f"  Table {i+1}/{len(matches)} remplacée "
@@ -102,8 +102,8 @@ def replace_otsl_with_jsonl(
     output_path.write_text(result, encoding="utf-8")
     print(f"\n Doctags enrichi sauvegardé : {output_path}")
 
-
 if __name__ == "__main__":
+    # Root et sorties
     DOC_NAME = os.environ.get("DOC_NAME", "")
     PROJECT_ROOT = Path(__file__).resolve().parents[1]
 

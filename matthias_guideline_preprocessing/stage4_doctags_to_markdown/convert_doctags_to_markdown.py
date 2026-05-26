@@ -13,6 +13,7 @@ dotenv_path = Path(__file__).resolve().parent.parent / ".env.test"
 _log.info("Loading dotenv from: %s | exists: %s", dotenv_path.resolve(), dotenv_path.exists())
 load_dotenv(dotenv_path=dotenv_path)
 
+# Root
 DOC_NAME = os.environ.get("DOC_NAME", "")
 doctags_path = Path(f"preprocessing/matthias_guideline_preprocessing/data/output_files/stage3_test/{DOC_NAME}/{DOC_NAME}_reordered_with_tables_pictures_url.doctags")
 output_dir = Path("preprocessing/matthias_guideline_preprocessing/data/output_files/stage4_test")

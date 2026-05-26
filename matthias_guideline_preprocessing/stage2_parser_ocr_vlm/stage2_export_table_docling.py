@@ -36,6 +36,8 @@ if not VLM_URL:
 print(f"VLM_URL: {VLM_URL}, \nVLM_MODEL_NAME: {VLM_MODEL_NAME}")# affiche dans la console les variables d'environnement chargées pour vérification
 #####
 
+### https://docling-project.github.io/docling/examples/export_tables/
+
 def main():
     logging.basicConfig(level=logging.INFO)
 
@@ -76,7 +78,6 @@ def main():
     end_time = time.time() - start_time
 
     _log.info(f"Document converted and tables exported in {end_time:.2f} seconds.")
-
 
 if __name__ == "__main__":
     main()

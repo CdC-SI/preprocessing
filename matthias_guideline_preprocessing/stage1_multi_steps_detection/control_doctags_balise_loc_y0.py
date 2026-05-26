@@ -23,7 +23,7 @@ def merge_closing_tags(lines: list[str]) -> list[str]:
     for line in lines:
         stripped = line.strip()
         # Balise fermante seule sur la ligne (ex: </unordered_list>)
-        if re.match(r"^</[\w_]+>$", stripped) and result:
+        if re.match(r"^</[\w]+>$", stripped) and result:
             result[-1] = result[-1] + stripped
         else:
             result.append(line)
@@ -31,18 +31,17 @@ def merge_closing_tags(lines: list[str]) -> list[str]:
 
 
 def reorder_page(lines: list[str]) -> list[str]:
-
     # Trie les lignes d'une page par y0 croissant.
     # Les lignes sans y0 sont conservées en tête dans leur ordre d'origine.
-    with_y0  = [(extract_y0(l), l) for l in lines]
-    no_y0    = [l for y0, l in with_y0 if y0 is None]
+    with_y0 = [(extract_y0(l), l) for l in lines]
+    no_y0 = [l for y0, l in with_y0 if y0 is None]
     sortable = [(y0, l) for y0, l in with_y0 if y0 is not None]
     sortable.sort(key=lambda x: x[0])
     return no_y0 + [l for _, l in sortable]
 
 
 def reorder_doctags(input_path: Path, output_path: Path) -> None:
-    content = input_path.read_text(encoding="utf-8")
+    content = input_path.read_text(encoding="utf-8") # Vériier le type d'encodage du fichier source UTF-8, Unicode ou autre
 
     # 1. Supprime les balises <doctag> et </doctag> existantes pour retravailler proprement
     content = re.sub(r"</?doctag>", "", content).strip()
@@ -53,7 +52,7 @@ def reorder_doctags(input_path: Path, output_path: Path) -> None:
     lines = merge_closing_tags(lines)
 
     # 3. Découpe en pages (chaque page_footer ou page_break = fin de page)
-    pages        = []
+    pages = []
     current_page = []
 
     for line in lines:

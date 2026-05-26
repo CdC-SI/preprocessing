@@ -1,7 +1,6 @@
 from sentence_transformers import CrossEncoder
 import numpy as np
 import faiss
-from sentence_transformers import CrossEncoder
 import math
 import pandas as pd
 
@@ -105,8 +104,11 @@ def rerank(query, retrieved_docs, top_k = 5):
 
     return reranked[:top_k]
 
-# Métriques:
+# Métriques: Voir wiki (Protocol d'évaluation retrieval) interne pour les formules et explications détaillées de chaque métrique
 # Recall@k
+# https://insidelearningmachines.com/precisionk_and_recallk/
+# https://insidelearningmachines.com/measure-performance-of-a-classification-model/
+
 def recall_at_k(retrieved, relevant, k):
     retrieved_k = retrieved[:k]
 

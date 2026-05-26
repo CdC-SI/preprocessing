@@ -6,7 +6,7 @@ import queue
 import threading
 from dataclasses import dataclass
 from pathlib import Path
-import fitz
+import fitz # PyMuPDF
 import requests
 import certifi
 from dotenv import load_dotenv
@@ -38,12 +38,12 @@ _log.info("VLM_MODEL_NAME : %s", VLM_MODEL_NAME)
 # Constantes
 NORM = 500
 DPI = 150 # Norme Qwen3.5
-N_BEFORE = 5
-N_AFTER  = 5
+N_BEFORE = 5 # Nombre de éléments textuels à inclure dans le contexte avant l'image
+N_AFTER  = 5 # Nombre de éléments textuels à inclure dans le contexte après l'image
 
 language = "french"
 
-# Prompt
+# Prompt voir fichier Word pour les autres prompts
 # {context_before} et {context_after} sont injectés dynamiquement par image
 WIKI_PROMPT_TEMPLATE = """
 Role
@@ -161,12 +161,13 @@ TEXT_TAGS = {
 # ÉTAPE 1 — Parsing du doctags
 def parse_picture_tags(doctags_path: Path) -> tuple[list[dict], str]:
     # Retourne la liste des <picture> et le contenu brut du doctags.
-    content  = doctags_path.read_text(encoding="utf-8")
+    # Cette fonction parse les balises du doctags pour extraire les éléments textuels et les images avec leurs coordonnées, en conservant l'ordre d'apparition pour le contexte.
+    content = doctags_path.read_text(encoding="utf-8") # Vériier le type d'encodage du fichier source UTF-8, Unicode ou autre
     pictures = []
-    page     = 0
+    page = 0
 
-    for line in content.splitlines():
-        line_clean = re.sub(r"</?doctag>", "", line).strip()
+    for line in content.splitlines(): # Parcours ligne par ligne pour trouver les balises <picture> et leurs coordonnées
+        line_clean = re.sub(r"</?doctag>", "", line).strip() 
         if not line_clean:
             continue
         if "<page_footer>" in line_clean:
@@ -175,7 +176,7 @@ def parse_picture_tags(doctags_path: Path) -> tuple[list[dict], str]:
             r"(<picture><loc_(\d+)><loc_(\d+)><loc_(\d+)><loc_(\d+)></picture>)",
             line_clean,
         ):
-            x0, y0, x1, y1 = int(m.group(2)), int(m.group(3)), int(m.group(4)), int(m.group(5))
+            x0, y0, x1, y1 = int(m.group(2)), int(m.group(3)), int(m.group(4)), int(m.group(5)) # Extraction des coordonnées de la balise <picture>, m.groupe(1) contient la balise complète <picture>...</picture>
             pictures.append({
                 "page": page, "x0": x0, "y0": y0, "x1": x1, "y1": y1,
                 "raw_tag": m.group(1),
@@ -188,7 +189,8 @@ def parse_picture_tags(doctags_path: Path) -> tuple[list[dict], str]:
 
 def extract_document_elements(doctags_path: Path) -> list[dict]:
     # Parse tous les éléments (textes + images) dans l'ordre d'apparition.
-    content = doctags_path.read_text(encoding="utf-8")
+    # Cette fonction est utilisée pour construire le contexte textuel autour de chaque image.
+    content = doctags_path.read_text(encoding="utf-8") # Vériier le type d'encodage du fichier source UTF-8, Unicode ou autre
     elements = []
     page = 0
 
@@ -201,7 +203,7 @@ def extract_document_elements(doctags_path: Path) -> list[dict]:
 
         # Éléments textuels
         for m in re.finditer(
-            r"<(?!/)(\w+)><loc_(\d+)><loc_(\d+)><loc_(\d+)><loc_(\d+)>(.*?)(?=<(?!loc_)\w|$)",
+            r"<(?!/)(\w+)><loc_(\d+)><loc_(\d+)><loc_(\d+)><loc_(\d+)>([^<]*)", # Extraction des éléments textuels avec leurs coordonnées, m.groupe(1) contient le tag (ex: text, section_header_level_1, etc.) et m.groupe(6) contient le texte brut à l'intérieur de la balise
             line_clean, re.DOTALL,
         ):
             tag = m.group(1)
@@ -236,8 +238,8 @@ def build_context(pic: dict, doc_elements: list, n_before: int, n_after: int) ->
         idx for idx, e in enumerate(doc_elements)
         if e["type"] == "picture"
         and e["page"] == pic["page"]
-        and e["x0"]  == pic["x0"]
-        and e["y0"]  == pic["y0"]
+        and e["x0"] == pic["x0"]
+        and e["y0"] == pic["y0"]
     ), None)
 
     if pic_index is not None:
@@ -250,7 +252,7 @@ def build_context(pic: dict, doc_elements: list, n_before: int, n_after: int) ->
     ctx_after = "\n".join(f"> {t}" for t in after) if after else "> No context available after this image."
     return ctx_before, ctx_after
 
-# ÉTAPE 2 — Export des PNG (nommés avec les coordonnées du doctags)
+# Export des PNG (nommés avec les coordonnées du doctags)
 def export_picture_images(
     pdf_path: Path,
     pictures: list[dict],
@@ -272,18 +274,19 @@ def export_picture_images(
         ))
         # Nom basé sur les coordonnées du doctags (pas normalisées)
         img_path = output_dir / (
-            f"{doc_name}_page{pic['page']+1}_"
-            f"x{pic['x0']}_y{pic['y0']}_x{pic['x1']}_y{pic['y1']}.png"
+            f"{doc_name}_page{pic['page']+1}_" # +1 pour que les pages soient 1-based dans le nommage
+            f"x{pic['x0']}_y{pic['y0']}_x{pic['x1']}_y{pic['y1']}.png" # nommage avec les coordonnées originales du doctags pour faciliter le mapping avec les balises <picture>
         )
-        img_path.write_bytes(pix.tobytes("png"))
+        img_path.write_bytes(pix.tobytes("png")) # Sauvegarde du PNG exporté
         _log.info("  [%d/%d] PNG exporté : %s", i, len(pictures), img_path.name)
 
     doc.close()
     _log.info("OK %d PNG exporté(s)", len(pictures))
 
-# ÉTAPE 3 — Crop en mémoire + mise en queue + appel VLM direct
+# Crop en mémoire + mise en queue + appel VLM direct
 def crop_to_b64(pdf_doc: fitz.Document, pic: dict, norm: int = NORM, dpi: int = DPI) -> str:
     # Crop une image du PDF et retourne le base64 en mémoire.
+    # https://docs.nvidia.com/nim/vision-language-models/latest/vision-content-safety.html
     page = pdf_doc[pic["page"]]
     pw, ph = page.rect.width, page.rect.height
     pix = page.get_pixmap(dpi=dpi, clip=fitz.Rect(
@@ -311,7 +314,7 @@ def describe_image_b64(image_b64: str, prompt: str) -> str:
         data = response.json()
         return data["choices"][0]["message"]["content"].strip()
     except Exception as e:
-        _log.error("Erreur API VLM : %s", e)
+        _log.info("Erreur API VLM : %s", e)
         return ""
 
 
@@ -320,6 +323,7 @@ _results: dict[int, dict] = {}
 _results_lock = threading.Lock()
 
 def _vlm_worker(task_queue: queue.Queue) -> None:
+    # Cette fonction tourne dans un thread séparé, consomme les tâches d'images à traiter, appelle le VLM et stocke les résultats dans _results.
     while True:
         task: ImageTask | None = task_queue.get()
         if task is None:
@@ -399,7 +403,7 @@ def describe_all_pictures(
             image_b64=image_b64,
             prompt=prompt,
             raw_tag=pic["raw_tag"],
-        ))
+        )) # Enqueue de la tâche d'image à traiter par le worker VLM
         _log.info("  [%d/%d] -> Image mise en queue (page %d)", i, total, pic["page"] + 1)
 
     pdf_doc.close()
@@ -413,7 +417,7 @@ def describe_all_pictures(
     _log.info("OK %d/%d image(s) décrite(s) avec contexte", described, total)
     return dict(_results)
 
-# ÉTAPE 4 — Remplacement des balises <picture> dans le doctags
+# Remplacement des balises <picture> dans le doctags
 def replace_picture_tags(content: str, results: dict[int, dict]) -> str:
     replaced = 0
     for idx in sorted(results.keys()):
@@ -426,8 +430,8 @@ def replace_picture_tags(content: str, results: dict[int, dict]) -> str:
             _log.error("raw_tag introuvable : %s", r["raw_tag"])
             continue
 
-        desc       = r["description"]
-        raw_tag    = re.escape(r["raw_tag"])
+        desc = r["description"]
+        raw_tag = re.escape(r["raw_tag"])
         desc_inline = desc.replace("\n", " ").strip()
 
         # Cas 1 : <list_item><picture/></list_item>
@@ -468,12 +472,8 @@ def replace_picture_tags(content: str, results: dict[int, dict]) -> str:
     _log.info(" %d/%d balise(s) <picture> remplacée(s)", replaced, len(results))
     return content
 
-# ÉTAPE 5 — Export Markdown
-def export_descriptions_to_markdown(
-    results: dict[int, dict],
-    doc_name: str,
-    output_path: Path,
-) -> None:
+# Export Markdown
+def export_descriptions_to_markdown(results: dict[int, dict], doc_name: str, output_path: Path) -> None:
     total = len(results)
     nb_described = sum(1 for r in results.values() if r["description"])
     nb_missing = total - nb_described
@@ -527,7 +527,7 @@ def main():
     images_dir = PROJECT_ROOT / "data" / "output_files" / "stage2_test" / DOC_NAME / "used_images"
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # ÉTAPE 1 : Parsing
+    # Parsing
     _log.info("ÉTAPE 1 — Parsing des balises <picture> + éléments du doctags")
     pictures, content = parse_picture_tags(doctags_path)
     doc_elements = extract_document_elements(doctags_path)
@@ -536,23 +536,21 @@ def main():
         _log.warning("Aucune balise <picture> trouvée, fin du script.")
         return
 
-    # ÉTAPE 2 : Export PNG
-
+    # Export PNG
     _log.info("ÉTAPE 2 — Export des images PNG (coordonnées doctags)")
     export_picture_images(pdf_path, pictures, DOC_NAME, images_dir)
 
-    # ÉTAPE 3 : Description VLM via queue
+    # Description VLM via queue
     _log.info("ÉTAPE 3 — Description des images avec contexte textuel (queue → VLM direct)")
     results = describe_all_pictures(pdf_path, pictures, doc_elements)
 
-    # ÉTAPE 4 : Remplacement des <picture> dans le doctags
-  
+    # Remplacement des <picture> dans le doctags
     _log.info("ÉTAPE 4 — Remplacement des balises <picture> dans le doctags")
     enriched_content = replace_picture_tags(content, results)
     output_path.write_text(enriched_content, encoding="utf-8")
     _log.info("OK - Doctags enrichi sauvegardé : %s", output_path)
 
-    #ÉTAPE 5 : Export Markdown
+    # Export Markdown
     _log.info("ÉTAPE 5 — Export des descriptions en Markdown")
     export_descriptions_to_markdown(results, DOC_NAME, markdown_path)
 
