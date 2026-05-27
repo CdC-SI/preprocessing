@@ -35,6 +35,24 @@ if not VLM_URL:
 _log.info("VLM_URL : %s", VLM_URL)
 _log.info("VLM_MODEL_NAME : %s", VLM_MODEL_NAME)
 
+# Switch per-document
+# True  = descriptions générées via VLM
+# False = descriptions désactivées → chaîne vide (balises <picture> conservées)
+# Peut aussi être surchargé via .env : ENABLE_IMAGE_DESCRIPTION=false
+_ENV_SWITCH = os.environ.get("ENABLE_IMAGE_DESCRIPTION", "true").strip().lower()
+_GLOBAL_SWITCH: bool = _ENV_SWITCH not in ("false", "0", "no")
+
+DOC_IMAGE_DESCRIPTION: dict[str, bool] = {
+    # Ajouter ici les documents pour lesquels désactiver les descriptions
+    # "Nom du document": False,
+    # "Adhésion traitement": False,   # disabled for this document
+    # "Autre document": True,         # enabled
+}
+
+def is_image_description_enabled(doc_name: str) -> bool:
+    # Retourne True si la description VLM est activée pour ce document.
+    return DOC_IMAGE_DESCRIPTION.get(doc_name, _GLOBAL_SWITCH)
+
 # Constantes
 NORM = 500
 DPI = 150 # Norme Qwen3.5
@@ -129,10 +147,10 @@ Provide a concise business-oriented summary focused only on useful information.
 ## Output
 
 If relevant ALWAYS START YOUR IMAGE REVIEW WITH:
-[IMAGE DESCRIPTION] ...
+the content of the description directly
 
 Otherwise:
-No additional relevant visual information.
+return nothing or an empty string.
 
 Always respond in {language}.
 """
@@ -157,6 +175,10 @@ TEXT_TAGS = {
     "section_header_level_3", "list_item", "caption", "footnote",
     "page_header", "page_footer",
 }
+
+def remove_picture_tags(content: str) -> str:
+    # Supprime les balises <picture> du contenu pour ne pas les inclure dans le contexte textuel. si on skip la description d'image
+    return re.sub(r'<picture><loc_\d+><loc_\d+><loc_\d+><loc_\d+></picture>', '', content)
 
 # ÉTAPE 1 — Parsing du doctags
 def parse_picture_tags(doctags_path: Path) -> tuple[list[dict], str]:
@@ -358,9 +380,23 @@ def describe_all_pictures(
     pdf_path: Path,
     pictures: list[dict],
     doc_elements: list[dict],
+    doc_name: str = "",          # ← add doc_name parameter
     n_before: int = N_BEFORE,
     n_after:  int = N_AFTER,
 ) -> dict[int, dict]:
+    # Check switch BEFORE doing any work
+    if not is_image_description_enabled(doc_name):
+        _log.warning("Descriptions VLM désactivées pour '%s' — balises <picture> conservées.", doc_name)
+        return {
+            i + 1: {
+                "page": pic["page"],
+                "x0": pic["x0"], "y0": pic["y0"],
+                "x1": pic["x1"], "y1": pic["y1"],
+                "description": "",   # empty string → tag preserved
+                "raw_tag": pic["raw_tag"],
+            }
+            for i, pic in enumerate(pictures)
+        }
     
     # Crop chaque image en mémoire, construit le prompt contextualisé,
     # met en queue et envoie au VLM via requests (pas Docling).
@@ -375,26 +411,13 @@ def describe_all_pictures(
     _log.info("Mise en queue de %d image(s) (crop mémoire → base64)", total)
 
     for i, pic in enumerate(pictures, start=1):
-        # Contexte textuel
         ctx_before, ctx_after = build_context(pic, doc_elements, n_before, n_after)
-        _log.info(
-            "  [%d/%d] Contexte — %d texte(s) avant / %d texte(s) après",
-            i, total,
-            ctx_before.count("\n> ") + 1 if ctx_before.startswith(">") else 0,
-            ctx_after.count("\n> ")  + 1 if ctx_after.startswith(">")  else 0,
-        )
-
-        # Prompt contextualisé pour cette image
         prompt = WIKI_PROMPT_TEMPLATE.format(
             context_before=ctx_before,
             context_after=ctx_after,
             language=language,
         )
-
-        # Crop en mémoire → base64
         image_b64 = crop_to_b64(pdf_doc, pic)
-        _log.info("  [%d/%d] OK - Image croppée et encodée en base64", i, total)
-
         task_q.put(ImageTask(
             index=i, total=total,
             page=pic["page"],
@@ -403,14 +426,11 @@ def describe_all_pictures(
             image_b64=image_b64,
             prompt=prompt,
             raw_tag=pic["raw_tag"],
-        )) # Enqueue de la tâche d'image à traiter par le worker VLM
-        _log.info("  [%d/%d] -> Image mise en queue (page %d)", i, total, pic["page"] + 1)
+        ))
 
     pdf_doc.close()
-
-    _log.info("Attente de la fin du traitement VLM...")
     task_q.join()
-    task_q.put(None) # signal d'arrêt du worker
+    task_q.put(None)
     worker.join()
 
     described = sum(1 for r in _results.values() if r["description"])
@@ -520,6 +540,12 @@ def main():
     PROJECT_ROOT = Path(__file__).resolve().parents[1]
     DOC_NAME = os.environ.get("DOC_NAME", "")
 
+    _log.info(
+        "Descriptions VLM : %s pour '%s'",
+        "ACTIVÉES" if is_image_description_enabled(DOC_NAME) else "DÉSACTIVÉES",
+        DOC_NAME,
+    )
+
     pdf_path = PROJECT_ROOT / "data" / "input_files" / f"{DOC_NAME}.pdf"
     doctags_path = PROJECT_ROOT / "data" / "output_files" / "stage2_test" / DOC_NAME / f"{DOC_NAME}_reordered_with_tables.doctags"
     output_path = PROJECT_ROOT / "data" / "output_files" / "stage2_test" / DOC_NAME / f"{DOC_NAME}_reordered_with_tables_pictures.doctags"
@@ -542,11 +568,21 @@ def main():
 
     # Description VLM via queue
     _log.info("ÉTAPE 3 — Description des images avec contexte textuel (queue → VLM direct)")
-    results = describe_all_pictures(pdf_path, pictures, doc_elements)
+    results = describe_all_pictures(pdf_path, pictures, doc_elements, doc_name=DOC_NAME)
 
     # Remplacement des <picture> dans le doctags
     _log.info("ÉTAPE 4 — Remplacement des balises <picture> dans le doctags")
     enriched_content = replace_picture_tags(content, results)
+    if not is_image_description_enabled(DOC_NAME):
+        _log.warning("Descriptions VLM désactivées pour '%s' — balises <picture> supprimées.", DOC_NAME)
+        # Remove all <picture> tags
+        enriched_content = remove_picture_tags(content)
+        output_path.write_text(enriched_content, encoding="utf-8")
+        _log.info("OK - Doctags sans images sauvegardé : %s", output_path)
+        # Optionally, skip markdown export or write an empty file
+        markdown_path.write_text("", encoding="utf-8")
+        return
+    
     output_path.write_text(enriched_content, encoding="utf-8")
     _log.info("OK - Doctags enrichi sauvegardé : %s", output_path)
 

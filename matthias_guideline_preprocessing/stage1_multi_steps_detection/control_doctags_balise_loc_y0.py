@@ -9,7 +9,6 @@ print("Loading dotenv from:", dotenv_path.resolve(), "exists:", dotenv_path.exis
 load_dotenv(dotenv_path=dotenv_path)
 load_dotenv()
 
-
 def extract_y0(line: str) -> int | None:
     # Extrait le y0 (2ème <loc_N>) d'une ligne. Retourne None si absent.
     m = re.search(r"<loc_\d+><loc_(\d+)>", line)
@@ -76,10 +75,12 @@ def reorder_doctags(input_path: Path, output_path: Path) -> None:
     output_path.write_text(final, encoding="utf-8")
     print(f"Doctags réordonné : {output_path}")
 
-
 if __name__ == "__main__":
     DOC_NAME = os.environ.get("DOC_NAME", "")
-    base = Path("preprocessing/matthias_guideline_preprocessing/data/output_files/stage1_test")
+    project_root = Path(__file__).resolve().parent.parent  # → matthias_guideline_preprocessing/
+    base = project_root / "data" / "output_files" / "stage1_test"
     src = base / DOC_NAME / f"{DOC_NAME}.doctags"
     dst = base / DOC_NAME / f"{DOC_NAME}_reordered.doctags"
+    print(f"Looking for: {src}")
+    print(f"Exists: {src.exists()}")
     reorder_doctags(src, dst)

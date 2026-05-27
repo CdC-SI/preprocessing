@@ -1,40 +1,42 @@
 docling==2.93.0
 pandas==3.0.2
 python-dotenv==1.2.2
+wordfreq
+easyocr
+torch
+# # requirements.txt pour pipeline de retrieval et extraction documentaire
 
-# requirements.txt pour pipeline de retrieval et extraction documentaire
-
-# Utilitaires généraux
-pillow==12.1.1
-
-# PDF et OCR
-PyMuPDF==1.26.0
+# # Utilitaires généraux
+# pillow==12.1.1
+opencv-python==4.13.0.92
+# # PDF et OCR
+PyMuPDF==1.27.2.3
 
 # OpenAI API
 openai==2.26.0
 
-# Serving (optionnel, pour déploiement modèle)
-kserve==0.16.0
+# # Serving (optionnel, pour déploiement modèle)
+# kserve==0.16.0
 
-# NLP et embeddings
-sentence-transformers==2.6.1
-transformers==4.40.2
-torch>=2.0.0
+# # NLP et embeddings
+# sentence-transformers==2.6.1
+# transformers==4.40.2
+# torch>=2.0.0
 
-# Similarité, recherche, vectorisation
-faiss-cpu==1.8.0
+# # Similarité, recherche, vectorisation
+# faiss-cpu==1.8.0
 
-# Évaluation et ML
+# # Évaluation et ML
 scikit-learn==1.4.2
-numpy==1.26.4
+numpy==2.4.4
 
-# JSONL et manipulation fichiers
+# # JSONL et manipulation fichiers
 jsonlines==4.0.0
 
-# Progression et logs
-tqdm==4.66.2
+# # Progression et logs
+# tqdm==4.66.2
 
-# Pour compatibilité (optionnel)
-typing-extensions>=4.0.0
+# # Pour compatibilité (optionnel)
+# typing-extensions>=4.0.0
 
-# (ajoutez ici d'autres dépendances spécifiques à votre pipeline si besoin)
+# # (ajoutez ici d'autres dépendances spécifiques à votre pipeline si besoin)

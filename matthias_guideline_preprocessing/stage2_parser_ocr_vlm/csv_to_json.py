@@ -68,6 +68,7 @@ else:
             with jsonlines.open(jsonl_path, mode="w") as writer:
                 for _, row in df.iterrows():
                     writer.write(safe_row_dict(row))
+                    # writer._fp.write("\n") # Ajoute une ligne vide après chaque ligne JSONL
 
             print(f" {csv_path.name} → {jsonl_path.name}")
         except Exception as e:

@@ -215,7 +215,8 @@ if __name__ == "__main__":
             print(f"Query {q_idx}: RR={rr:.4f}, precision={prec:.4f}, recall={rec:.4f}, ndcg={ndcg:.4f}")
         # Global metrics
         if all_rr:
-            print(f"\n=== Global MRR over {len(all_rr)} queries: {np.mean(all_rr):.4f} ===")
+            print("\n=== Global Metrics ===")
+            print(f"Global MRR over {len(all_rr)} queries: {np.mean(all_rr):.4f}")
             print(f"Mean precision@{k}: {np.mean(all_prec):.4f}")
             print(f"Mean recall@{k}: {np.mean(all_rec):.4f}")
             print(f"Mean nDCG@{k}: {np.mean(all_ndcg):.4f}")

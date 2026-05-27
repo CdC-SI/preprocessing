@@ -28,6 +28,10 @@ def load_hyperlinks(jsonl_path: Path) -> list:
     with jsonlines.open(jsonl_path) as reader:
         for item in reader:
             if item.get("type") == "URI" and item.get("hyperlink"):
+                # keep original extracted text for display, and a normalized version for matching
+                raw_text = item.get("text", "") or ""
+                item["text_display"] = raw_text
+                item["text"] = normalize(raw_text)  # normalized text used everywhere else
                 links.append(item)
     print(f"→ {len(links)} lien(s) chargé(s) depuis le JSONL")
     return links
@@ -157,58 +161,77 @@ def group_matches_by_element(matches: list) -> dict:
         elem_links[raw].append(match)
     return elem_links
 
-def normalize(text):
-    # Remplace tous les tirets par un tiret standard, retire les espaces multiples et les espaces insécables
-    text = re.sub(r'[\-–—]', '-', text)
-    text = text.replace('\u00A0', ' ')
-    text = re.sub(r'\s+', ' ', text)
+def normalize(text: str) -> str:
+    """Normalise pour matching : unify dashes, remove NBSP, remove spaces around dashes, collapse spaces."""
+    if not text:
+        return ""
+    text = str(text)
+    # replace NBSP
+    text = text.replace("\u00A0", " ")
+    # unify various dash characters to simple hyphen
+    text = re.sub(r"[\-–—]", "-", text)
+    # remove spaces around hyphens so "- bpanda", " -bpanda", "-bpanda" => "-bpanda"
+    text = re.sub(r"\s*-\s*", "-", text)
+    # collapse multiple spaces
+    text = re.sub(r"\s+", " ", text)
     return text.strip()
 
 def build_linked_text(elem_text: str, link_matches: list) -> str:
+    """Return enriched text for one element. Uses normalized matching and chooses occurrence
+    to replace (prefer last occurrence when an existing markdown already present)."""
     def markdown_link(text, uri):
         return f"[{text}]({uri})"
 
     elem_norm = normalize(elem_text)
+    # if any match exactly equals element (normalized), return only markdown
     for m in link_matches:
-        if not m['text']:
+        text_display = m.get("text_display") or m.get("text") or ""
+        text_norm = normalize(text_display)
+        md = markdown_link(text_display, m.get("uri"))
+        if not text_display:
             continue
-        text_norm = normalize(m['text'])
-        md = markdown_link(m['text'], m['uri'])
-        # Cas 1 : texte du lien = texte de l'élément (normalisé)
         if text_norm == elem_norm:
             return md
-        # Cas 2 : l'élément commence par le texte du lien (normalisé), suivi d'un séparateur et du markdown
-        pattern = rf"^{re.escape(text_norm)}\s*-\s*{re.escape(md)}$"
-        if re.match(pattern, elem_norm):
+        # accept optional separator between text and md (handles doubled form)
+        pattern_exact = rf"^{re.escape(text_norm)}\s*[-–—]?\s*{re.escape(md)}$"
+        if re.match(pattern_exact, elem_norm):
             return md
-        # Cas 3 : l'élément contient le texte du lien suivi du markdown (doublon)
-        pattern2 = rf"^{re.escape(text_norm)}.*{re.escape(md)}$"
-        if re.match(pattern2, elem_norm):
+        pattern_contains = rf"^{re.escape(text_norm)}.*{re.escape(md)}$"
+        if re.match(pattern_contains, elem_norm):
             return md
 
-    # Sinon, comportement standard
     new_text = elem_text
     already_linked = set()
     links_to_add = []
 
     for m in link_matches:
-        text = m.get('text')
-        uri = m.get('uri')
-        if not text or text in already_linked:
+        text_display = m.get("text_display") or m.get("text") or ""
+        uri = m.get("uri")
+        if not text_display or text_display in already_linked:
             continue
-        already_linked.add(text)
-        text_norm = normalize(text)
-        new_text_norm = normalize(new_text)
-        if text_norm in new_text_norm:
-            # Remplacement best-effort sur le texte original
-            pattern = re.compile(re.escape(text), re.IGNORECASE)
-            new_text = pattern.sub(markdown_link(text, uri), new_text, count=1)
+        already_linked.add(text_display)
+
+        # build a flexible regex that tolerates spaces around hyphens
+        safe = re.escape(text_display)
+        # allow any dash variant with optional surrounding spaces
+        safe = safe.replace(re.escape("-"), r"\s*[-–—]\s*")
+        pattern = re.compile(safe, flags=re.IGNORECASE)
+
+        matches = list(pattern.finditer(new_text))
+        if matches:
+            # if markdown for this text already exists in new_text and multiple occurrences,
+            # prefer to replace the last occurrence (handles case "[DAF](url) 2001 DAF")
+            md = markdown_link(text_display, uri)
+            choose_last = (md in new_text and len(matches) > 1)
+            match_obj = matches[-1] if choose_last else matches[0]
+            start, end = match_obj.span()
+            new_text = new_text[:start] + md + new_text[end:]
         else:
-            links_to_add.append(markdown_link(text, uri))
+            links_to_add.append(markdown_link(text_display, uri))
 
     if not already_linked and link_matches:
         for m in link_matches:
-            uri = m.get('uri')
+            uri = m.get("uri")
             if uri:
                 links_to_add.append(f"[{uri}]")
 
@@ -218,15 +241,29 @@ def build_linked_text(elem_text: str, link_matches: list) -> str:
     return new_text.strip()
 
 def inject_links_in_doctags(content: str, matches: list) -> str:
-    # Injecte les liens enrichis dans le contenu du doctags, 
+    # Injecte les liens enrichis dans le contenu du doctags,
     # en remplaçant le texte original de chaque élément par le texte enrichi.
     elem_links = group_matches_by_element(matches)
 
     for raw_tag, link_matches in elem_links.items():
-        tag_name  = link_matches[0]["element"]["tag"]
+        tag_name = link_matches[0]["element"]["tag"]
         text_orig = link_matches[0]["element"]["text"]
         new_text = build_linked_text(text_orig, link_matches)
-        new_raw = raw_tag.replace(text_orig, new_text, 1)
+
+        # Préparer plusieurs motifs de remplacement pour couvrir variantes (séparateurs, tirets, espaces)
+        # 1) cas where raw contains "orig_text <sep> new_text" -> replace whole sequence by new_text
+        esc_orig = re.escape(text_orig)
+        esc_new = re.escape(new_text)
+        sep = r'\s*[-–—]?\s*'  # optional separator
+        pattern1 = re.compile(esc_orig + sep + esc_new, flags=re.IGNORECASE)
+        # 2) fallback: replace the original text with new_text
+        pattern2 = re.compile(esc_orig, flags=re.IGNORECASE)
+
+        if pattern1.search(raw_tag):
+            new_raw = pattern1.sub(new_text, raw_tag, count=1)
+        else:
+            new_raw = pattern2.sub(new_text, raw_tag, count=1)
+
         content = content.replace(raw_tag, new_raw, 1)
         print(f"Injecté dans <{tag_name}> : {new_text}")
 

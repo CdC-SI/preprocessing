@@ -91,3 +91,5 @@ L’ensemble des scripts de cette étape permet d’obtenir des exports exploita
 - L’approche est modulaire : chaque composant (extraction de tables, description d’images, parsing) peut être adapté ou remplacé selon les besoins du projet.
 
 ---
+
+https://github.com/docling-project/docling/discussions/354

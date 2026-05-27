@@ -14,11 +14,14 @@ _log.info("Loading dotenv from: %s | exists: %s", dotenv_path.resolve(), dotenv_
 load_dotenv(dotenv_path=dotenv_path)
 
 # Root
+project_root = Path(__file__).resolve().parent.parent
 DOC_NAME = os.environ.get("DOC_NAME", "")
-doctags_path = Path(f"preprocessing/matthias_guideline_preprocessing/data/output_files/stage3_test/{DOC_NAME}/{DOC_NAME}_reordered_with_tables_pictures_url.doctags")
-output_dir = Path("preprocessing/matthias_guideline_preprocessing/data/output_files/stage4_test")
+doctags_path = project_root / "data" / "output_files" / "stage3_test" / DOC_NAME / f"{DOC_NAME}_reordered_with_tables_pictures_url.doctags"
+output_dir = project_root / "data" / "output_files" / "stage4_test"
 output_dir.mkdir(parents=True, exist_ok=True)
 md_path = output_dir / f"{DOC_NAME}.md"
+
+_log.info("Looking for doctags: %s (exists=%s)", doctags_path, doctags_path.exists())
 
 # Conversion via Docling
 content = doctags_path.read_text(encoding="utf-8")
