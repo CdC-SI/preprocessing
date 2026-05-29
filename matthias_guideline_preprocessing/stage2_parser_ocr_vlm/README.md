@@ -1,48 +1,41 @@
 # Étape 2 – Pipeline de parsing, structuration et enrichissement VLM
 
-Cette étape vise à **parser, structurer et enrichir le contenu extrait des PDF** en s’appuyant sur la technologie avancée de la suite Docling, notamment ses modules d’extraction de tables, de description d’images et d’analyse Vision-Language Model (VLM).  
-L’ensemble des scripts de cette étape permet d’obtenir des exports exploitables pour l’analyse, la recherche, l’indexation ou l’enrichissement sémantique.
+Cette étape vise à **parser, structurer et enrichir le contenu extrait des PDF** grâce à la suite Docling et à l’intégration de modèles Vision-Language (VLM).  
+Elle permet d’obtenir des exports exploitables pour l’analyse, la recherche, l’indexation ou l’enrichissement sémantique.
+
+## Scripts principaux
+
+- **Scripts principaux** :  
+- **1_export_table_docling** : extrait les tables selon le pipeline docling et export les table au format CSV et HTML
+- **2_csv_to_json** : convertie les tables CSV en jsonline
+- **3_load_jsonline_docling** : charge le jsonline dans le doctags
+- **4_description_image_context** : ne parse que les images détectées au VLM pour les décrire selon le prompt et charge les description àa la place des balises <picture> pour ne garder que du texte. Créé également un fichier markdown .md avec seulement la description des images avec leurs coordonnées sur le PDF pour la traçabilité.
 
 ## Fonctionnement général
 
-### 1. Chargement de la configuration et des modèles
-- Chargement des variables d’environnement (API, modèles VLM, certificats, chemins).
-- Définition des prompts pour guider la description d’images et l’extraction de tables (instructions précises pour le VLM).
+1. **Chargement de la configuration**
+   - Chargement des variables d’environnement (API, modèles VLM, certificats, chemins).
+   - Définition des prompts pour guider la description d’images et l’extraction de tables.
 
-### 2. Initialisation de la pipeline Docling
-- Utilisation de la classe `DocumentConverter` et de la pipeline `VlmPipeline` de Docling.
-- Activation des modules :
-  - Extraction avancée des textes, titres, listes, tableaux, images, liens.
-  - Description automatique des images techniques (diagrammes, schémas, tableaux, figures…).
-  - Extraction exhaustive des tables, y compris celles encodées en markdown ou LaTeX.
+2. **Initialisation de la pipeline Docling**
+   - Utilisation de `DocumentConverter` et de la pipeline `VlmPipeline`.
+   - Activation des modules : extraction avancée des textes, titres, listes, tableaux, images, liens.
 
-### 3. Traitement du document PDF
-- Le PDF est chargé depuis le dossier d’entrée.
-- Docling analyse chaque page et segmente le contenu en :
-  - Structure logique (titres, paragraphes, listes…)
-  - Tables (détection, structure, export CSV/HTML)
-  - Images (description technique via VLM, avec ou sans contexte)
-  - Liens et annotations
-- Les images sont extraites et décrites automatiquement par le modèle VLM, qui peut être guidé par le contexte textuel environnant.
+3. **Traitement du document PDF**
+   - Analyse page par page : segmentation logique, extraction de tables, description automatique des images techniques (diagrammes, schémas, figures…).
+   - Les images sont extraites et décrites automatiquement par le modèle VLM, guidé par le contexte textuel.
 
-### 4. Exports multi-formats
-- **CSV** :  
-  - Export markdown brut et export structuré des tables détectées.
-- **HTML** :  
-  - Export HTML pour chaque table détectée (pour une visualisation fidèle).
-- **Markdown** :  
-  - Export du document complet, structuré et enrichi.
-- **JSON/JSONL** :  
-  - Export structuré des tables ou des résultats d’analyse.
-- **Console** :  
-  - Affichage du markdown extrait pour vérification rapide.
+4. **Exports multi-formats**
+   - **CSV** : export markdown brut et structuré des tables détectées.
+   - **HTML** : export HTML pour chaque table détectée.
+   - **Markdown** : export du document complet, structuré et enrichi.
+   - **JSON/JSONL** : export structuré des tables ou des résultats d’analyse.
+   - **Console** : affichage du markdown extrait pour vérification rapide.
 
-### 5. Gestion des erreurs et logs
-- Vérification de la présence des fichiers d’entrée.
-- Création automatique des dossiers de sortie.
-- Logs détaillés pour chaque étape (nombre de tables détectées, chemins des fichiers exportés, temps d’exécution…).
-
----
+5. **Gestion des erreurs et logs**
+   - Vérification de la présence des fichiers d’entrée.
+   - Création automatique des dossiers de sortie.
+   - Logs détaillés pour chaque étape (nombre de tables détectées, chemins des fichiers exportés, temps d’exécution…).
 
 ## Technologies et modules utilisés
 
@@ -53,7 +46,7 @@ L’ensemble des scripts de cette étape permet d’obtenir des exports exploita
   - Export multi-format (CSV, HTML, Markdown, JSON).
 
 - **Vision-Language Model (VLM)** :  
-  - Modèle de type multimodal (texte + image) pour l’extraction sémantique et la description automatique des images techniques.
+  - Modèle multimodal (texte + image) pour l’extraction sémantique et la description automatique des images techniques.
   - Possibilité de guider la description par le contexte textuel environnant.
 
 - **Pandas** :  
@@ -64,25 +57,26 @@ L’ensemble des scripts de cette étape permet d’obtenir des exports exploita
   - Chargement des variables d’environnement (`dotenv`)
   - Logging et gestion des erreurs
 
----
+## Fichiers générés
 
-## Points clés
-
-- **Pipeline entièrement automatisée** : un seul script permet de passer du PDF brut à des exports structurés et enrichis, sans intervention manuelle.
-- **Extraction exhaustive** : aucune information technique (table, schéma, diagramme, liste, titre…) n’est ignorée.
-- **Description d’images avancée** : les images sont non seulement extraites mais aussi décrites automatiquement, ce qui enrichit considérablement le markdown final.
-- **Modularité** : prompts et options facilement adaptables selon le type de document ou le modèle VLM utilisé.
-- **Interopérabilité** : les exports produits sont prêts pour l’étape suivante (enrichissement, indexation, extraction de liens…).
-
----
+- Export markdown enrichi du document complet : `*.md`
+- Tables extraites au format CSV : `tables/*.csv`
+- Tables extraites au format HTML : `tables/*.html`
+- Export structuré des tables ou résultats d’analyse : `*.json` ou `*.jsonl`
 
 ## Utilisation
 
-1. Placez votre PDF dans le dossier d’entrée prévu (`data/input_files/`).
+1. Placez votre PDF dans le dossier d’entrée (`data/input_files/`).
 2. Lancez le script principal de la pipeline.
 3. Retrouvez les fichiers exportés dans le dossier de sortie (`data/output_files/stage2_test/` et sous-dossier `tables/`).
 
----
+## Points clés
+
+- **Pipeline entièrement automatisée** : du PDF brut aux exports structurés et enrichis, sans intervention manuelle.
+- **Extraction exhaustive** : aucune information technique (table, schéma, diagramme, liste, titre…) n’est ignorée.
+- **Description d’images avancée** : les images sont extraites et décrites automatiquement, enrichissant le markdown final.
+- **Modularité** : prompts et options facilement adaptables selon le type de document ou le modèle VLM utilisé.
+- **Interopérabilité** : les exports produits sont prêts pour l’étape suivante (enrichissement, indexation, extraction de liens…).
 
 ## Remarques
 
@@ -90,6 +84,4 @@ L’ensemble des scripts de cette étape permet d’obtenir des exports exploita
 - Les fichiers produits (markdown enrichi, tables CSV/HTML, descriptions d’images) sont directement exploitables pour l’analyse documentaire, la recherche ou l’indexation.
 - L’approche est modulaire : chaque composant (extraction de tables, description d’images, parsing) peut être adapté ou remplacé selon les besoins du projet.
 
----
-
-https://github.com/docling-project/docling/discussions/354
+[Docling – Discussions et documentation](https://github.com/docling-project/docling/discussions/354)

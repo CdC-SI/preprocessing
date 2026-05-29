@@ -5,7 +5,6 @@ from dotenv import load_dotenv
 import os
 
 # Path
-load_dotenv()
 dotenv_path = Path(__file__).resolve().parent.parent / ".env.test"
 print("Loading dotenv from:", dotenv_path.resolve(), "exists:", dotenv_path.exists())
 load_dotenv(dotenv_path=dotenv_path)

@@ -3,9 +3,9 @@ import fitz  # PyMuPDF
 import jsonlines  # pour sauvegarder les résultats dans un fichier JSONL
 from dotenv import load_dotenv
 import os
+import re
 
 # Chargement de .env.test
-load_dotenv()
 dotenv_path = Path(__file__).resolve().parent.parent / ".env.test" # Je suis sur l'.env.test qui est le même que le .env
 print("Loading dotenv from:", dotenv_path.resolve(), "exists:", dotenv_path.exists())
 load_dotenv(dotenv_path=dotenv_path)

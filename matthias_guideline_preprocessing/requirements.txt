@@ -9,8 +9,14 @@ torch
 # # Utilitaires généraux
 # pillow==12.1.1
 opencv-python==4.13.0.92
+
 # # PDF et OCR
 PyMuPDF==1.27.2.3
+
+# Graphe
+matplotlib==3.10.0
+pyvis==0.3.2
+Jinja2==3.1.6
 
 # OpenAI API
 openai==2.26.0

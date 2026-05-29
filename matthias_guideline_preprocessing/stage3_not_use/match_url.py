@@ -141,6 +141,7 @@ def match_links_to_elements(links: list, elements: list, page_sizes: dict, thres
             matches.append({
                 "uri": uri,
                 "text": text,
+                "text_display": link.get("text_display", text),
                 "score": round(best_score, 3),
                 "element": best_element,
             })
@@ -148,6 +149,7 @@ def match_links_to_elements(links: list, elements: list, page_sizes: dict, thres
             print(f"Texte lien : '{text}'")
             print(f"Texte elem : '{best_element['text'][:60]}'")
             print(f"URL : {uri}")
+            print("\n")
         else:
             print(f"Pas de match pour '{text}' → {uri} (score={best_score:.2f})")
 
@@ -175,6 +177,31 @@ def normalize(text: str) -> str:
     # collapse multiple spaces
     text = re.sub(r"\s+", " ", text)
     return text.strip()
+
+def inject_urls_in_jsonl_line(jsonl_line: str, link_matches: list) -> str:
+    """Injecte les liens Markdown dans chaque valeur du JSON."""
+    try:
+        obj = json.loads(jsonl_line)
+    except Exception:
+        return jsonl_line
+
+    for m in link_matches:
+        anchor = m.get("text_display") or m.get("text") or ""
+        uri = m.get("uri") or ""
+        if not anchor or not uri:
+            continue
+        md_link = f"[{anchor}]({uri})"
+        anchor_norm = normalize(anchor)
+        for key in obj:
+            if not isinstance(obj[key], str):
+                continue
+            val_norm = normalize(obj[key])
+            if anchor_norm in val_norm:
+                safe = re.escape(anchor)
+                safe = safe.replace(re.escape("-"), r"\s*[-–—]\s*")
+                pattern = re.compile(safe, flags=re.IGNORECASE)
+                obj[key] = pattern.sub(md_link, obj[key], count=1)
+    return json.dumps(obj, ensure_ascii=False)
 
 def build_linked_text(elem_text: str, link_matches: list) -> str:
     """Return enriched text for one element. Uses normalized matching and chooses occurrence
@@ -241,50 +268,49 @@ def build_linked_text(elem_text: str, link_matches: list) -> str:
     return new_text.strip()
 
 def inject_links_in_doctags(content: str, matches: list) -> str:
-    # Injecte les liens enrichis dans le contenu du doctags,
-    # en remplaçant le texte original de chaque élément par le texte enrichi.
     elem_links = group_matches_by_element(matches)
 
     for raw_tag, link_matches in elem_links.items():
         tag_name = link_matches[0]["element"]["tag"]
         text_orig = link_matches[0]["element"]["text"]
-        new_text = build_linked_text(text_orig, link_matches)
+        stripped = text_orig.strip()
 
-        # Préparer plusieurs motifs de remplacement pour couvrir variantes (séparateurs, tirets, espaces)
-        # 1) cas where raw contains "orig_text <sep> new_text" -> replace whole sequence by new_text
-        esc_orig = re.escape(text_orig)
-        esc_new = re.escape(new_text)
-        sep = r'\s*[-–—]?\s*'  # optional separator
-        pattern1 = re.compile(esc_orig + sep + esc_new, flags=re.IGNORECASE)
-        # 2) fallback: replace the original text with new_text
-        pattern2 = re.compile(esc_orig, flags=re.IGNORECASE)
-
-        if pattern1.search(raw_tag):
-            new_raw = pattern1.sub(new_text, raw_tag, count=1)
+        # Si c'est du JSON, injecte dans les valeurs
+        if stripped.startswith("{") and stripped.endswith("}"):
+            print(f"  → Contenu JSONL détecté dans <{tag_name}>, injection dans les valeurs JSON")
+            new_text = inject_urls_in_jsonl_line(stripped, link_matches)
         else:
-            new_raw = pattern2.sub(new_text, raw_tag, count=1)
+            new_text = build_linked_text(text_orig, link_matches)
+
+        # Remplacement dans le raw_tag
+        if text_orig in raw_tag:
+            new_raw = raw_tag.replace(text_orig, new_text, 1)
+        else:
+            pattern = re.compile(re.escape(text_orig), flags=re.IGNORECASE)
+            new_raw = pattern.sub(new_text, raw_tag, count=1)
 
         content = content.replace(raw_tag, new_raw, 1)
-        print(f"Injecté dans <{tag_name}> : {new_text}")
+        print(f"Injecté dans <{tag_name}> : {new_text[:100]}...")
 
     return content
 
 if __name__ == "__main__":
-    print("ÉTAPE 1 — Chargement des liens JSONL")
+    print("\nÉTAPE 1 — Chargement des liens JSONL")
     links = load_hyperlinks(hyperlinks_path)
 
+    print("\nÉTAPE 2 — Tailles des pages PDF")
     page_sizes = get_page_sizes(pdf_path)
     for p, s in page_sizes.items():
         print(f"  Page {p+1} : {s[0]:.1f} x {s[1]:.1f} pts") # Affiche les tailles des pages pour debug
 
-    print("ÉTAPE 3 — Parsing des doctags")
+    print("\nÉTAPE 3 — Parsing des doctags")
     elements, content = parse_doctags(doctags_path)
 
-    print("ÉTAPE 4 — Matching liens ↔ doctags")
+    print("\nÉTAPE 4 — Matching liens ↔ doctags")
     matches = match_links_to_elements(links, elements, page_sizes, threshold=0.1)
     print(f"\n→ {len(matches)} match(s) trouvé(s)")
 
-    print("ÉTAPE 5 — Réinjection dans les doctags")
+    print("\nÉTAPE 5 — Réinjection dans les doctags")
     enriched_content = inject_links_in_doctags(content, matches)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)

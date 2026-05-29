@@ -57,7 +57,7 @@ def is_image_description_enabled(doc_name: str) -> bool:
 NORM = 500
 DPI = 150 # Norme Qwen3.5
 N_BEFORE = 5 # Nombre de éléments textuels à inclure dans le contexte avant l'image
-N_AFTER  = 5 # Nombre de éléments textuels à inclure dans le contexte après l'image
+N_AFTER = 5 # Nombre de éléments textuels à inclure dans le contexte après l'image
 
 language = "french"
 

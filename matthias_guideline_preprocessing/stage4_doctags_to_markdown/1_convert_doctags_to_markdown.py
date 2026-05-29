@@ -16,7 +16,7 @@ load_dotenv(dotenv_path=dotenv_path)
 # Root
 project_root = Path(__file__).resolve().parent.parent
 DOC_NAME = os.environ.get("DOC_NAME", "")
-doctags_path = project_root / "data" / "output_files" / "stage3_test" / DOC_NAME / f"{DOC_NAME}_reordered_with_tables_pictures_url.doctags"
+doctags_path = project_root / "data" / "output_files" / "stage3_test" / DOC_NAME / f"{DOC_NAME}_reordered_with_tables_pictures_url_vlm.doctags"
 output_dir = project_root / "data" / "output_files" / "stage4_test"
 output_dir.mkdir(parents=True, exist_ok=True)
 md_path = output_dir / f"{DOC_NAME}.md"

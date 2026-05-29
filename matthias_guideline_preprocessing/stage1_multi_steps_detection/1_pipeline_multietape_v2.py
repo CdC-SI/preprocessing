@@ -1,3 +1,6 @@
+# Documentation utilisée :
+# https://docling-project.github.io/docling/_generated/examples/custom_convert/
+
 import pandas as pd
 import json
 import time
