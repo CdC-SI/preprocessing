@@ -71,10 +71,10 @@ nx.draw(graph, position, with_labels=True, node_color=colors, node_size=2000, fo
 edge_labels = nx.get_edge_attributes(graph, "relation")
 nx.draw_networkx_edge_labels(graph, position, edge_labels=edge_labels, font_color="red", font_size=7)
 
-graph_dir = project_root / "graph_url"
-graph_dir.mkdir(parents=True, exist_ok=True)
+graph_output_dir = project_root / "graph_url" / "graph_output"
+graph_output_dir.mkdir(parents=True, exist_ok=True)
 
-graph_path = graph_dir / "graph_url.png"
+graph_path = graph_output_dir / "graph_url.png"
 plt.savefig(graph_path, bbox_inches="tight")
 print(f"\nStatic graph saved  : {graph_path}")
 
@@ -107,6 +107,6 @@ for node in graph.nodes(data=True):
     n_data = node[1]
     net.get_node(n_id)["title"] = n_data.get("title", n_id)
 
-interactive_path = graph_dir / "graph_interactive.html"
-net.show(str(interactive_path),notebook=False)
+interactive_path = graph_output_dir / "graph_interactive.html"
+net.show(str(interactive_path), notebook=False)
 print(f"Interactive graph saved: {interactive_path}")
