@@ -1,56 +1,19 @@
-import os
 import numpy as np
-import pandas as pd
 from sklearn.metrics import precision_score, recall_score, ndcg_score, label_ranking_average_precision_score
 import requests
-from dotenv import load_dotenv
 from pathlib import Path
-import certifi
+import sys
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 
-# Chargement de .env.test
-load_dotenv()
-dotenv_path = Path(__file__).resolve().parent.parent / ".env.test" # Je suis sur l'.env.test qui est le même que le .env
-print("Loading dotenv from:", dotenv_path.resolve(), "exists:", dotenv_path.exists())
-load_dotenv(dotenv_path=dotenv_path)
+from utils.config import load_vlm_config
 
-# Certificat CA personnalisé si fourni, sinon fallback sur certifi (VU avec M Gianelli, pour les autres machines, demander accès)
-custom_ca = os.environ.get("VLM_CA_PEM")
-if custom_ca:
-    os.environ.setdefault("SSL_CERT_FILE", custom_ca)
-    os.environ.setdefault("REQUESTS_CA_BUNDLE", custom_ca)
-else:
-    os.environ.setdefault("SSL_CERT_FILE", certifi.where())
-    os.environ.setdefault("REQUESTS_CA_BUNDLE", certifi.where())
-
-# Vérifcation de la présence des variables d'environnement nécessaires
-VLM_URL = os.environ.get("VLM_URL", "")
-VLM_MODEL_NAME = os.environ.get("VLM_MODEL_NAME", "")
-if not VLM_URL:
-    raise RuntimeError(
-        f"VLM_URL not set. Ensure {dotenv_path} exists and contains VLM_URL or export it in the environment."
-    )
-
-print(f"VLM_URL: {VLM_URL}, \nVLM_MODEL_NAME: {VLM_MODEL_NAME}")# affiche dans la console les variables d'environnement chargées pour vérification
-
-# Embedding 
-EMBEDDING_URL = os.environ.get("EMBEDDING_URL")
-EMBEDDING_MODEL_NAME = os.environ.get("EMBEDDING_MODEL_NAME")
-if not EMBEDDING_URL:
-    raise RuntimeError(
-        f"EMBEDDING_URL not set. Ensure {dotenv_path} exists and contains EMBEDDING_URL or export it in the environment."
-    )
-
-print(f"EMBEDDING_URL: {EMBEDDING_URL}, \nEMBEDDING_MODEL_NAME: {EMBEDDING_MODEL_NAME}")
-
-# Reranker
-RERANKER_URL = os.environ.get("RERANKER_URL")
-RERANKER_MODEL_NAME = os.environ.get("RERANKER_MODEL_NAME")
-if not RERANKER_URL:
-    raise RuntimeError(
-        f"RERANKER_URL not set. Ensure {dotenv_path} exists and contains RERANKER_URL or export it in the environment."
-    )
-
-print(f"RERANKER_URL: {RERANKER_URL}, \nRERANKER_MODEL_NAME: {RERANKER_MODEL_NAME}")
+config = load_vlm_config()
+CA_PATH = config["CA_PATH"]
+EMBEDDING_MODEL_NAME = config["EMBEDDING_MODEL_NAME"]
+EMBEDDING_URL = config["EMBEDDING_URL"]
+RERANKER_URL = config["RERANKER_URL"]
+RERANKER_MODEL_NAME = config["RERANKER_MODEL_NAME"]
 
 k = 5 # pour les métriques top-k
 
@@ -60,7 +23,11 @@ def test_embedding_connection():
             "model": EMBEDDING_MODEL_NAME,
             "input": "test"
         }
-        resp = requests.post(f"{EMBEDDING_URL}/v1/embeddings", json=payload, timeout=10)
+        resp = requests.post(f"{EMBEDDING_URL}/v1/embeddings", 
+                             json=payload, 
+                             verify=CA_PATH, # Necessaire si certificat auto-signé, sinon peut être omis
+                             timeout=10
+                             )
         resp.raise_for_status()
         data = resp.json()
         if "data" in data and data["data"]:
@@ -110,7 +77,8 @@ def test_reranker_with_prompt(query, relevant_idx, documents=None):
                 "text_2": documents_formatted,
                 "truncate_prompt_tokens": -1,
             },
-            timeout=20
+            verify=CA_PATH, # Necessaire si certificat auto-signé, sinon peut être omis
+            timeout=20,
         )
         response.raise_for_status()
         result = response.json()
@@ -119,11 +87,13 @@ def test_reranker_with_prompt(query, relevant_idx, documents=None):
         reranked = sorted(reranked, key=lambda x: x["score"], reverse=True)
         reranked_topk = reranked[:k]
         all_doc_ids_topk = [doc["doc_id"] for doc in reranked_topk]
+        
         # Metrics
         rr = simple_mrr_at_k(reranked_topk, relevant)
         prec = sklearn_precision_at_k(relevant, all_doc_ids_topk, k)
         rec = sklearn_recall_at_k(relevant, all_doc_ids_topk, k)
         ndcg = sklearn_ndcg_at_k(reranked_topk, graded, all_doc_ids_topk, k)
+
         # Debug
         print("\n--- Debug Reranker Output ---")
         print("doc_ids topk:", all_doc_ids_topk)

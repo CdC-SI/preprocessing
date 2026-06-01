@@ -1,14 +1,14 @@
 from pathlib import Path
 import fitz  # PyMuPDF
 import jsonlines  # pour sauvegarder les résultats dans un fichier JSONL
-from dotenv import load_dotenv
 import os
-import re
+import sys
 
-# Chargement de .env.test
-dotenv_path = Path(__file__).resolve().parent.parent / ".env.test" # Je suis sur l'.env.test qui est le même que le .env
-print("Loading dotenv from:", dotenv_path.resolve(), "exists:", dotenv_path.exists())
-load_dotenv(dotenv_path=dotenv_path)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from utils.config import load_vlm_config
+config = load_vlm_config()
 
 def is_external_link(uri):
     # On considère comme lien externe les liens commençant par http://, https:// ou mailto:

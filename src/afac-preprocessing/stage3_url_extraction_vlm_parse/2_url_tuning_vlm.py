@@ -11,44 +11,25 @@ import json
 import re
 import sys
 from pathlib import Path
-import certifi
-from dotenv import load_dotenv
 import fitz  # PyMuPDF
 import base64
 import httpx
 
-project_root = Path(__file__).resolve().parent.parent.parent
+project_root = Path(__file__).resolve().parent.parent.parent 
 sys.path.insert(0, str(project_root))
 
-# Config
-# Environnement & certificats
-# Chargement de .env.test
+from prompts.prompts import VLM_PROMPT_CORRECTION_STAGE_3 # charge le prompt depuis le fichier prompts.py du dossier prompts
 
-# Logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%H:%M:%S",
-)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent  
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from utils.config import load_vlm_config
+
+config = load_vlm_config()
+CA_PATH = config["CA_PATH"]
+VLM_URL = config["VLM_URL"]
+VLM_MODEL_NAME = config["VLM_MODEL_NAME"]
 _log = logging.getLogger(__name__)
-
-dotenv_path = Path(__file__).resolve().parent.parent / ".env.test"
-_log.info("Loading dotenv from: %s (exists: %s)", dotenv_path.resolve(), dotenv_path.exists())
-load_dotenv(dotenv_path=dotenv_path)
-
-# Même logique SSL que description_image_context.py
-custom_ca = os.environ.get("VLM_CA_PEM")
-CA_PATH = custom_ca if custom_ca and Path(custom_ca).exists() else certifi.where()
-_log.info("CA bundle : %s", CA_PATH)
-
-VLM_URL = os.environ.get("VLM_URL", "")
-VLM_MODEL_NAME = os.environ.get("VLM_MODEL_NAME", "")
-if not VLM_URL:
-    raise RuntimeError(
-        f"VLM_URL not set. Ensure {dotenv_path} exists and contains VLM_URL."
-    )
-_log.info("VLM_URL : %s", VLM_URL)
-_log.info("VLM_MODEL_NAME : %s", VLM_MODEL_NAME)
 
 MAX_WORKERS = 1
 
@@ -125,61 +106,15 @@ def build_prompt(page_tags: str, page_links: list[dict]) -> str:
         f'{i+1}. texte: "{l["text"]}" → url: {l["hyperlink"]}'
         for i, l in enumerate(page_links)
     )
-    return rf"""
-Tu es un assistant spécialisé dans la correction et l'enrichissement de fichiers doctags.
+    if not links_str:
+        links_str = "Aucune URL pour cette page."
 
-Tu reçois :
-1. Le contenu doctags d'UNE page (balises doctags avec coordonnées <loc_X>)
-2. Une liste numérotée d'URLs à insérer avec leur texte d'ancrage
-3. L'image de la page PDF originale pour référence visuelle
+    return VLM_PROMPT_CORRECTION_STAGE_3.format(
+        page_tags=page_tags, 
+        links_str=links_str,
+        )
 
-## Étape 1 : Correction OCR
-Corrige UNIQUEMENT les erreurs évidentes dans le texte des balises :
-- Apostrophes typographiques → remplace par '
-- Accents manquants ou incorrects
-- Espaces superflus ou mots coupés
-- Tirets mal encodés (–, —) → remplace par -
-- Supprimer les caractères parasite comme : , ou remplace les par celui correspondant s'il est identifiable
-GARDE EXACTEMENT la structure doctags et les coordonnées <loc_X> intactes.
-
-## Étape 2 : Insertion des URLs (OBLIGATOIRE)
-Pour CHAQUE URL de la liste numérotée ci-dessous, tu DOIS l'insérer dans le doctags :
-
-RÈGLES STRICTES :
-1. Trouve le texte d'ancrage dans les balises (la correspondance peut être approximative)
-2. Si le texte d'ancrage = contenu entier de la balise → remplace tout le contenu par [texte](url)
-   Exemple: <text><loc_60><loc_168><loc_324><loc_173>Process bpanda</text>
-   Devient: <text><loc_60><loc_168><loc_324><loc_173>[Process bpanda](https://...)</text>
-3. Si le texte d'ancrage est une sous-partie → remplace uniquement cette sous-partie
-   Exemple: <text><loc_60><loc_314>Il faut voir art. 1 al 1 LAVS pour...</text>
-   Devient: <text><loc_60><loc_314>Il faut voir [art. 1 al 1 LAVS](https://...) pour...</text>
-4. Si le texte n'est pas trouvé → ajoute [texte](url) à la fin du contenu de la balise la plus proche
-5. Ne modifie JAMAIS les balises doctags (<text>, <list_item>, etc.) ni les coordonnées <loc_X>
-
-## RÈGLE ABSOLUE (structure) :
-- Tu dois restituer **TOUTES** les balises doctags présentes dans le contenu doctags d'origine, même celles que tu ne modifies pas.
-- Ne supprime, ne fusionne, ni ne réordonne aucune balise.
-- Chaque balise d'entrée doit exister dans la sortie, même si son contenu n'est pas modifié.
-- Si une balise contient des bracket avec du texte, tu dois les corriger et les enrichir, mais la balise elle-même doit rester inchangée, par exemple:
-    - "Version": "4.0", "Date": "13.11.2024", "Description, Remarques": "Fusion de plusieurs documents", "Nom ou rôle": "GT AM CORRES" 
-- Ne modifie JAMAIS les balises doctags (<text>, <list_item>, etc.) ni les coordonnées <loc_X>.
-- **Ne change pas l'ordre des balises, ne fusionne pas de balises, ne retire aucune balise, même vide.**
-- **Si tu ne modifies pas une balise, recopie-la à l'identique.**
-
-## Sortie attendue :
-- Retourne UNIQUEMENT le contenu doctags corrigé et enrichi, sans explication, sans balise markdown, sans ```
-- La sortie doit être strictement structurée comme l'entrée, avec toutes les balises présentes.
-
-## Contenu doctags à enrichir :
-{page_tags}
-
-## URLs à insérer OBLIGATOIREMENT (dans l'ordre) :
-{links_str if links_str else "Aucune URL pour cette page."}
-
-IMPORTANT : Retourne UNIQUEMENT le contenu doctags corrigé et enrichi, sans explication, sans balise markdown, sans ``` 
-"""
-# Appel VLM
-
+# Appel VLM pour chaque page, avec gestion de la concurrence via un sémaphore pour limiter le nombre de requêtes simultanées
 async def process_page(
     page_num: int,
     page_tags: str,

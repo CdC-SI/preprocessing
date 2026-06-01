@@ -8,32 +8,19 @@ from dataclasses import dataclass
 from pathlib import Path
 import fitz # PyMuPDF
 import requests
-import certifi
-from dotenv import load_dotenv
+import sys
 
-# Logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%H:%M:%S",
-)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from prompts.prompts import WIKI_PROMPT_TEMPLATE
+from utils.config import load_vlm_config
+
+config = load_vlm_config()
+CA_PATH = config["CA_PATH"]
+VLM_URL = config["VLM_URL"]
+VLM_MODEL_NAME = config["VLM_MODEL_NAME"]
 _log = logging.getLogger(__name__)
-
-# Environnement & certificats
-dotenv_path = Path(__file__).resolve().parent.parent / ".env.test"
-_log.info("Loading dotenv from: %s (exists: %s)", dotenv_path.resolve(), dotenv_path.exists())
-load_dotenv(dotenv_path=dotenv_path)
-
-custom_ca = os.environ.get("VLM_CA_PEM")
-CA_PATH = custom_ca if custom_ca and Path(custom_ca).exists() else certifi.where()
-_log.info("CA bundle : %s", CA_PATH)
-
-VLM_URL = os.environ.get("VLM_URL", "")
-VLM_MODEL_NAME = os.environ.get("VLM_MODEL_NAME", "")
-if not VLM_URL:
-    raise RuntimeError(f"VLM_URL not set. Ensure {dotenv_path} exists and contains VLM_URL.")
-_log.info("VLM_URL : %s", VLM_URL)
-_log.info("VLM_MODEL_NAME : %s", VLM_MODEL_NAME)
 
 # Switch per-document
 # True  = descriptions générées via VLM
@@ -63,97 +50,6 @@ language = "french"
 
 # Prompt voir fichier Word pour les autres prompts
 # {context_before} et {context_after} sont injectés dynamiquement par image
-WIKI_PROMPT_TEMPLATE = """
-Role
-You are a multimodal document analysis assistant.
-
-Objective
-Analyse the image in the context of the associated document or conversation.
-
-Your goal is NOT to provide a full visual description.
-Your goal is to determine whether the image contributes useful operational, analytical, contextual, or decision-relevant information beyond the surrounding text.
-
-## Context
-
-### Text BEFORE the image
-{context_before}
-
-### Text AFTER the image
-{context_after}
-
-## Analysis Process
-
-Step 1 — Context understanding
-Understand the surrounding text and identify:
-- key topics;
-- business objectives;
-- claims;
-- decisions;
-- operational context.
-
-Step 2 — Visual inventory
-Before judging usefulness, identify all potentially informative visual elements, including:
-- text;
-- numbers;
-- tables;
-- charts;
-- diagrams;
-- UI elements;
-- labels;
-- warnings;
-- anomalies;
-- relationships between elements;
-- spatial organization;
-- unexpected or secondary details.
-
-Step 3 — Cross-analysis
-Determine whether the image:
-- adds information absent from the text;
-- clarifies ambiguity;
-- confirms or contradicts claims;
-- provides operational detail;
-- adds contextual understanding;
-- reveals constraints, risks, or exceptions;
-- contains unexpected but relevant information.
-
-Pay attention to secondary details that may still be operationally important even if not explicitly referenced in the text.
-
-Prefer inclusion when omission could lead to misunderstanding or loss of context.
-
-If information is uncertain or partially visible, mention it cautiously rather than omitting it.
-
-Step 4 — Contribution assessment
-
-Classify the image contribution as:
-- redundant;
-- complementary;
-- clarifying;
-- critical;
-- contradictory.
-
-If redundant:
-Do not provide an image description.
-
-Otherwise:
-Provide a concise business-oriented summary focused only on useful information.
-
-## Rules
-- Avoid aesthetic descriptions.
-- Avoid exhaustive scene descriptions.
-- Focus on operationally relevant details.
-- Include contradictions or discrepancies when present.
-- Be concise but information-dense.
-
-## Output
-
-If relevant ALWAYS START YOUR IMAGE REVIEW WITH:
-the content of the description directly
-
-Otherwise:
-return nothing or an empty string.
-
-Always respond in {language}.
-"""
 
 # Dataclass pour la queue des tâches d'images à traiter
 @dataclass
@@ -317,7 +213,6 @@ def crop_to_b64(pdf_doc: fitz.Document, pic: dict, norm: int = NORM, dpi: int = 
     ))
     return base64.b64encode(pix.tobytes("png")).decode("utf-8")
 
-
 def describe_image_b64(image_b64: str, prompt: str) -> str:
     # Envoie une image (base64) + prompt au VLM et retourne la description.
     payload = {
@@ -338,7 +233,6 @@ def describe_image_b64(image_b64: str, prompt: str) -> str:
     except Exception as e:
         _log.info("Erreur API VLM : %s", e)
         return ""
-
 
 # Worker thread consommateur de la queue
 _results: dict[int, dict] = {}
@@ -374,7 +268,6 @@ def _vlm_worker(task_queue: queue.Queue) -> None:
             _log.warning(" [%d/%d] WARNING  Aucune description retournée par le VLM", task.index, task.total)
 
         task_queue.task_done()
-
 
 def describe_all_pictures(
     pdf_path: Path,

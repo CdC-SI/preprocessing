@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from pyvis.network import Network
 
 project_root = Path(__file__).resolve().parent.parent
-stage3_dir = project_root / "data" / "output_files" / "stage3_test"
+stage3_dir = project_root / "data" / "output_files" / "stage3_test" # Changer chemin si nécessaire
 
 graph = nx.Graph()
 

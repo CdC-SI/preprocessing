@@ -1,17 +1,15 @@
 from pathlib import Path
-from dotenv import load_dotenv
 from docling_core.types.doc.document import DocTagsDocument, DoclingDocument
 import os
 import logging
+import sys
 
-# Logging
-logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(message)s")
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from utils.config import load_vlm_config
+config = load_vlm_config()
 _log = logging.getLogger(__name__)
-
-# Chargement de .env.test
-dotenv_path = Path(__file__).resolve().parent.parent / ".env.test"
-_log.info("Loading dotenv from: %s | exists: %s", dotenv_path.resolve(), dotenv_path.exists())
-load_dotenv(dotenv_path=dotenv_path)
 
 # Root
 project_root = Path(__file__).resolve().parent.parent

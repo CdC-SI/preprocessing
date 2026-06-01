@@ -1,14 +1,14 @@
 import json
 import re
 from pathlib import Path
-from dotenv import load_dotenv
 import os
+import sys
 
-# Path
-dotenv_path = Path(__file__).resolve().parent.parent / ".env.test"
-print("Loading dotenv from:", dotenv_path.resolve(), "exists:", dotenv_path.exists())
-load_dotenv(dotenv_path=dotenv_path)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 
+from utils.config import load_vlm_config
+config = load_vlm_config()
 
 def load_jsonl_rows(jsonl_path: Path) -> list[dict]:
     # Charge toutes les lignes d'un fichier JSONL.
@@ -19,7 +19,6 @@ def load_jsonl_rows(jsonl_path: Path) -> list[dict]:
             if line:
                 rows.append(json.loads(line))
     return rows
-
 
 def jsonl_rows_to_block(rows: list[dict]) -> str:
     # Convertit une liste de dicts en bloc texte JSONL.

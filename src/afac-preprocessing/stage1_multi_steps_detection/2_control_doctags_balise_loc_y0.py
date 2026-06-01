@@ -1,19 +1,18 @@
 from pathlib import Path
 import re
-from dotenv import load_dotenv
 import os
+import sys
 
-# Chargement de .env.test
-dotenv_path = Path(__file__).resolve().parent.parent / ".env.test"
-print("Loading dotenv from:", dotenv_path.resolve(), "exists:", dotenv_path.exists())
-load_dotenv(dotenv_path=dotenv_path)
-load_dotenv()
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from utils.config import load_vlm_config
+config = load_vlm_config()
 
 def extract_y0(line: str) -> int | None:
     # Extrait le y0 (2ème <loc_N>) d'une ligne. Retourne None si absent.
     m = re.search(r"<loc_\d+><loc_(\d+)>", line)
     return int(m.group(1)) if m else None
-
 
 def merge_closing_tags(lines: list[str]) -> list[str]:
     # Fusionne les balises fermantes seules sur une ligne avec la ligne précédente.
@@ -28,7 +27,6 @@ def merge_closing_tags(lines: list[str]) -> list[str]:
             result.append(line)
     return result
 
-
 def reorder_page(lines: list[str]) -> list[str]:
     # Trie les lignes d'une page par y0 croissant.
     # Les lignes sans y0 sont conservées en tête dans leur ordre d'origine.
@@ -37,7 +35,6 @@ def reorder_page(lines: list[str]) -> list[str]:
     sortable = [(y0, l) for y0, l in with_y0 if y0 is not None]
     sortable.sort(key=lambda x: x[0])
     return no_y0 + [l for _, l in sortable]
-
 
 def reorder_doctags(input_path: Path, output_path: Path) -> None:
     content = input_path.read_text(encoding="utf-8") # Vériier le type d'encodage du fichier source UTF-8, Unicode ou autre

@@ -2,10 +2,10 @@
 RUNBOOK.md
 .env.example
 .env.test
-preprocessing/matthias_guideline_preprocessing/backup_zia/matthias_guideline_preprocessing/data
-matthias_guideline_preprocessing/data
-preprocessing/matthias_guideline_preprocessing/data
 .globalvenvmatt
 .retrievalvenvmatt
-preprocessing/matthias_guideline_preprocessing/graph_url/graph_output
-matthias_guideline_preprocessing/graph_url/graph_output
+*.pyc
+src/afac-preprocessing/data
+src/afac-preprocessing/graph_url/graph_output
+src/afac-preprocessing/prompts/__pycache__
+src/afac-preprocessing/utils/__pycache__

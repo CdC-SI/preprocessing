@@ -1,17 +1,13 @@
 # Documentation utilisée :
 # https://docling-project.github.io/docling/_generated/examples/custom_convert/
-
-import pandas as pd
+import sys
 import json
 import time
 import os
 import json
 import time
 import logging
-import certifi
 from pathlib import Path
-from dotenv import load_dotenv
-
 from docling.datamodel.accelerator_options import AcceleratorDevice, AcceleratorOptions
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.pipeline_options import (
@@ -21,32 +17,18 @@ from docling.datamodel.pipeline_options import (
 )
 from docling.document_converter import DocumentConverter, PdfFormatOption
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from utils.config import load_vlm_config
+
+config = load_vlm_config()
+CA_PATH = config["CA_PATH"]
+VLM_URL = config["VLM_URL"]
+VLM_MODEL_NAME = config["VLM_MODEL_NAME"]
 _log = logging.getLogger(__name__)
 
-# Chargement de .env.test
-dotenv_path = Path(__file__).resolve().parent.parent / ".env.test"
-print("Loading dotenv from:", dotenv_path.resolve(), "exists:", dotenv_path.exists())
-load_dotenv(dotenv_path=dotenv_path)
-
-# Certificat CA
-custom_ca = os.environ.get("VLM_CA_PEM")
-if custom_ca:
-    os.environ.setdefault("SSL_CERT_FILE", custom_ca)
-    os.environ.setdefault("REQUESTS_CA_BUNDLE", custom_ca)
-else:
-    os.environ.setdefault("SSL_CERT_FILE", certifi.where())
-    os.environ.setdefault("REQUESTS_CA_BUNDLE", certifi.where())
-
-VLM_URL = os.environ.get("VLM_URL", "")
-VLM_MODEL_NAME = os.environ.get("VLM_MODEL_NAME", "")
-if not VLM_URL:
-    raise RuntimeError(
-        f"VLM_URL not set. Ensure {dotenv_path} exists and contains VLM_URL."
-    )
-print(f"VLM_URL: {VLM_URL}, \nVLM_MODEL_NAME: {VLM_MODEL_NAME}")
-
 def main():
-    logging.basicConfig(level=logging.INFO)
 
     DOC_NAME = os.environ.get("DOC_NAME", "")
     project_root = Path(__file__).resolve().parent.parent
@@ -79,12 +61,11 @@ def main():
 
     _log.info(f"Document converted in {end_time:.2f} seconds.")
 
-    ## Export results
-    output_dir = project_root / "data" / "output_files" / "stage1_test" / DOC_NAME # CHANGER CHEMIN POUR CHAQUE TEST
+    # Export results
+    output_dir = project_root / "data" / "output_files" / "stage1_test" / DOC_NAME
     output_dir.mkdir(parents=True, exist_ok=True)
 
     doc_filename = conv_result.input.file.stem
-
     # Export Docling document JSON format:
     with (output_dir / f"{doc_filename}.json").open("w", encoding="utf-8") as fp:
         fp.write(json.dumps(conv_result.document.export_to_dict()))

@@ -1,12 +1,14 @@
 import pandas as pd
 import jsonlines
 from pathlib import Path
-from dotenv import load_dotenv
 import os
+import sys
 
-dotenv_path = Path(__file__).resolve().parent.parent / ".env.test"
-print("Loading dotenv from:", dotenv_path.resolve(), "exists:", dotenv_path.exists())
-load_dotenv(dotenv_path=dotenv_path)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from utils.config import load_vlm_config
+config = load_vlm_config()
 
 def deduplicate_columns(columns):
     counts = {}

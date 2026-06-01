@@ -3,17 +3,17 @@ import fitz  # PyMuPDF
 import cv2
 import numpy as np
 import re
-from dotenv import load_dotenv
 import os
+import sys
 
-# Chargement de .env.test
-dotenv_path = Path(__file__).resolve().parent.parent / ".env.test" # Je suis sur l'.env.test qui est le même que le .env
-print("Loading dotenv from:", dotenv_path.resolve(), "exists:", dotenv_path.exists())
-load_dotenv(dotenv_path=dotenv_path)
-load_dotenv()
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 
-# Root
+from utils.config import load_vlm_config
+config = load_vlm_config()
+
 DOC_NAME = os.environ.get("DOC_NAME", "") # Modifie le nom du PDF si nécessaire
+
 project_root = Path(__file__).resolve().parent.parent
 pdf_path = project_root / "data" / "input_files" / f"{DOC_NAME}.pdf"
 doctag_path = project_root / "data" / "output_files" / "stage1_test" / DOC_NAME / f"{DOC_NAME}.doctags" 
