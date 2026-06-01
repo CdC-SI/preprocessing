@@ -7,16 +7,16 @@ https://docling-project.github.io/docling/_generated/examples/custom_convert/
 
 ## Scripts principaux
 
-- **1_pipeline_multietape_v2.py**  
+- 1) **pipeline_multietape.py**  
   Lance la détection multi-étapes et exporte le contenu du PDF dans plusieurs formats : balises structurées (doctags), JSON, markdown, texte brut. Les fichiers générés sont organisés dans une arborescence de sortie.
 
-- **2_control_doctags_balise_loc_y0.py**  
+- 2) **control_doctags_balise_loc_y0.py**  
   Trie et repositionne les balises structurées pour garantir la cohérence avec le PDF d’origine :  
   - Analyse la position verticale (y0) de chaque balise pour chaque page.
   - Trie les balises par ordre d’apparition dans le document, page par page.
   - Réécrit le fichier de balises structurées corrigé.
 
-  - **3_opencv_checker.py**  
+  - 3) **opencv_checker.py**  
   Génère une image annotée à partir d’un PDF : chaque zone détectée (texte, image, tableau, etc.) est entourée d’un rectangle coloré selon son type pour un contrôle qualité visuel rapide.
 
 ## Pipeline de traitement

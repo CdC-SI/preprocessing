@@ -6,10 +6,10 @@ Elle permet d’obtenir des exports exploitables pour l’analyse, la recherche,
 ## Scripts principaux
 
 - **Scripts principaux** :  
-- **1_export_table_docling** : extrait les tables selon le pipeline docling et export les table au format CSV et HTML
-- **2_csv_to_json** : convertie les tables CSV en jsonline
-- **3_load_jsonline_docling** : charge le jsonline dans le doctags
-- **4_description_image_context** : ne parse que les images détectées au VLM pour les décrire selon le prompt et charge les description àa la place des balises <picture> pour ne garder que du texte. Créé également un fichier markdown .md avec seulement la description des images avec leurs coordonnées sur le PDF pour la traçabilité.
+- 1) **export_table_docling** : extrait les tables selon le pipeline docling et export les table au format CSV et HTML
+- 2) **csv_to_json** : convertie les tables CSV en jsonline
+- 3) **load_jsonline_docling** : charge le jsonline dans le doctags
+- 4) **description_image_context** : ne parse que les images détectées au VLM pour les décrire selon le prompt et charge les description àa la place des balises <picture> pour ne garder que du texte. Créé également un fichier markdown .md avec seulement la description des images avec leurs coordonnées sur le PDF pour la traçabilité.
 
 ## Fonctionnement général
 
