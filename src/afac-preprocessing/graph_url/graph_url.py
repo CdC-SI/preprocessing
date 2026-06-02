@@ -7,21 +7,21 @@ from pyvis.network import Network
 project_root = Path(__file__).resolve().parent.parent
 stage3_dir = project_root / "data" / "output_files" / "stage3_test" # Changer chemin si nécessaire
 
-graph = nx.Graph()
+graph = nx.Graph() # Créé le graphe vide
 
 url_nodes = {}
 url_counter = 1
 
 print("URLs détectées dans tous les sous-dossiers :")
-for doc_dir in sorted(stage3_dir.iterdir()):
-    if not doc_dir.is_dir():
+for doc_dir in sorted(stage3_dir.iterdir()): # iterdir permet de parcourir les sous-dossiers
+    if not doc_dir.is_dir(): # Si ce n'est pas un dossier, on va au suivant
         continue
 
     doc_name = doc_dir.name + ".pdf"
     if not graph.has_node(doc_name):
-        graph.add_node(doc_name, type="Document", title=doc_name)
+        graph.add_node(doc_name, type="Document", title=doc_name) # créé le noeud pour le document
 
-    for jsonl_file in doc_dir.glob("hyperlinks_data_*.jsonl"):
+    for jsonl_file in doc_dir.glob("hyperlinks_data_*.jsonl"): # On récupère les URLs dans les fichiers jsonl
         with jsonlines.open(jsonl_file) as reader:
             for obj in reader:
                 url  = obj.get("hyperlink", "").strip()
@@ -29,9 +29,9 @@ for doc_dir in sorted(stage3_dir.iterdir()):
                 if not url:
                     continue
 
-                print(f"  [{doc_name}] {text or '(no text)'} → {url}")
+                print(f"[{doc_name}] {text or '(no text)'} -> {url}") # Affiche les URLs détectées avec leur texte associé (ou "(no text)" si pas de texte)
 
-                # Déduplication par (url, text) : même URL avec texte différent = nœud différent
+                # Déduplication par (url, text) : même URL avec texte différent = noeud différent
                 key = (url, text)
                 if key not in url_nodes:
                     node_name = text if text else f"URL {url_counter}"
@@ -42,13 +42,13 @@ for doc_dir in sorted(stage3_dir.iterdir()):
                     graph.add_node(
                         node_name,
                         type="URL",
-                        url=url,
-                        label=node_name,
-                        title=f"{text}\n{url}",  # tooltip dans PyVis
+                        url = url,
+                        label = node_name,
+                        title = f"{text}\n{url}", # tooltip dans PyVis
                     )
                     url_counter += 1
 
-                # Arête : document "cites" URL
+                # Arête : document "cites" URL pour le moment un seul tag possbile "cites" 
                 graph.add_edge(doc_name, url_nodes[key], relation="cites")
 
 

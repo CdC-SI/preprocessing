@@ -15,14 +15,10 @@ import fitz  # PyMuPDF
 import base64
 import httpx
 
-project_root = Path(__file__).resolve().parent.parent.parent 
-sys.path.insert(0, str(project_root))
-
-from prompts.prompts import VLM_PROMPT_CORRECTION_STAGE_3 # charge le prompt depuis le fichier prompts.py du dossier prompts
-
 PROJECT_ROOT = Path(__file__).resolve().parent.parent  
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from prompts.prompts import VLM_PROMPT_CORRECTION_STAGE_3 # charge le prompt depuis le fichier prompts.py du dossier prompts
 from utils.config import load_vlm_config
 
 config = load_vlm_config()
@@ -125,7 +121,7 @@ async def process_page(
     async with semaphore:
         _log.info(f"Page {page_num} : {len(page_links)} lien(s) à insérer...")
         try:
-            image_b64 = await asyncio.to_thread(pdf_page_to_base64, pdf_path, page_num)
+            image_b64 = await asyncio.to_thread(pdf_page_to_base64, pdf_path, page_num) # Convertit la page PDF en image base64 dans un thread séparé pour ne pas bloquer l'event loop
             prompt = build_prompt(page_tags, page_links)
             result = await call_vlm_async(prompt, image_b64)
             _log.info(f"Page {page_num} traitée.")
@@ -168,7 +164,7 @@ def split_doctags_by_page(doctags: str, n_pages: int) -> dict[int, str]:
     pages = {}
     for i in range(n_pages):
         start = i * tags_per_page
-        end   = start + tags_per_page if i < n_pages - 1 else len(all_tags)
+        end = start + tags_per_page if i < n_pages - 1 else len(all_tags)
         pages[i + 1] = "\n".join(all_tags[start:end])
     return pages
 
@@ -242,7 +238,7 @@ async def run(pdf_path: Path, doctags_path: Path, jsonl_path: Path, output_path:
 # Entrée
 
 if __name__ == "__main__":
-    BASE = project_root / "matthias_guideline_preprocessing"
+    BASE = PROJECT_ROOT
     DATA = BASE / "data" / "output_files" / "stage3_test"
 
     # À adapter selon ton document

@@ -6,39 +6,41 @@ import re
 import os
 import sys
 
+# Appel des fonctions de configuration pour récupérer les chemins et paramètres nécessaires
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from utils.config import load_vlm_config
 config = load_vlm_config()
 
-DOC_NAME = os.environ.get("DOC_NAME", "") # Modifie le nom du PDF si nécessaire
+DOC_NAME = os.environ.get("DOC_NAME", "")
 
 project_root = Path(__file__).resolve().parent.parent
 pdf_path = project_root / "data" / "input_files" / f"{DOC_NAME}.pdf"
 doctag_path = project_root / "data" / "output_files" / "stage1_test" / DOC_NAME / f"{DOC_NAME}.doctags" 
 output_dir = project_root / "data" / "output_files" / "stage1_test" / f"opencv_doctags_allpages_{DOC_NAME}" 
 output_dir.mkdir(parents=True, exist_ok=True)
+
 dpi = 300 # https://easyocr.org/en/help/easyocr-free-online-guide
 # ici 300 car il faut que les coordonnées des doctags soient ajustées pour correspondre à la résolution de l'image générée, et 300 DPI est une résolution courante pour les PDF. 
 # Si les doctags sont basés sur une normalisation différente (ex: 500), il faudra ajuster les coordonnées en conséquence.
 
 norm_max = 500  
-# Docling’s Internal Normalization
-# Docling normalizes all box coordinates (x0, y0, x1, y1) to a fixed range for consistency, regardless of the actual DPI or pixel size of the source image.
-# For most pipelines (especially with EasyOCR), Docling uses a normalization base of 500.
-# That means:
-# The top-left of the page is (0, 0)
-# The bottom-right is (500, 500)
-# All coordinates in the .doctags are scaled to fit this 500x500 grid.
+# Normalisation interne de Docling
+# Docling normalise toutes les coordonnées des boîtes (x0, y0, x1, y1) dans une plage fixe pour assurer la cohérence, indépendamment de la résolution (DPI) ou de la taille en pixels de l'image source.
+# Pour la plupart des pipelines (notamment avec EasyOCR), Docling utilise une base de normalisation de 500.
+# Cela signifie :
+# Le coin supérieur gauche de la page est (0, 0)
+# Le coin inférieur droit est (500, 500)
+# Toutes les coordonnées dans les balises .doctags sont mises à l'échelle pour s'adapter à cette grille 500x500.
 
 # https://docling-project.github.io/docling/reference/pipeline_options/#docling.datamodel.pipeline_options.KserveV2OcrOptions.model_version
 
 def parse_doctags_boxes(doctags_path):
     # Parse les .doctags pour extraire les boxes et leurs tags associés, organisés par page.
-    boxes_by_page = {}
+    boxes_by_page = {} # Dictionnaire : { page_num: [(x0, y0, x1, y1, tag), ...], ... }
     current_page = 0
-    with open(doctags_path, "r", encoding="utf-8") as f:
+    with open(doctags_path, "r", encoding="utf-8") as f: # "r" pour lecture, "utf-8" pour s'assurer de lire correctement les caractères spéciaux
         for line in f:
             # Nettoie les balises globales
             line = line.replace("<doctag>", "").replace("</doctag>", "").strip()
@@ -46,18 +48,18 @@ def parse_doctags_boxes(doctags_path):
                 continue
             
             # Trouve toutes les balises ouvrantes <tag> (ignore les fermantes </tag>)
-            for tag_match in re.finditer(r"<(?!/)(\w+)>", line):
+            for tag_match in re.finditer(r"<(?!/)(\w+)>", line): # <(?!/) : match les balises qui ne sont pas suivies de /, (\w+) : capture le nom du tag
                 tag = tag_match.group(1)
                 
                 # Cherche les coordonnées immédiatement après cette balise
                 rest_of_line = line[tag_match.end():]
-                coords_match = re.match(r"<loc_(-?\d+)><loc_(-?\d+)><loc_(-?\d+)><loc_(-?\d+)>", rest_of_line)
+                coords_match = re.match(r"<loc_(-?\d+)><loc_(-?\d+)><loc_(-?\d+)><loc_(-?\d+)>", rest_of_line) # <loc_x0><loc_y0><loc_x1><loc_y1> avec des nombres entiers (possiblement négatifs)
                 
                 if coords_match:
-                    x0, y0, x1, y1 = map(int, coords_match.groups())
+                    x0, y0, x1, y1 = map(int, coords_match.groups()) # On retire la virgule et convertit en int
                     boxes_by_page.setdefault(current_page, []).append((x0, y0, x1, y1, tag))
             
-            # Pagination : après traitement de toutes les balises de la ligne
+            # Détection de la pagination : incrémente le numéro de page à chaque occurrence de <page_footer>
             if "<page_footer>" in line:
                 current_page += 1
     
@@ -65,7 +67,8 @@ def parse_doctags_boxes(doctags_path):
 
 boxes_by_page = parse_doctags_boxes(doctag_path)
 
-#2. Pour chaque page, génère l'image et dessine les boxes
+# Création de box de color pour chaque tag
+# Pour chaque page, génère l'image et dessine les boxes
 doc = fitz.open(pdf_path)
 num_pages = len(doc)
 
@@ -100,6 +103,7 @@ color_map = {
     "nl": (150, 150, 150),                   # Gris clair
 }
 
+# boucle for pour parcourir les pages du PDF, générer l'image et dessiner les boxes
 for page_num in range(num_pages):
     page = doc[page_num]
     pix = page.get_pixmap(dpi=dpi)
@@ -112,13 +116,9 @@ for page_num in range(num_pages):
     pdf_height = page.rect.height
 
     boxes = boxes_by_page.get(page_num, [])
-    # facteur de correction:
-    # correction_factor = 2 # si norm_max est à 1000 
     for (x0n, y0n, x1n, y1n, tag) in boxes:
-        # Convertit les coordonnées normalisées en coordonnées d'image, 
-        # les coordonnées dans les doctags sont normalisées sur 500, 
-        # donc on les convertit en pixels en fonction de la taille de l'image
-        x0 = int(x0n / norm_max * img_w)
+    # Convertit les coordonnées normalisées (0-500) en coordonnées d'image (0-img_w ou 0-img_h)
+        x0 = int(x0n / norm_max * img_w) 
         y0 = int(y0n / norm_max * img_h)
         x1 = int(x1n / norm_max * img_w)
         y1 = int(y1n / norm_max * img_h)
@@ -127,5 +127,5 @@ for page_num in range(num_pages):
         cv2.putText(img, tag, (x0, max(y0-5, 10)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA)
 
     output_img = output_dir / f"page_{page_num+1}_doctags_boxes.png"
-    cv2.imwrite(str(output_img), img)
+    cv2.imwrite(str(output_img), img) # Sauvegarde l'image avec les boxes dessinées
     print(f"Image sauvegardée : {output_img}")

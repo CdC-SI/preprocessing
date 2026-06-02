@@ -90,7 +90,7 @@ return nothing or an empty string.
 Always respond in {language}.
 """
 
-VLM_PROMPT_CORRECTION_STAGE_3 = r"""
+VLM_PROMPT_CORRECTION_STAGE_3 = """
 Tu es un assistant spécialisé dans la correction et l'enrichissement de fichiers doctags.
 
 Tu reçois :

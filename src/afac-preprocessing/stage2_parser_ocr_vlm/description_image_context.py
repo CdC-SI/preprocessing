@@ -196,7 +196,7 @@ def export_picture_images(
             f"x{pic['x0']}_y{pic['y0']}_x{pic['x1']}_y{pic['y1']}.png" # nommage avec les coordonnées originales du doctags pour faciliter le mapping avec les balises <picture>
         )
         img_path.write_bytes(pix.tobytes("png")) # Sauvegarde du PNG exporté
-        _log.info("  [%d/%d] PNG exporté : %s", i, len(pictures), img_path.name)
+        _log.info("[%d/%d] PNG exporté : %s", i, len(pictures), img_path.name)
 
     doc.close()
     _log.info("OK %d PNG exporté(s)", len(pictures))
@@ -247,7 +247,7 @@ def _vlm_worker(task_queue: queue.Queue) -> None:
             break
 
         _log.info(
-            "  [%d/%d] -> Envoi au VLM — Page %d loc=(%d,%d,%d,%d)",
+            "[%d/%d] -> Envoi au VLM — Page %d loc=(%d,%d,%d,%d)",
             task.index, task.total, task.page + 1,
             task.x0, task.y0, task.x1, task.y1,
         )
@@ -263,9 +263,9 @@ def _vlm_worker(task_queue: queue.Queue) -> None:
             }
 
         if description:
-            _log.info(" [%d/%d] OK Description reçue (%d chars)", task.index, task.total, len(description))
+            _log.info("[%d/%d] OK Description reçue (%d chars)", task.index, task.total, len(description))
         else:
-            _log.warning(" [%d/%d] WARNING  Aucune description retournée par le VLM", task.index, task.total)
+            _log.warning("[%d/%d] WARNING Aucune description retournée par le VLM", task.index, task.total)
 
         task_queue.task_done()
 
@@ -273,11 +273,13 @@ def describe_all_pictures(
     pdf_path: Path,
     pictures: list[dict],
     doc_elements: list[dict],
-    doc_name: str = "",          # ← add doc_name parameter
+    doc_name: str = "",
     n_before: int = N_BEFORE,
     n_after:  int = N_AFTER,
 ) -> dict[int, dict]:
-    # Check switch BEFORE doing any work
+    # Controle le switch global et par document pour activer ou désactiver la description des images.
+    # Si désactivé, retourne un dict avec des descriptions vides (balises <picture> conservées). 
+    # Si activé, lance le processus de description avec contexte et VLM.
     if not is_image_description_enabled(doc_name):
         _log.warning("Descriptions VLM désactivées pour '%s' — balises <picture> conservées.", doc_name)
         return {
@@ -301,11 +303,11 @@ def describe_all_pictures(
 
     worker = threading.Thread(target=_vlm_worker, args=(task_q,), daemon=True)
     worker.start()
-    _log.info("Mise en queue de %d image(s) (crop mémoire → base64)", total)
+    _log.info("Mise en queue de %d image(s) (crop mémoire -> base64)", total)
 
     for i, pic in enumerate(pictures, start=1):
-        ctx_before, ctx_after = build_context(pic, doc_elements, n_before, n_after)
-        prompt = WIKI_PROMPT_TEMPLATE.format(
+        ctx_before, ctx_after = build_context(pic, doc_elements, n_before, n_after) # Construit le contexte textuel autour de l'image à partir des éléments du doctags
+        prompt = WIKI_PROMPT_TEMPLATE.format( # Injecte le contexte dans le prompt
             context_before=ctx_before,
             context_after=ctx_after,
             language=language,

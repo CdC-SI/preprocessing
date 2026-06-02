@@ -17,6 +17,7 @@ from docling.datamodel.pipeline_options import (
 )
 from docling.document_converter import DocumentConverter, PdfFormatOption
 
+# Appel des fonctions de configuration pour récupérer les chemins et paramètres nécessaires
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -29,7 +30,7 @@ VLM_MODEL_NAME = config["VLM_MODEL_NAME"]
 _log = logging.getLogger(__name__)
 
 def main():
-
+    # Récupère le nom du document à traiter depuis les variables d'environnement
     DOC_NAME = os.environ.get("DOC_NAME", "")
     project_root = Path(__file__).resolve().parent.parent
     data_folder = project_root / "data" / "input_files"
@@ -55,7 +56,8 @@ def main():
         }
     )
 
-    start_time = time.time()
+    # Métrique de temps de conversion
+    start_time = time.time() 
     conv_result = doc_converter.convert(input_doc_path)
     end_time = time.time() - start_time
 
@@ -64,23 +66,27 @@ def main():
     # Export results
     output_dir = project_root / "data" / "output_files" / "stage1_test" / DOC_NAME
     output_dir.mkdir(parents=True, exist_ok=True)
-
     doc_filename = conv_result.input.file.stem
+
     # Export Docling document JSON format:
     with (output_dir / f"{doc_filename}.json").open("w", encoding="utf-8") as fp:
         fp.write(json.dumps(conv_result.document.export_to_dict()))
+        print(f"Document JSON exporté : {output_dir / f'{doc_filename}.json'}")
 
     # Export Text format (plain text via Markdown export):
     with (output_dir / f"{doc_filename}.txt").open("w", encoding="utf-8") as fp:
-        fp.write(conv_result.document.export_to_markdown(strict_text=True))
+        fp.write(conv_result.document.export_to_markdown())
+        print(f"Document texte exporté : {output_dir / f'{doc_filename}.txt'}")
 
     # Export Markdown format:
     with (output_dir / f"{doc_filename}.md").open("w", encoding="utf-8") as fp:
         fp.write(conv_result.document.export_to_markdown())
+        print(f"Document Markdown exporté : {output_dir / f'{doc_filename}.md'}")
 
     # Export Document Tags format:
     with (output_dir / f"{doc_filename}.doctags").open("w", encoding="utf-8") as fp:
         fp.write(conv_result.document.export_to_doctags())
+        print(f"Document DocTags exporté : {output_dir / f'{doc_filename}.doctags'}")
 
 if __name__ == "__main__":
     main()

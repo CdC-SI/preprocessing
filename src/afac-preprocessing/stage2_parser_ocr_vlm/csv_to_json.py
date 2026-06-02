@@ -11,6 +11,11 @@ from utils.config import load_vlm_config
 config = load_vlm_config()
 
 def deduplicate_columns(columns):
+    """
+    Docstring for deduplicate_columns
+    :param columns: Description
+    ici on ajoute un suffixe numérique aux colonnes dupliquées pour les rendre uniques (ex: "col", "col_2", "col_3", etc.)
+    """
     counts = {}
     new_cols = []
     for col in columns:
@@ -27,7 +32,7 @@ def safe_row_dict(row):
     return {k: (None if pd.isna(v) else str(v)) for k, v in row.items()}
 
 def has_numeric_headers(csv_path):
-    """Vérifie si les noms de colonnes sont numériques (0, 1, 2...) → vrai header potentiellement en row 1"""
+    """Vérifie si les noms de colonnes sont numériques (0, 1, 2...) -> vrai header potentiellement en row 1"""
     df_peek = pd.read_csv(csv_path, index_col=0, nrows=0)
     return all(str(col).strip().isdigit() for col in df_peek.columns)
 
@@ -43,7 +48,7 @@ def first_row_is_header(csv_path):
         for v in first_row
     )
 DOC_NAME = os.environ.get("DOC_NAME", "")
-tables_dir = Path(f"preprocessing/matthias_guideline_preprocessing/data/output_files/stage2_test/{DOC_NAME}/tables")
+tables_dir = Path(f"preprocessing/src/afc-preprocessing/data/output_files/stage2_test/{DOC_NAME}/tables")
 
 csv_files = list(tables_dir.glob("*.csv"))
 
@@ -63,7 +68,7 @@ else:
             df.columns = deduplicate_columns([str(col) for col in df.columns])
 
             if df.empty:
-                print(f" {csv_path.name} → skipped (empty table)")
+                print(f" {csv_path.name} -> skipped (empty table)")
                 continue
 
             jsonl_path = csv_path.with_suffix(".jsonl")
