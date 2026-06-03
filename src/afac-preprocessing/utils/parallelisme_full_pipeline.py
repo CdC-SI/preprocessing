@@ -24,7 +24,7 @@ pdfs = sorted(Path("preprocessing/src/afac-preprocessing/data/input_files").glob
 
 def run_pipeline(pdf):
     print(f"=== Lancement du traitement du document : {pdf}...") 
-    env = os.environ.copy()# copie de l'environnement courant
+    env = os.environ.copy() # copie de l'environnement courant
     env["DOC_NAME"] = pdf.stem  # définir la variable d'environnement DOC_NAME
     env["PYTHONUNBUFFERED"] = "1"  # désactiver le buffering pour que les sorties soient affichées en temps réel
     
@@ -47,7 +47,7 @@ def run_pipeline(pdf):
     return f"OK: {pdf.name}"
 
 if __name__ == "__main__":
-    with ProcessPoolExecutor(max_workers=4) as executor:
+    with ProcessPoolExecutor(max_workers=4) as executor: # Modifier le nombre de workers selon les ressources disponibles
         futures = [executor.submit(run_pipeline, pdf) for pdf in pdfs]
         for future in as_completed(futures):
             try:

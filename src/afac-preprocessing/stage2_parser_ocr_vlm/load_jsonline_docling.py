@@ -22,7 +22,7 @@ def load_jsonl_rows(jsonl_path: Path) -> list[dict]:
 
 def jsonl_rows_to_block(rows: list[dict]) -> str:
     # Convertit une liste de dicts en bloc texte JSONL.
-    return "\n".join(json.dumps(row, ensure_ascii=False) for row in rows)
+    return "\n".join(json.dumps(row, ensure_ascii = False) for row in rows)
 
 def replace_otsl_with_jsonl(
     doctags_path: Path,

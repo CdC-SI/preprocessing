@@ -2,6 +2,7 @@
 import subprocess
 import sys
 from pathlib import Path
+import os
 
 scripts = [
     "preprocessing/src/afac-preprocessing/stage1_multi_steps_detection/pipeline_multietape.py",
@@ -15,17 +16,19 @@ scripts = [
     "preprocessing/src/afac-preprocessing/stage3_url_extraction_vlm_parse/url_tuning_vlm.py",
     "preprocessing/src/afac-preprocessing/stage4_doctags_to_markdown/convert_doctags_to_markdown.py",   
 ]
-
-for pdf in Path("preprocessing/src/afac-preprocessing/data/input_files").glob("*.pdf"):
-    print(f"=== Lancement du traitement du document : {pdf}...")
+pdf = Path("preprocessing/src/afac-preprocessing/data/input_files/Adhésion traitement.pdf") # CHANGER SELON LES TESTS
+env = os.environ.copy()# copie de l'environnement courant
+env["DOC_NAME"] = pdf.stem  # définir la variable d'environnement DOC_NAME
 
 for script in scripts:
     print(f"=== Lancement du script : {script}...")
 
     result = subprocess.run(
         [sys.executable, script], 
-        capture_output=True, 
-        text=True
+        stdout=sys.stdout,
+        stderr=sys.stderr, 
+        text=True,
+        env=env, # passer l'environnement modifié avec DOC_NAME au processus enfant
     )
     
     if result.returncode != 0:

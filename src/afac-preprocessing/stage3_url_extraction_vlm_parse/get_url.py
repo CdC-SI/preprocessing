@@ -14,17 +14,16 @@ def is_external_link(uri):
     # On considère comme lien externe les liens commençant par http://, https:// ou mailto:
     return uri and uri.startswith(("http://", "https://", "mailto:"))
 
-def geet_link_text(link, words):
-    # "from" contient les coordonnées du rectangle du lien, 
+def get_link_text(link, words):
     # on vérifie quels mots ont leur centre dans ce rectangle pour les associer au lien
-    rect = link.get("from", None)
+    rect = link.get("from", None) # "from" contient les coordonnées du rectangle du lien (cf. voir jsonl de sortie stage 3)
     if not rect:
         return "No text"
     
     rx0, ry0, rx1, ry1 = rect
     link_words = [
         w[4] for w in words # w[0], w[1], w[2], w[3] sont les coordonnées du mot, w[4] est le texte du mot
-        if rx0 <= (w[0]+w[2])/2 <= rx1 and ry0 <= (w[1]+w[3])/2 <= ry1 # on vérifie si le centre du mot est dans le rectangle du lien pour l'associer au lien
+        if rx0 <= (w[0] + w[2]) /2 <= rx1 and ry0 <= (w[1] + w[3]) /2 <= ry1 # on vérifie si le centre du mot est dans le rectangle du lien pour l'associer au lien.
     ]
     return " ".join(link_words).strip() if link_words else "No text"
 
@@ -53,7 +52,7 @@ def extract_url_links(pdf_path):
 
             link_details = {
                 "page_number": page_num + 1,
-                "text": geet_link_text(link, words),
+                "text": get_link_text(link, words),
                 "hyperlink": uri,
                 "type": "URI",
                 "details": serialize_link(link),
@@ -66,9 +65,9 @@ DOC_NAME = os.environ.get("DOC_NAME", "") # CHANGER SELON LES TESTS
 project_root = Path(__file__).resolve().parent.parent
 pdf_path = project_root / "data" / "input_files" / f"{DOC_NAME}.pdf"
 hyperlink_data_path = project_root / "data" / "output_files" / "stage3_test" / DOC_NAME / f"hyperlinks_data_{DOC_NAME}.json"
-hyperlink_data_path.parent.mkdir(parents=True, exist_ok=True)  # <-- correction ici
+hyperlink_data_path.parent.mkdir(parents=True, exist_ok=True) # créer le dossier de sortie s'il n'existe pas
 
-# Extract and debug hyperlinks
+# Extrait et debug les liens hypertextes
 hyperlinks_data = extract_url_links(pdf_path)
 for data in hyperlinks_data:
     print(f"Page number: {data['page_number']}")

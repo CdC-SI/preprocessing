@@ -11,11 +11,9 @@ from utils.config import load_vlm_config
 config = load_vlm_config()
 
 def deduplicate_columns(columns):
-    """
-    Docstring for deduplicate_columns
-    :param columns: Description
-    ici on ajoute un suffixe numérique aux colonnes dupliquées pour les rendre uniques (ex: "col", "col_2", "col_3", etc.)
-    """
+    # Docstring for deduplicate_columns
+    # :param columns: Description
+    # ici on ajoute un suffixe numérique aux colonnes dupliquées pour les rendre uniques (ex: "col", "col_2", "col_3", etc.)
     counts = {}
     new_cols = []
     for col in columns:
@@ -32,13 +30,13 @@ def safe_row_dict(row):
     return {k: (None if pd.isna(v) else str(v)) for k, v in row.items()}
 
 def has_numeric_headers(csv_path):
-    """Vérifie si les noms de colonnes sont numériques (0, 1, 2...) -> vrai header potentiellement en row 1"""
-    df_peek = pd.read_csv(csv_path, index_col=0, nrows=0)
+    # Vérifie si les noms de colonnes sont numériques (0, 1, 2...) -> vrai header potentiellement en row 1
+    df_peek = pd.read_csv(csv_path, index_col = 0, nrows = 0)
     return all(str(col).strip().isdigit() for col in df_peek.columns)
 
 def first_row_is_header(csv_path):
-    """Vérifie si la première ligne de données contient des vrais noms de colonnes (texte non numérique)"""
-    df_peek = pd.read_csv(csv_path, index_col=0, nrows=1)
+    # Vérifie si la première ligne de données contient des vrais noms de colonnes (texte non numérique)
+    df_peek = pd.read_csv(csv_path, index_col = 0, nrows = 1)
     if df_peek.empty:
         return False
     first_row = df_peek.iloc[0]
@@ -60,10 +58,10 @@ else:
         try:
             if has_numeric_headers(csv_path) and first_row_is_header(csv_path):
                 # Cas : colonnes numériques (0,1,2...) ET première ligne = vrais headers texte
-                df = pd.read_csv(csv_path, index_col=0, header=1)
+                df = pd.read_csv(csv_path, index_col = 0, header = 1)
             else:
                 # Cas : headers déjà corrects en row 0, ou données purement numériques
-                df = pd.read_csv(csv_path, index_col=0, header=0)
+                df = pd.read_csv(csv_path, index_col = 0, header = 0)
 
             df.columns = deduplicate_columns([str(col) for col in df.columns])
 

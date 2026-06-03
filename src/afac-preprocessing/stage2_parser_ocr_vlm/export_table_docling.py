@@ -27,11 +27,8 @@ def main():
     doc_converter = DocumentConverter()
 
     start_time = time.time()
-
     conv_res = doc_converter.convert(input_doc_path)
-
     output_dir.mkdir(parents=True, exist_ok=True)
-
     doc_filename = conv_res.input.file.stem
 
     # Export tables
@@ -52,7 +49,6 @@ def main():
             fp.write(table.export_to_html(doc=conv_res.document))
 
     end_time = time.time() - start_time
-
     _log.info(f"Document converted and tables exported in {end_time:.2f} seconds.")
 
 if __name__ == "__main__":

@@ -78,7 +78,7 @@ def remove_picture_tags(content: str) -> str:
 
 # ÉTAPE 1 — Parsing du doctags
 def parse_picture_tags(doctags_path: Path) -> tuple[list[dict], str]:
-    # Retourne la liste des <picture> et le contenu brut du doctags.
+    # Retourne la liste des <picture> et le contenu brut du doctags. 
     # Cette fonction parse les balises du doctags pour extraire les éléments textuels et les images avec leurs coordonnées, en conservant l'ordre d'apparition pour le contexte.
     content = doctags_path.read_text(encoding="utf-8") # Vériier le type d'encodage du fichier source UTF-8, Unicode ou autre
     pictures = []
@@ -91,7 +91,7 @@ def parse_picture_tags(doctags_path: Path) -> tuple[list[dict], str]:
         if "<page_footer>" in line_clean:
             page += 1
         for m in re.finditer(
-            r"(<picture><loc_(\d+)><loc_(\d+)><loc_(\d+)><loc_(\d+)></picture>)",
+            r"(<picture><loc_(\d+)><loc_(\d+)><loc_(\d+)><loc_(\d+)></picture>)", # le regex pour trouver les balises <picture> avec leurs coordonnées, m.groupe(1) contient la balise complète <picture>...</picture>, m.groupe(2) à m.groupe(5) contiennent respectivement x0, y0, x1, y1
             line_clean,
         ):
             x0, y0, x1, y1 = int(m.group(2)), int(m.group(3)), int(m.group(4)), int(m.group(5)) # Extraction des coordonnées de la balise <picture>, m.groupe(1) contient la balise complète <picture>...</picture>
@@ -129,7 +129,7 @@ def extract_document_elements(doctags_path: Path) -> list[dict]:
                 continue
             x0, y0, x1, y1 = int(m.group(2)), int(m.group(3)), int(m.group(4)), int(m.group(5))
             raw_text = re.sub(r"<[^>]+>", "", m.group(6)).strip()
-            elements.append({
+            elements.append({ 
                 "type": "text" if tag in TEXT_TAGS else "other",
                 "tag": tag, "page": page,
                 "x0": x0, "y0": y0, "x1": x1, "y1": y1,
@@ -138,11 +138,11 @@ def extract_document_elements(doctags_path: Path) -> list[dict]:
 
         # Images
         for m in re.finditer(
-            r"<picture><loc_(\d+)><loc_(\d+)><loc_(\d+)><loc_(\d+)></picture>",
+            r"<picture><loc_(\d+)><loc_(\d+)><loc_(\d+)><loc_(\d+)></picture>", # le regex pour trouver les balises <picture> avec leurs coordonnées, m.groupe(1) à m.groupe(4) contiennent respectivement x0, y0, x1, y1
             line_clean,
         ):
             x0, y0, x1, y1 = int(m.group(1)), int(m.group(2)), int(m.group(3)), int(m.group(4))
-            elements.append({
+            elements.append({ # On ajoute les images à la liste des éléments avec un type "picture" pour les différencier des éléments textuels, et on laisse le champ "text" vide pour les images
                 "type": "picture", "tag": "picture", "page": page,
                 "x0": x0, "y0": y0, "x1": x1, "y1": y1, "text": "",
             })
@@ -153,17 +153,17 @@ def extract_document_elements(doctags_path: Path) -> list[dict]:
 def build_context(pic: dict, doc_elements: list, n_before: int, n_after: int) -> tuple[str, str]:
     # Retourne le contexte textuel avant/après une image.
     pic_index = next((
-        idx for idx, e in enumerate(doc_elements)
+        idx for idx, e in enumerate(doc_elements) # On cherche l'index de l'image dans la liste des éléments parsés pour pouvoir récupérer les éléments textuels avant et après
         if e["type"] == "picture"
         and e["page"] == pic["page"]
         and e["x0"] == pic["x0"]
         and e["y0"] == pic["y0"]
     ), None)
 
-    if pic_index is not None:
+    if pic_index is not None: # Si on trouve l'image dans les éléments parsés, on construit le contexte à partir des éléments textuels avant et après
         before = [e["text"] for e in doc_elements[:pic_index] if e["type"] == "text" and e["text"]][-n_before:]
         after = [e["text"] for e in doc_elements[pic_index + 1:] if e["type"] == "text" and e["text"]][:n_after]
-    else:
+    else: # Si on ne trouve pas l'image (cas rare), on retourne un contexte vide avec un message indiquant l'absence de contexte
         before, after = [], []
 
     ctx_before = "\n".join(f"> {t}" for t in before) if before else "> No context available before this image."

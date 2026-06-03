@@ -18,7 +18,7 @@ import httpx
 PROJECT_ROOT = Path(__file__).resolve().parent.parent  
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from prompts.prompts import VLM_PROMPT_CORRECTION_STAGE_3 # charge le prompt depuis le fichier prompts.py du dossier prompts
+from prompts.prompts import VLM_PROMPT_CORRECTION_STAGE_3_TEST_v2 # charge le prompt depuis le fichier prompts.py du dossier prompts
 from utils.config import load_vlm_config
 
 config = load_vlm_config()
@@ -107,7 +107,7 @@ def build_prompt(page_tags: str, page_links: list[dict]) -> str:
     if not links_str:
         links_str = "Aucune URL pour cette page."
 
-    return VLM_PROMPT_CORRECTION_STAGE_3.format(
+    return VLM_PROMPT_CORRECTION_STAGE_3_TEST_v2.format(
         page_tags = page_tags, 
         links_str = links_str,
         )
