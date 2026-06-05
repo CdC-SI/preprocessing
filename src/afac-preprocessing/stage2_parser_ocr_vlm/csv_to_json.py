@@ -46,7 +46,7 @@ def first_row_is_header(csv_path):
         for v in first_row
     )
 DOC_NAME = os.environ.get("DOC_NAME", "")
-tables_dir = Path(f"preprocessing/src/afc-preprocessing/data/output_files/stage2_test/{DOC_NAME}/tables")
+tables_dir = Path(f"preprocessing/src/afac-preprocessing/data/output_files/stage2_test/{DOC_NAME}/tables")
 
 csv_files = list(tables_dir.glob("*.csv"))
 

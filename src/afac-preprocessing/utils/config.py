@@ -53,6 +53,9 @@ def load_vlm_config():
             f"VLM_URL not set. Ensure {dotenv_path} exists and contains VLM_URL."
     )
     
+    GEN_ID = os.environ.get("GEN_ID", "")
+    DOC_NAME = os.environ.get("DOC_NAME", "")
+
     return {
         "CA_PATH": ca_path,
         "VLM_URL": vlm_url,
@@ -61,4 +64,6 @@ def load_vlm_config():
         "EMBEDDING_MODEL_NAME": embedding_model_name,
         "RERANKER_URL": reranker_url,
         "RERANKER_MODEL_NAME": reranker_model_name,
+        "GEN_ID": GEN_ID,
+        "DOC_NAME": DOC_NAME,
     }

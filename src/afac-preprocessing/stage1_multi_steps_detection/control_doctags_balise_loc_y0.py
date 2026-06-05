@@ -12,13 +12,32 @@ config = load_vlm_config()
 
 
 def extract_y0(line: str) -> int | None:
-    # Extrait le y0 (2ème <loc_N>) d'une ligne. Retourne None si absent.
+    """
+    Docstring for extract_y0
+
+    Extrait le y0 (2ème <loc_N>) d'une ligne. Retourne None si absent.
+
+    :param line: Description
+    :type line: str
+    :return: Description
+    :rtype: int | None
+    """
     m = re.search(r"<loc_\d+><loc_(\d+)>", line) # Explication "<loc_\d+><loc_(\d+)>" : on cherche une séquence de deux balises <loc_N><loc_M> où N et M sont des nombres. On capture M (y0) pour l'extraire. Si la ligne contient ce pattern, on retourne y0, sinon None.
     return int(m.group(1)) if m else None
 
 def merge_closing_tags(lines: list[str]) -> list[str]:
-    # Fusionne les balises fermantes seules sur une ligne avec la ligne précédente.
-    # Ex: </unordered_list> seul → collé à la fin de la ligne précédente.
+    """
+    Docstring for merge_closing_tags
+
+    Fusionne les balises fermantes seules sur une ligne avec la ligne précédente.
+    Ex: </unordered_list> seul → collé à la fin de la ligne précédente.
+
+    :param lines: Description
+    :type lines: list[str]
+    :return: Description
+    :rtype: list[str]
+    """
+   
     result = []
     for line in lines:
         stripped = line.strip() 
@@ -30,8 +49,18 @@ def merge_closing_tags(lines: list[str]) -> list[str]:
     return result
 
 def reorder_page(lines: list[str]) -> list[str]:
-    # Trie les lignes d'une page par y0 croissant.
-    # Les lignes sans y0 sont conservées en tête dans leur ordre d'origine.
+    """
+    Docstring for reorder_page
+
+    Trie les lignes d'une page par y0 croissant.
+    Les lignes sans y0 sont conservées en tête dans leur ordre d'origine.
+
+    :param lines: Description
+    :type lines: list[str]
+    :return: Description
+    :rtype: list[str]
+    """
+
     with_y0 = [(extract_y0(l), l) for l in lines]
     no_y0 = [l for y0, l in with_y0 if y0 is None]
     sortable = [(y0, l) for y0, l in with_y0 if y0 is not None]
@@ -39,6 +68,16 @@ def reorder_page(lines: list[str]) -> list[str]:
     return no_y0 + [l for _, l in sortable] # Les lignes sans y0 restent en tête, suivies des lignes triées par y0
 
 def reorder_doctags(input_path: Path, output_path: Path) -> None:
+    """
+    Docstring for reorder_doctags
+    
+    :param input_path: Description
+    :type input_path: Path
+    :param output_path: Description
+    :type output_path: Path
+    :return: Description
+    :rtype: None
+    """
     content = input_path.read_text(encoding = "utf-8") # Vériier le type d'encodage du fichier source UTF-8, Unicode ou autre
 
     # Supprime les balises <doctag> et </doctag> existantes pour retravailler proprement
@@ -75,7 +114,7 @@ def reorder_doctags(input_path: Path, output_path: Path) -> None:
 
 if __name__ == "__main__":
     DOC_NAME = os.environ.get("DOC_NAME", "")
-    project_root = Path(__file__).resolve().parent.parent  # → matthias_guideline_preprocessing/
+    project_root = Path(__file__).resolve().parent.parent  # matthias_guideline_preprocessing/
     base = project_root / "data" / "output_files" / "stage1_test"
     src = base / DOC_NAME / f"{DOC_NAME}.doctags"
     dst = base / DOC_NAME / f"{DOC_NAME}_reordered.doctags"

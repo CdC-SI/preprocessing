@@ -14,11 +14,12 @@ config = load_vlm_config()
 _log = logging.getLogger(__name__)
 
 # Root
+GEN_ID = os.environ.get("GEN_ID", "")
 DOC_NAME = os.environ.get("DOC_NAME", "")
 doctags_path = PROJECT_ROOT / "data" / "output_files" / "stage3_test" / DOC_NAME / f"{DOC_NAME}_reordered_with_tables_pictures_url_vlm.doctags"
 output_dir = PROJECT_ROOT / "data" / "output_files" / "stage4_test"
 output_dir.mkdir(parents=True, exist_ok=True)
-md_path = output_dir / f"{DOC_NAME}.md"
+md_path = output_dir / f"{DOC_NAME}_{GEN_ID}.md"
 
 _log.info("Looking for doctags: %s (exists=%s)", doctags_path, doctags_path.exists())
 
@@ -27,9 +28,11 @@ content = doctags_path.read_text(encoding="utf-8")
 doctags = DocTagsDocument.from_multipage_doctags_and_images(content, None)
 doc = DoclingDocument.load_from_doctags(doctags)
 
+# print(doc) # Affiche la structure du document pour vérification (pages, blocs, lignes, etc.)
 # Exportation en Markdown
 markdown = doc.export_to_markdown()
-print(markdown)
+
+# print(markdown)
 
 # Post-traitement pour gérer les balises de couleur (ex: [[COLOR:red]]texte[[/COLOR]])
 # Function pour remplacer les balises de couleur par des spans HTML
@@ -44,6 +47,17 @@ markdown = re.sub(
     replace_color,
     markdown,
     flags=re.DOTALL,
+)
+
+def replace_underline(match):
+    text = match.group(1)
+    return f'<u>{text}</u>'
+
+markdown = re.sub(
+    r'\\_\\_(.*?)\\_\\_',
+    replace_underline,
+    markdown,
+    flags=re.DOTALL
 )
 
 md_path.write_text(markdown, encoding="utf-8")
