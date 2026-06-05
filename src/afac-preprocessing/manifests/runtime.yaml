@@ -1,0 +1,315 @@
+# AFAC Preprocessing Pipeline — Configuration
+metadata:
+  name: afac-preprocessing-pipeline
+  version: "1.0.0"
+  description: >
+    Pipeline de prétraitement de documents PDF avec OCR, structuration, enrichissement avec le VLM (Qwen 3.5) et export en Markdown.
+     - Étape 1 : Détection d'éléments avec Docling + easyOCR
+     - Étape 2 : Export de tables (CSV + HTML) + description d'images avec le VLM
+     - Étape 3 : Extraction de liens hypertextes + correction avec le VLM
+     - Étape 4 : Conversion finale des doctags en Markdown
+  authors:
+    - name: Matthias_Jutzi
+  created_at: "2026-06-05" # ANNEE-MOIS-JOUR (YYYY-MM-DD)
+  updated_at: "" # à mettre à jour à chaque modification du pipeline
+  tags:
+    - ocr
+    - vlm
+    - doctags
+    - pdf
+    - markdown
+
+# ENVIRONMENT
+environment:
+  variables:
+    DOC_NAME: ""
+    GEN_ID: "" # pour générer plusieurs versions et les comparer 
+    ENABLE_IMAGE_DESCRIPTION: "false"  # désactiver par defaut voir avec Kieran cf. SITAX
+  dotenv_file: ".env.test" # choisir entre .env et .env.test
+
+# GLOBAL PATHS
+paths:
+  project_root: "preprocessing/src/afac-preprocessing"
+  input_dir: "data/input_files"
+  output_base_dir: "data/output_files"
+  stages:
+    stage1: "data/output_files/stage1_test"
+    stage2: "data/output_files/stage2_test"
+    stage3: "data/output_files/stage3_test"
+    stage4: "data/output_files/stage4_test"
+
+# REQUIREMENTS
+requirements:
+  python: ">=3.10"
+  system:
+    - tesseract
+    - poppler-utils
+  pip:
+    - docling>=2.0.0
+    - docling-core>=2.0.0
+    - PyMuPDF>=1.23.0
+    - httpx>=0.27.0
+    - pandas>=2.0.0
+    - jsonlines>=3.1.0
+    - opencv-python>=4.9.0
+    - numpy>=1.26.0
+    - requests>=2.31.0
+  optional:
+    - cuda-toolkit>=11.8 # pour l'accélération GPU avec easyOCR
+
+# VLM CONFIGURATION 
+vlm:
+  model_name: "${VLM_MODEL_NAME}" # à définir dans le .env.test, ex : Qwen/Qwen3.5-122B-A10B-FP8
+  endpoint_url: "${VLM_URL}"
+  ca_cert_path: "${CA_PATH}" # certificat SSL pour les requêtes vers le VLM, à définir dans le .env.test pour la machine WSL 
+  max_tokens: 8192
+  # temperature: 0.0 # si désactiver = 0.6 defaut pour Qwen 3.5 https://huggingface.co/Qwen/Qwen3.5-122B-A10B-FP8/blob/main/generation_config.json
+  timeout_seconds: 120
+  connectivity_check:
+    enabled: true
+    timeout_seconds: 30
+    max_tokens: 10
+
+# PIPELINE STAGES
+pipeline:
+  max_workers: 1
+  stages: 
+    # STAGE 1, PDF Parsing & OCR Detection
+    - id: stage1_docling_easyocr
+      name: "PDF Parsing & easyOCR Docling detection"
+      script: "stage1_multi_steps_detection/pipeline_multietape.py"
+      enabled: true
+      inputs:
+        - name: pdf_file
+          path: "data/input_files/{DOC_NAME}.pdf"
+          format: pdf
+          required: true
+      outputs:
+        - name: doc_doctags
+          path: "data/output_files/stage1_test/{DOC_NAME}/{DOC_NAME}.doctags"
+          format: doctags
+        - name: doc_json
+          path: "data/output_files/stage1_test/{DOC_NAME}/{DOC_NAME}.json"
+          format: json
+        - name: doc_markdown
+          path: "data/output_files/stage1_test/{DOC_NAME}/{DOC_NAME}.md"
+          format: markdown
+        - name: doc_txt
+          path: "data/output_files/stage1_test/{DOC_NAME}/{DOC_NAME}.txt"
+          format: txt
+      parameters: # script pipeline_multietape.py pour trouver les paramètres
+        ocr:
+          engine: EasyOCR
+          languages: ["fr"]
+        table_structure:
+          enabled: true
+          do_cell_matching: true
+        accelerator:
+          num_threads: 4
+          device: CUDA  # CPU | CUDA
+          fallback_to_cpu: true # sur pc developper easyOCR fallback toujours car driver carte graphique pas à jour
+
+    # STAGE 1, tri des doctags par position y0 
+    - id: stage1_reorder
+      name: "Doctags Reordering (y0 sort)"
+      script: "stage1_multi_steps_detection/control_doctags_balise_loc_y0.py"
+      enabled: true
+      depends_on: [stage1_docling_easyocr]
+      inputs:
+        - name: easyocr_doctags
+          path: "data/output_files/stage1_test/{DOC_NAME}/{DOC_NAME}.doctags"
+          format: doctags
+          required: true
+      outputs:
+        - name: doctags_reordered
+          path: "data/output_files/stage1_test/{DOC_NAME}/{DOC_NAME}_reordered.doctags"
+          format: doctags
+
+    # STAGE 1, OpenCV Visual Checker (pour voir les éléments détectés sur les pages par docling)
+    - id: stage1_opencv_check
+      name: "OpenCV Bounding Box Visual Check"
+      script: "stage1_multi_steps_detection/opencv_checker.py"
+      enabled: true
+      depends_on: [stage1b_reorder]
+      inputs:
+        - name: pdf_file
+          path: "data/input_files/{DOC_NAME}.pdf"
+          format: pdf
+          required: true
+        - name: doctags_reordered
+          path: "data/output_files/stage1_test/{DOC_NAME}/{DOC_NAME}_reordered.doctags"
+          format: doctags
+          required: true
+      outputs:
+        - name: detected_elements_by_page
+          path: "data/output_files/stage1_test/opencv_doctags_allpages_{DOC_NAME}/"
+          format: directory
+      parameters: # voir mon script opencv_checker.py
+        dpi: 300
+        norm_max: 500
+
+    # STAGE 2, export table avec docling (csv + html)
+    - id: stage2_table_export
+      name: "Table Export via Docling (CSV + HTML)"
+      script: "stage2_parser_ocr_vlm/export_table_docling.py"
+      enabled: true
+      depends_on: [stage1b_reorder]
+      inputs:
+        - name: pdf_file
+          path: "data/input_files/{DOC_NAME}.pdf"
+          format: pdf
+          required: true
+      outputs:
+        - name: tables_dir
+          path: "data/output_files/stage2_test/{DOC_NAME}/tables/"
+          format: directory
+
+    # STAGE 2, conversion du csv en jsonl
+    - id: stage2_csv_to_jsonl
+      name: "CSV Tables to JSONL"
+      script: "stage2_parser_ocr_vlm/csv_to_json.py"
+      enabled: true
+      depends_on: [stage2_table_export]
+      inputs:
+        - name: tables_dir
+          path: "data/output_files/stage2_test/{DOC_NAME}/tables/"
+          format: directory
+          required: true
+      outputs:
+        - name: jsonl_tables_dir
+          path: "data/output_files/stage2_test/{DOC_NAME}/tables/"
+          format: directory
+
+    # STAGE 2, ajoute le jsonl dans le doctags
+    - id: stage2_inject_tables
+      name: "Inject JSONL Tables into Doctags"
+      script: "stage2_parser_ocr_vlm/load_jsonline_docling.py"
+      enabled: true
+      depends_on: [stage2_csv_to_jsonl, stage1b_reorder]
+      inputs:
+        - name: doctags_reordered
+          path: "data/output_files/stage1_test/{DOC_NAME}/{DOC_NAME}_reordered.doctags"
+          format: doctags
+          required: true
+        - name: jsonl_tables_dir
+          path: "data/output_files/stage2_test/{DOC_NAME}/tables/"
+          format: directory
+          required: true
+      outputs:
+        - name: doctags_with_tables
+          path: "data/output_files/stage2_test/{DOC_NAME}/{DOC_NAME}_reordered_with_tables.doctags"
+          format: doctags
+
+    # STAGE 2, description de l'image avec Qwen, VLM
+    - id: stage2_image_description
+      name: "Image Description via VLM (Qwen 3.5)"
+      script: "stage2_parser_ocr_vlm/description_image_context.py"
+      enabled: true
+      depends_on: [stage2_inject_tables]
+      inputs:
+        - name: pdf_file
+          path: "data/input_files/{DOC_NAME}.pdf"
+          format: pdf
+          required: true
+        - name: doctags_with_tables
+          path: "data/output_files/stage2_test/{DOC_NAME}/{DOC_NAME}_reordered_with_tables.doctags"
+          format: doctags
+          required: true
+      outputs:
+        - name: doctags_with_pictures
+          path: "data/output_files/stage2_test/{DOC_NAME}/{DOC_NAME}_reordered_with_tables_pictures.doctags"
+          format: doctags
+        - name: image_descriptions_md
+          path: "data/output_files/stage2_test/{DOC_NAME}/{DOC_NAME}_image_descriptions.md"
+          format: markdown
+        - name: exported_images_dir
+          path: "data/output_files/stage2_test/{DOC_NAME}/used_images/"
+          format: directory
+      parameters:
+        dpi: 150
+        norm: 500
+        context_window:
+          n_before: 5
+          n_after: 5
+        language: "french"
+        enable_image_description: "${ENABLE_IMAGE_DESCRIPTION}"
+
+    # STAGE 3, extraction des liens hypertextes dans le pdf avec fitz
+    - id: stage3_url_extraction
+      name: "Hyperlink Extraction from PDF"
+      script: "stage3_url_extraction_vlm_parse/get_url.py"
+      enabled: true
+      depends_on: [stage2_image_description]
+      inputs:
+        - name: pdf_file
+          path: "data/input_files/{DOC_NAME}.pdf"
+          format: pdf
+          required: true
+      outputs:
+        - name: hyperlinks_jsonl
+          path: "data/output_files/stage3_test/{DOC_NAME}/hyperlinks_data_{DOC_NAME}.jsonl"
+          format: jsonl
+
+    # STAGE 3, URL Enrichment via VLM
+    - id: stage3_url_vlm_enrichment
+      name: "URL Injection & Doctags Enrichment via VLM"
+      script: "stage3_url_extraction_vlm_parse/url_tuning_vlm_v3.py"
+      enabled: true
+      depends_on: [stage3_url_extraction, stage2_image_description]
+      inputs:
+        - name: pdf_file
+          path: "data/input_files/{DOC_NAME}.pdf"
+          format: pdf
+          required: true
+        - name: doctags_with_pictures
+          path: "data/output_files/stage2_test/{DOC_NAME}/{DOC_NAME}_reordered_with_tables_pictures.doctags"
+          format: doctags
+          required: true
+        - name: hyperlinks_jsonl
+          path: "data/output_files/stage3_test/{DOC_NAME}/hyperlinks_data_{DOC_NAME}.jsonl"
+          format: jsonl
+          required: true
+      outputs:
+        - name: doctags_with_urls
+          path: "data/output_files/stage3_test/{DOC_NAME}/{DOC_NAME}_reordered_with_tables_pictures_url_vlm{GEN_ID}.doctags"
+          format: doctags
+      parameters:
+        max_workers: 1
+        vlm:
+          max_tokens: 8192
+          temperature: 0.0 # si désactiver = 0.6 defaut pour Qwen 3.5 https://huggingface.co/Qwen/Qwen3.5-122B-A10B-FP8/blob/main/generation_config.json
+          timeout_seconds: 120
+
+    # STAGE 4, Export du doctag en markdown (étape finale)
+    - id: stage4_doctags_to_markdown
+      name: "Doctags to Markdown Conversion"
+      script: "stage4_doctags_to_markdown/convert_doctags_to_markdown.py"
+      enabled: true
+      depends_on: [stage3_url_vlm_enrichment]
+      inputs:
+        - name: doctags_final
+          path: "data/output_files/stage3_test/{DOC_NAME}/{DOC_NAME}_reordered_with_tables_pictures_url_vlm.doctags"
+          format: doctags
+          required: true
+      outputs:
+        - name: markdown_final
+          path: "data/output_files/stage4_test/{DOC_NAME}_{GEN_ID}.md"
+          format: markdown
+      parameters:
+        post_processing:
+          color_tags: true # [[COLOR:red]]text[[/COLOR]] devient : <span style="color:red"> pour le markdown
+          underline_tags: true  # \__text\__ devient : <u>text</u>
+        encoding: "utf-8"
+
+# LOGGING pour la console
+logging:
+  level: INFO # DEBUG | INFO | WARNING | ERROR
+  format: "%(asctime)s [%(levelname)s] %(name)s — %(message)s" # exmemple de sortie : 2026-06-05 14:23:18,512 [INFO] document_processor — Pipeline démarré
+  output:
+    console: true # dans la console
+    # file: # pas implémenté pour l'instant, à activer si besoin de logs dans des fichiers
+    #   enabled: false
+    #   path:
+    #   rotation:
+    #     max_bytes:
+    #     backup_count:
