@@ -4,14 +4,25 @@ from pathlib import Path
 import os
 import sys
 
+# Appel des fonctions de configuration pour récupérer les chemins et paramètres nécessaires
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from utils.config import load_vlm_config
 config = load_vlm_config()
 
+
 def load_jsonl_rows(jsonl_path: Path) -> list[dict]:
-    # Charge toutes les lignes d'un fichier JSONL.
+    """
+    Docstring for load_jsonl_rows
+    - Charge toutes les lignes d'un fichier JSONL.
+
+    :param jsonl_path: Description
+    :type jsonl_path: Path
+    :return: Description
+    :rtype: list[dict]
+    """
+  
     rows = []
     with open(jsonl_path, encoding="utf-8") as f: # Vérifier le type d'encodage du fichier source UTF-8, Unicode ou autre
         for line in f:
@@ -20,26 +31,44 @@ def load_jsonl_rows(jsonl_path: Path) -> list[dict]:
                 rows.append(json.loads(line))
     return rows
 
+
 def jsonl_rows_to_block(rows: list[dict]) -> str:
-    # Convertit une liste de dicts en bloc texte JSONL.
+    """
+    Docstring for jsonl_rows_to_block
+    - Convertit une liste de dicts en bloc texte JSONL.
+
+    :param rows: Description
+    :type rows: list[dict]
+    :return: Description
+    :rtype: str
+    """
+    
     return "\n".join(json.dumps(row, ensure_ascii = False) for row in rows)
+
 
 def replace_otsl_with_jsonl(
     doctags_path: Path,
     tables_dir: Path,
     output_path: Path,
 ) -> None:
-    # Remplace chaque balise <otsl>...</otsl> dans le doctags par une balise <text>
-    # contenant le contenu JSONL correspondant.
-    # Les fichiers JSONL sont chargés depuis tables_dir, triés par nom, dans l'ordre
-    # d'apparition des balises <otsl>.
-    content = doctags_path.read_text(encoding="utf-8")
+    """
+    Docstring for replace_otsl_with_jsonl
+    - Remplace chaque balise <otsl>...</otsl> dans le doctags par une balise <text> contenant le contenu JSONL correspondant.
+    - Les fichiers JSONL sont chargés depuis tables_dir, triés par nom, dans l'ordre d'apparition des balises <otsl>.
 
-    # Récupère tous les fichiers JSONL du dossier tables, triés par nom
-    jsonl_files = sorted(tables_dir.glob("*.jsonl"))
+    :param doctags_path: Description
+    :type doctags_path: Path
+    :param tables_dir: Description
+    :type tables_dir: Path
+    :param output_path: Description
+    :type output_path: Path
+    """
+    content = doctags_path.read_text(encoding="utf-8")
+    jsonl_files = sorted(tables_dir.glob("*.jsonl")) # Récupère tous les fichiers JSONL du dossier tables, triés par nom
     if not jsonl_files:
         print(f" Aucun fichier JSONL trouvé dans : {tables_dir}")
-         # Même sans table, on copie le fichier doctags d'entrée en sortie pour la suite de la pipeline
+        
+        # Même sans table, on copie le fichier doctags d'entrée en sortie pour la suite de la pipeline pour passer un script suivant
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(content, encoding="utf-8")
         print(f" Fichier doctags copié sans modification : {output_path}")
@@ -55,21 +84,21 @@ def replace_otsl_with_jsonl(
         rows = load_jsonl_rows(jsonl_path)
         if rows:
             all_tables.append((jsonl_path.name, rows))
-            print(f"  → {jsonl_path.name} : {len(rows)} ligne(s) chargée(s)")
+            print(f"{jsonl_path.name} : {len(rows)} ligne(s) chargée(s)")
 
     # Trouve toutes les balises <otsl>...</otsl> dans l'ordre 
     otsl_pattern = re.compile(r"<otsl>.*?</otsl>", re.DOTALL)
     matches = list(otsl_pattern.finditer(content))
 
     if not matches:
-        print(" Aucune balise <otsl> trouvée dans le doctags.")
+        print("Aucune balise <otsl> trouvée dans le doctags.")
         return
 
     if len(matches) != len(all_tables):
         print(
-            f" {len(matches)} balise(s) <otsl> trouvée(s) "
+            f"{len(matches)} balise(s) <otsl> trouvée(s) "
             f"mais {len(all_tables)} table(s) JSONL disponibles.\n"
-            f" Remplacement dans l'ordre jusqu'à épuisement."
+            f"Remplacement dans l'ordre jusqu'à épuisement."
         )
 
     # Remplacement dans l'ordre
@@ -92,8 +121,8 @@ def replace_otsl_with_jsonl(
         offset += len(new_tag) - (match.end() - match.start()) # Met à jour l'offset pour les remplacements suivants
 
         print(
-            f"  Table {i+1}/{len(matches)} remplacée "
-            f"← {jsonl_name} ({len(rows)} ligne(s), {len(jsonl_block)} chars)"
+            f" Table {i+1}/{len(matches)} remplacée "
+            f"{jsonl_name} ({len(rows)} ligne(s), {len(jsonl_block)} chars)"
         )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -101,7 +130,7 @@ def replace_otsl_with_jsonl(
     print(f"\n Doctags enrichi sauvegardé : {output_path}")
 
 if __name__ == "__main__":
-    # Root et sorties
+    # Root et sortie
     DOC_NAME = os.environ.get("DOC_NAME", "")
     PROJECT_ROOT = Path(__file__).resolve().parents[1]
 

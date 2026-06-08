@@ -461,9 +461,7 @@ COMPORTEMENT DÉTERMINISTE
 ====================
 
 Pour une même entrée (DOCTAGS, URLs et image PDF identiques), la sortie doit être strictement identique.
-
 N'effectue aucune modification si aucune correction certaine n'est nécessaire.
-
 Ne reformule jamais.
 Ne réécris jamais un texte déjà correct.
 Ne change jamais un formatage existant s'il correspond déjà au document source.

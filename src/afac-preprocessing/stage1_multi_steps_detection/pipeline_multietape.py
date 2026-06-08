@@ -13,7 +13,7 @@ from docling.datamodel.base_models import InputFormat
 from docling.datamodel.pipeline_options import (
     PdfPipelineOptions,
     TableStructureOptions,
-    EasyOcrOptions,  # explicit EasyOCR
+    EasyOcrOptions,  # Choix de l'ocr ici : EasyOCR
 )
 from docling.document_converter import DocumentConverter, PdfFormatOption
 
@@ -29,14 +29,21 @@ VLM_URL = config["VLM_URL"]
 VLM_MODEL_NAME = config["VLM_MODEL_NAME"]
 _log = logging.getLogger(__name__)
 
+
 def main():
+    """
+    Pipeline de conversion d'un document PDF en différents formats exportables (JSON, Markdown, texte brut, DocTags).
+     - Utilise Docling pour la conversion et l'extraction de la structure du document.
+     - Configure les options de pipeline pour inclure l'OCR (via EasyOCR) et la détection de la structure des tableaux.
+     - Mesure le temps de conversion et exporte les résultats dans un dossier de sortie organisé par nom de document.
+     - Les formats d'export incluent : JSON, Markdown, texte brut et DocTags.
+    """
     # Récupère le nom du document à traiter depuis les variables d'environnement
     DOC_NAME = os.environ.get("DOC_NAME", "")
     project_root = Path(__file__).resolve().parent.parent
     data_folder = project_root / "data" / "input_files"
     input_doc_path = data_folder / f"{DOC_NAME}.pdf"
 
-    # OCR options: force line break preservation
     ocr_options = EasyOcrOptions(lang=["fr"])
 
     pipeline_options = PdfPipelineOptions()
@@ -56,34 +63,34 @@ def main():
         }
     )
 
-    # Métrique de temps de conversion
+    # Métrique de temps de conversion pour le logging
     start_time = time.time() 
     conv_result = doc_converter.convert(input_doc_path)
     end_time = time.time() - start_time
 
     _log.info(f"Document converted in {end_time:.2f} seconds.")
 
-    # Export results
+    # Path des outputs
     output_dir = project_root / "data" / "output_files" / "stage1_test" / DOC_NAME
     output_dir.mkdir(parents=True, exist_ok=True)
     doc_filename = conv_result.input.file.stem
 
-    # Export Docling document JSON format:
+    # Docling pour le json
     with (output_dir / f"{doc_filename}.json").open("w", encoding="utf-8") as fp:
         fp.write(json.dumps(conv_result.document.export_to_dict()))
         print(f"Document JSON exporté : {output_dir / f'{doc_filename}.json'}")
 
-    # Export Text format (plain text via Markdown export):
+    # Docling pour le texte brut
     with (output_dir / f"{doc_filename}.txt").open("w", encoding="utf-8") as fp:
         fp.write(conv_result.document.export_to_markdown())
         print(f"Document texte exporté : {output_dir / f'{doc_filename}.txt'}")
 
-    # Export Markdown format:
+    # Docling pour le markdown
     with (output_dir / f"{doc_filename}.md").open("w", encoding="utf-8") as fp:
         fp.write(conv_result.document.export_to_markdown())
         print(f"Document Markdown exporté : {output_dir / f'{doc_filename}.md'}")
 
-    # Export Document Tags format:
+    # Docling pour le DocTags
     with (output_dir / f"{doc_filename}.doctags").open("w", encoding="utf-8") as fp:
         fp.write(conv_result.document.export_to_doctags())
         print(f"Document DocTags exporté : {output_dir / f'{doc_filename}.doctags'}")

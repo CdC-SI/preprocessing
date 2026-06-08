@@ -1,9 +1,14 @@
+# Support pour réaliser le graphe
+# https://medium.com/@jainsnehasj6/networkx-for-python-a-practical-guide-to-graphs-visualization-and-traversals-35106cfee2ea
+# video Youtube : https://www.youtube.com/watch?v=o5USzpzKm6o
+
 import jsonlines
 import networkx as nx
 from pathlib import Path
 import matplotlib.pyplot as plt
 from pyvis.network import Network
 
+# Root
 project_root = Path(__file__).resolve().parent.parent
 stage3_dir = project_root / "data" / "output_files" / "stage3_test" # Changer chemin si nécessaire
 

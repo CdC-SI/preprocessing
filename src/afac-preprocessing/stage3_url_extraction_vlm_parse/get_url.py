@@ -4,18 +4,32 @@ import jsonlines  # pour sauvegarder les résultats dans un fichier JSONL
 import os
 import sys
 
+# Appel des fonctions de configuration pour récupérer les chemins et paramètres nécessaires
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from utils.config import load_vlm_config
 config = load_vlm_config()
 
-def is_external_link(uri):
-    # On considère comme lien externe les liens commençant par http://, https:// ou mailto:
-    return uri and uri.startswith(("http://", "https://", "mailto:"))
 
-def get_link_text(link, words):
-    # on vérifie quels mots ont leur centre dans ce rectangle pour les associer au lien
+def is_external_link(uri) -> bool:
+    """
+    Docstring for is_external_link
+    - On considère comme lien externe les liens commençant par http://, https:// ou mailto:
+
+    :param uri: Description
+    """
+    return uri and uri.startswith(("http://", "https://", "mailto:")) # retourne true si uri n'est pas None et commence par http://, https:// ou mailto:
+
+
+def get_link_text(link, words) -> str:
+    """
+    Docstring for get_link_text
+    - On vérifie quels mots ont leur centre dans ce rectangle pour les associer au lien
+
+    :param link: Description
+    :param words: Description
+    """
     rect = link.get("from", None) # "from" contient les coordonnées du rectangle du lien (cf. voir jsonl de sortie stage 3)
     if not rect:
         return "No text"
@@ -27,16 +41,30 @@ def get_link_text(link, words):
     ]
     return " ".join(link_words).strip() if link_words else "No text"
 
-def serialize_link(link):
-    # fitz.Rect n'est pas directement sérialisable en JSON, on le convertit en liste de coordonnées
+
+def serialize_link(link) -> dict:
+    """
+    Docstring for serialize_link
+    - fitz.Rect n'est pas directement sérialisable en JSON, on le convertit en liste de coordonnées
+    - On retourne une copie du dict du lien avec "from" converti en liste si c'est un fitz.Rect, 
+    pour pouvoir le sauvegarder dans un format JSONL.
+    
+    :param link: Description
+    """
     link_serializable = link.copy()
     if "from" in link_serializable and isinstance(link_serializable["from"], fitz.Rect):
         link_serializable["from"] = list(link_serializable["from"])
     return link_serializable
 
-def extract_url_links(pdf_path):
-    # Ouvre le PDF et extrait les liens URI de chaque page, 
-    # en associant le texte des mots qui se trouvent dans le rectangle du lien
+
+def extract_url_links(pdf_path) -> list[dict]:
+    """
+    Docstring for extract_url_links
+    - Ouvre le PDF et extrait les liens URI de chaque page, 
+    en associant le texte des mots qui se trouvent dans le rectangle du lien
+
+    :param pdf_path: Description
+    """
     doc = fitz.open(pdf_path)
     results = []
 
@@ -61,7 +89,7 @@ def extract_url_links(pdf_path):
     return results
 
 # Root
-DOC_NAME = os.environ.get("DOC_NAME", "") # CHANGER SELON LES TESTS
+DOC_NAME = os.environ.get("DOC_NAME", "")
 project_root = Path(__file__).resolve().parent.parent
 pdf_path = project_root / "data" / "input_files" / f"{DOC_NAME}.pdf"
 hyperlink_data_path = project_root / "data" / "output_files" / "stage3_test" / DOC_NAME / f"hyperlinks_data_{DOC_NAME}.json"

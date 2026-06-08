@@ -23,38 +23,52 @@ md_path = output_dir / f"{DOC_NAME}_{GEN_ID}.md"
 
 _log.info("Looking for doctags: %s (exists=%s)", doctags_path, doctags_path.exists())
 
-# Conversion via Docling
 content = doctags_path.read_text(encoding="utf-8")
-doctags = DocTagsDocument.from_multipage_doctags_and_images(content, None)
+doctags = DocTagsDocument.from_multipage_doctags_and_images(content, None) # Conversion via Docling
 doc = DoclingDocument.load_from_doctags(doctags)
 
-# print(doc) # Affiche la structure du document pour vérification (pages, blocs, lignes, etc.)
-# Exportation en Markdown
-markdown = doc.export_to_markdown()
+# print(doc) # Affiche la structure du document
+markdown = doc.export_to_markdown() # Exportation en Markdown
+# print(markdown) # Affiche le Markdown généré
 
-# print(markdown)
 
-# Post-traitement pour gérer les balises de couleur (ex: [[COLOR:red]]texte[[/COLOR]])
-# Function pour remplacer les balises de couleur par des spans HTML
-def replace_color(match):
+def replace_color(match) -> str:
+    """
+    Docstring for replace_color
+    - Remplace les balises de couleur personnalisées [[COLOR:color]]texte[[/COLOR]] 
+    par des spans HTML <span style="color:color">texte</span> pour que la couleur soit prise en compte dans le Markdown final.
+
+    :param match: Description
+    :return: Description
+    :rtype: str
+    """
     color = match.group(1)
     text = match.group(2)
     return f'<span style="color:{color}">{text}</span>'
 
-# Regex pour trouver les balises de couleur et les remplacer par des spans HTML
 markdown = re.sub(
-    r'\[\[COLOR:([^\]]+)\]\](.*?)\[\[/COLOR\]\]',
+    r'\[\[COLOR:([^\]]+)\]\](.*?)\[\[/COLOR\]\]', # Regex pour trouver les balises de couleur et les remplacer par des spans HTML
     replace_color,
     markdown,
     flags=re.DOTALL,
 )
 
-def replace_underline(match):
+
+def replace_underline(match) -> str:
+    """
+    Docstring for replace_underline
+    - Remplace les balises de soulignement personnalisées __texte__ par des balises HTML <u>texte</u> 
+    pour que le soulignement soit pris en compte dans le Markdown final.
+
+    :param match: Description
+    :return: Description
+    :rtype: str
+    """
     text = match.group(1)
     return f'<u>{text}</u>'
 
 markdown = re.sub(
-    r'\\_\\_(.*?)\\_\\_',
+    r'\\_\\_(.*?)\\_\\_', # Regex pour trouver les balises de soulignement et les remplacer par des balises HTML <u>
     replace_underline,
     markdown,
     flags=re.DOTALL

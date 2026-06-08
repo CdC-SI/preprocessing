@@ -36,14 +36,21 @@ norm_max = 500
 
 # https://docling-project.github.io/docling/reference/pipeline_options/#docling.datamodel.pipeline_options.KserveV2OcrOptions.model_version
 
-def parse_doctags_boxes(doctags_path):
-    # Parse les .doctags pour extraire les boxes et leurs tags associés, organisés par page.
+
+def parse_doctags_boxes(doctags_path) -> dict:
+    """
+    Docstring for parse_doctags_boxes
+    - Parse les .doctags pour extraire les boxes et leurs tags associés, organisés par page.
+
+    :param doctags_path: Description
+    :return: Description
+    :rtype: dict
+    """
     boxes_by_page = {} # Dictionnaire : { page_num: [(x0, y0, x1, y1, tag), ...], ... }
     current_page = 0
     with open(doctags_path, "r", encoding="utf-8") as f: # "r" pour lecture, "utf-8" pour s'assurer de lire correctement les caractères spéciaux
         for line in f:
-            # Nettoie les balises globales
-            line = line.replace("<doctag>", "").replace("</doctag>", "").strip()
+            line = line.replace("<doctag>", "").replace("</doctag>", "").strip() # Nettoie les balises globales
             if not line:
                 continue
             

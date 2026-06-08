@@ -1,4 +1,4 @@
-### https://docling-project.github.io/docling/examples/export_tables/
+# https://docling-project.github.io/docling/_generated/examples/export_tables/
 import logging
 import time
 from pathlib import Path
@@ -7,6 +7,7 @@ import pandas as pd
 from docling.document_converter import DocumentConverter
 import sys
 
+# Appel des fonctions de configuration pour récupérer les chemins et paramètres nécessaires
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -15,14 +16,15 @@ config = load_vlm_config()
 
 _log = logging.getLogger(__name__)
 
+
 def main():
 
     # Root
-    DOC_NAME = os.environ.get("DOC_NAME", "") # CHANGER SELON LES TESTS
+    DOC_NAME = os.environ.get("DOC_NAME", "")
     project_root = Path(__file__).resolve().parent.parent
     data_folder = project_root / "data" / "input_files"
-    input_doc_path = data_folder / f"{DOC_NAME}.pdf" # CHANGER CHEMIN POUR CHAQUE TEST
-    output_dir = project_root / "data" / "output_files" / "stage2_test" / DOC_NAME / "tables" # CHANGER CHEMIN POUR CHAQUE TEST
+    input_doc_path = data_folder / f"{DOC_NAME}.pdf"
+    output_dir = project_root / "data" / "output_files" / "stage2_test" / DOC_NAME / "tables"
     output_dir.mkdir(parents=True, exist_ok=True)
     doc_converter = DocumentConverter()
 
@@ -31,18 +33,18 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
     doc_filename = conv_res.input.file.stem
 
-    # Export tables
+    # Export les tables extraites du document dans différents formats (CSV, HTML) avec Docling
     for table_ix, table in enumerate(conv_res.document.tables):
         table_df: pd.DataFrame = table.export_to_dataframe(doc=conv_res.document)
         print(f"## Table {table_ix}")
         print(table_df.to_markdown())
 
-        # Save the table as CSV
+        # Sauvegarde la table au format CSV
         element_csv_filename = output_dir / f"{doc_filename}-table-{table_ix + 1}.csv"
         _log.info(f"Saving CSV table to {element_csv_filename}")
         table_df.to_csv(element_csv_filename)
 
-        # Save the table as HTML
+        # Sauvegarde la table au format HTML
         element_html_filename = output_dir / f"{doc_filename}-table-{table_ix + 1}.html"
         _log.info(f"Saving HTML table to {element_html_filename}")
         with element_html_filename.open("w") as fp:

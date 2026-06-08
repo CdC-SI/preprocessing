@@ -10,6 +10,7 @@ import fitz # PyMuPDF
 import requests
 import sys
 
+# Appel des fonctions de configuration pour récupérer les chemins et paramètres nécessaires
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -37,7 +38,15 @@ DOC_IMAGE_DESCRIPTION: dict[str, bool] = {
 }
 
 def is_image_description_enabled(doc_name: str) -> bool:
-    # Retourne True si la description VLM est activée pour ce document.
+    """
+    Docstring for is_image_description_enabled
+    - Retourne True si la description VLM est activée pour ce document.
+
+    :param doc_name: Description
+    :type doc_name: str
+    :return: Description
+    :rtype: bool
+    """
     return DOC_IMAGE_DESCRIPTION.get(doc_name, _GLOBAL_SWITCH)
 
 # Constantes
@@ -72,14 +81,34 @@ TEXT_TAGS = {
     "page_header", "page_footer",
 }
 
+
 def remove_picture_tags(content: str) -> str:
-    # Supprime les balises <picture> du contenu pour ne pas les inclure dans le contexte textuel. si on skip la description d'image
+    """
+    Docstring for remove_picture_tags
+    - Supprime les balises <picture> du contenu pour ne pas les inclure dans le contexte textuel. si on skip la description d'image
+
+    :param content: Description
+    :type content: str
+    :return: Description
+    :rtype: str
+    """
     return re.sub(r'<picture><loc_\d+><loc_\d+><loc_\d+><loc_\d+></picture>', '', content)
+
 
 # ÉTAPE 1 — Parsing du doctags
 def parse_picture_tags(doctags_path: Path) -> tuple[list[dict], str]:
-    # Retourne la liste des <picture> et le contenu brut du doctags. 
-    # Cette fonction parse les balises du doctags pour extraire les éléments textuels et les images avec leurs coordonnées, en conservant l'ordre d'apparition pour le contexte.
+    """
+    Docstring for parse_picture_tags
+    - Retourne la liste des <picture> et le contenu brut du doctags. 
+    - Cette fonction parse les balises du doctags pour extraire les éléments textuels et les images avec leurs coordonnées, 
+    en conservant l'ordre d'apparition pour le contexte.
+   
+
+    :param doctags_path: Description
+    :type doctags_path: Path
+    :return: Description
+    :rtype: tuple[list[dict], str]
+    """
     content = doctags_path.read_text(encoding="utf-8") # Vériier le type d'encodage du fichier source UTF-8, Unicode ou autre
     pictures = []
     page = 0
@@ -106,8 +135,16 @@ def parse_picture_tags(doctags_path: Path) -> tuple[list[dict], str]:
 
 
 def extract_document_elements(doctags_path: Path) -> list[dict]:
-    # Parse tous les éléments (textes + images) dans l'ordre d'apparition.
-    # Cette fonction est utilisée pour construire le contexte textuel autour de chaque image.
+    """
+    Docstring for extract_document_elements
+    - Parse tous les éléments (textes + images) dans l'ordre d'apparition.
+    - Cette fonction est utilisée pour construire le contexte textuel autour de chaque image.
+
+    :param doctags_path: Description
+    :type doctags_path: Path
+    :return: Description
+    :rtype: list[dict]
+    """
     content = doctags_path.read_text(encoding="utf-8") # Vériier le type d'encodage du fichier source UTF-8, Unicode ou autre
     elements = []
     page = 0
@@ -150,8 +187,26 @@ def extract_document_elements(doctags_path: Path) -> list[dict]:
     _log.info("OK %d élément(s) total parsé(s) dans le doctags", len(elements))
     return elements
 
+
 def build_context(pic: dict, doc_elements: list, n_before: int, n_after: int) -> tuple[str, str]:
-    # Retourne le contexte textuel avant/après une image.
+    """
+    Docstring for build_context
+    - Retourne le contexte textuel avant/après une image.
+    - Cette fonction construit le contexte textuel autour d'une image donnée en recherchant sa position dans la liste des éléments parsés du doctags, 
+    puis en récupérant les éléments textuels qui la précèdent et la suivent.
+
+    :param pic: Description
+    :type pic: dict
+    :param doc_elements: Description
+    :type doc_elements: list
+    :param n_before: Description
+    :type n_before: int
+    :param n_after: Description
+    :type n_after: int
+    :return: Description
+    :rtype: tuple[str, str]
+    """
+    
     pic_index = next((
         idx for idx, e in enumerate(doc_elements) # On cherche l'index de l'image dans la liste des éléments parsés pour pouvoir récupérer les éléments textuels avant et après
         if e["type"] == "picture"
@@ -170,7 +225,7 @@ def build_context(pic: dict, doc_elements: list, n_before: int, n_after: int) ->
     ctx_after = "\n".join(f"> {t}" for t in after) if after else "> No context available after this image."
     return ctx_before, ctx_after
 
-# Export des PNG (nommés avec les coordonnées du doctags)
+
 def export_picture_images(
     pdf_path: Path,
     pictures: list[dict],
@@ -179,6 +234,26 @@ def export_picture_images(
     norm: int = NORM,
     dpi: int = DPI,
 ) -> None:
+    """
+    Docstring for export_picture_images
+    - Export des PNG (nommés avec les coordonnées du doctags) pour chaque balise <picture> trouvée, à partir du PDF source.
+    - Cette fonction ouvre le PDF source, parcourt la liste des balises <picture> avec leurs coordonnées, 
+    extrait la zone correspondante de chaque page, et sauvegarde cette zone en tant qu'image PNG dans le répertoire de sortie, 
+    avec un nom de fichier basé sur les coordonnées du doctags pour faciliter le mapping avec les balises <picture>.
+
+    :param pdf_path: Description
+    :type pdf_path: Path
+    :param pictures: Description
+    :type pictures: list[dict]
+    :param doc_name: Description
+    :type doc_name: str
+    :param output_dir: Description
+    :type output_dir: Path
+    :param norm: Description
+    :type norm: int
+    :param dpi: Description
+    :type dpi: int
+    """
     output_dir.mkdir(parents=True, exist_ok=True)
     doc = fitz.open(str(pdf_path))
     _log.info("Export des PNG dans : %s", output_dir)
@@ -201,10 +276,25 @@ def export_picture_images(
     doc.close()
     _log.info("OK %d PNG exporté(s)", len(pictures))
 
+
 # Crop en mémoire + mise en queue + appel VLM direct
 def crop_to_b64(pdf_doc: fitz.Document, pic: dict, norm: int = NORM, dpi: int = DPI) -> str:
-    # Crop une image du PDF et retourne le base64 en mémoire.
-    # https://docs.nvidia.com/nim/vision-language-models/latest/vision-content-safety.html
+    """
+    Docstring for crop_to_b64
+    - Crop une image du PDF et retourne le base64 en mémoire.
+    - https://docs.nvidia.com/nim/vision-language-models/latest/vision-content-safety.html
+
+    :param pdf_doc: Description
+    :type pdf_doc: fitz.Document
+    :param pic: Description
+    :type pic: dict
+    :param norm: Description
+    :type norm: int
+    :param dpi: Description
+    :type dpi: int
+    :return: Description
+    :rtype: str
+    """
     page = pdf_doc[pic["page"]]
     pw, ph = page.rect.width, page.rect.height
     pix = page.get_pixmap(dpi=dpi, clip=fitz.Rect(
@@ -214,7 +304,20 @@ def crop_to_b64(pdf_doc: fitz.Document, pic: dict, norm: int = NORM, dpi: int = 
     return base64.b64encode(pix.tobytes("png")).decode("utf-8")
 
 def describe_image_b64(image_b64: str, prompt: str) -> str:
-    # Envoie une image (base64) + prompt au VLM et retourne la description.
+    """
+    Docstring for describe_image_b64
+    - Envoie une image (base64) + prompt au VLM et retourne la description.
+    - Cette fonction construit la payload pour l'API du VLM en incluant le prompt contextualisé et l'image encodée en base64, 
+    puis envoie la requête POST à l'endpoint du VLM, et retourne la description générée par le modèle. 
+    En cas d'erreur, elle log l'erreur et retourne une chaîne vide.
+
+    :param image_b64: Description
+    :type image_b64: str
+    :param prompt: Description
+    :type prompt: str
+    :return: Description
+    :rtype: str
+    """
     payload = {
         "model": VLM_MODEL_NAME,
         "messages": [{
@@ -238,8 +341,15 @@ def describe_image_b64(image_b64: str, prompt: str) -> str:
 _results: dict[int, dict] = {}
 _results_lock = threading.Lock()
 
+
 def _vlm_worker(task_queue: queue.Queue) -> None:
-    # Cette fonction tourne dans un thread séparé, consomme les tâches d'images à traiter, appelle le VLM et stocke les résultats dans _results.
+    """
+    Docstring for _vlm_worker
+    - Fonction qui tourne dans un thread séparé pour consommer les tâches d'images à traiter, appeler le VLM et stocker les résultats.
+
+    :param task_queue: Description
+    :type task_queue: queue.Queue
+    """
     while True:
         task: ImageTask | None = task_queue.get()
         if task is None:
@@ -277,9 +387,30 @@ def describe_all_pictures(
     n_before: int = N_BEFORE,
     n_after:  int = N_AFTER,
 ) -> dict[int, dict]:
-    # Controle le switch global et par document pour activer ou désactiver la description des images.
-    # Si désactivé, retourne un dict avec des descriptions vides (balises <picture> conservées). 
-    # Si activé, lance le processus de description avec contexte et VLM.
+    """
+    Docstring for describe_all_pictures
+    - Controle le switch global et par document pour activer ou désactiver la description des images.
+    - Si désactivé, retourne un dict avec des descriptions vides (balises <picture> conservées). 
+    - Si activé, lance le processus de description avec contexte et VLM.
+    - Crop chaque image en mémoire, construit le prompt contextualisé,
+    - met en queue et envoie au VLM via requests (pas Docling).
+    - Retourne un dict indexé par position (1-based).
+    
+    :param pdf_path: Description
+    :type pdf_path: Path
+    :param pictures: Description
+    :type pictures: list[dict]
+    :param doc_elements: Description
+    :type doc_elements: list[dict]
+    :param doc_name: Description
+    :type doc_name: str
+    :param n_before: Description
+    :type n_before: int
+    :param n_after: Description
+    :type n_after: int
+    :return: Description
+    :rtype: dict[int, dict]
+    """
     if not is_image_description_enabled(doc_name):
         _log.warning("Descriptions VLM désactivées pour '%s' — balises <picture> conservées.", doc_name)
         return {
@@ -293,9 +424,6 @@ def describe_all_pictures(
             for i, pic in enumerate(pictures)
         }
     
-    # Crop chaque image en mémoire, construit le prompt contextualisé,
-    # met en queue et envoie au VLM via requests (pas Docling).
-    # Retourne un dict indexé par position (1-based).
     _results.clear()
     total = len(pictures)
     pdf_doc = fitz.open(str(pdf_path))
@@ -332,8 +460,22 @@ def describe_all_pictures(
     _log.info("OK %d/%d image(s) décrite(s) avec contexte", described, total)
     return dict(_results)
 
-# Remplacement des balises <picture> dans le doctags
+
 def replace_picture_tags(content: str, results: dict[int, dict]) -> str:
+    """
+    Docstring for replace_picture_tags
+    - Remplacement des balises <picture> dans le doctags par les descriptions générées, en fonction des résultats du VLM.
+    - Cette fonction parcourt les résultats des descriptions générées pour chaque image,
+    et remplace les balises <picture> dans le contenu du doctags par les descriptions correspondantes.
+    - Si une description est vide (cas de désactivation ou d'erreur), la balise <picture> est conservée et un warning est loggé.
+
+    :param content: Description
+    :type content: str
+    :param results: Description
+    :type results: dict[int, dict]
+    :return: Description
+    :rtype: str
+    """
     replaced = 0
     for idx in sorted(results.keys()):
         r = results[idx]
@@ -387,8 +529,19 @@ def replace_picture_tags(content: str, results: dict[int, dict]) -> str:
     _log.info(" %d/%d balise(s) <picture> remplacée(s)", replaced, len(results))
     return content
 
-# Export Markdown
+
 def export_descriptions_to_markdown(results: dict[int, dict], doc_name: str, output_path: Path) -> None:
+    """
+    Docstring for export_descriptions_to_markdown
+    - Export Markdown
+
+    :param results: Description
+    :type results: dict[int, dict]
+    :param doc_name: Description
+    :type doc_name: str
+    :param output_path: Description
+    :type output_path: Path
+    """
     total = len(results)
     nb_described = sum(1 for r in results.values() if r["description"])
     nb_missing = total - nb_described
@@ -430,7 +583,7 @@ def export_descriptions_to_markdown(results: dict[int, dict], doc_name: str, out
     output_path.write_text(md_content, encoding="utf-8")
     _log.info("OK - Markdown exporté (%d/%d images décrites) : %s", nb_described, total, output_path)
 
-# PIPELINE PRINCIPAL
+
 def main():
     PROJECT_ROOT = Path(__file__).resolve().parents[1]
     DOC_NAME = os.environ.get("DOC_NAME", "")
@@ -441,6 +594,7 @@ def main():
         DOC_NAME,
     )
 
+    # Root
     pdf_path = PROJECT_ROOT / "data" / "input_files" / f"{DOC_NAME}.pdf"
     doctags_path = PROJECT_ROOT / "data" / "output_files" / "stage2_test" / DOC_NAME / f"{DOC_NAME}_reordered_with_tables.doctags"
     output_path = PROJECT_ROOT / "data" / "output_files" / "stage2_test" / DOC_NAME / f"{DOC_NAME}_reordered_with_tables_pictures.doctags"
@@ -448,7 +602,7 @@ def main():
     images_dir = PROJECT_ROOT / "data" / "output_files" / "stage2_test" / DOC_NAME / "used_images"
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Parsing
+    # Parsing du doctags pour extraire les balises <picture> et les éléments textuels pour le contexte
     _log.info("ÉTAPE 1 — Parsing des balises <picture> + éléments du doctags")
     pictures, content = parse_picture_tags(doctags_path)
     doc_elements = extract_document_elements(doctags_path)
@@ -457,7 +611,7 @@ def main():
         _log.warning("Aucune balise <picture> trouvée, fin du script.")
         return
 
-    # Export PNG
+    # Extrait les images du PDF en PNG à partir des coordonnées des balises <picture> pour les sauvegarder
     _log.info("ÉTAPE 2 — Export des images PNG (coordonnées doctags)")
     export_picture_images(pdf_path, pictures, DOC_NAME, images_dir)
 
@@ -470,18 +624,20 @@ def main():
     enriched_content = replace_picture_tags(content, results)
     if not is_image_description_enabled(DOC_NAME):
         _log.warning("Descriptions VLM désactivées pour '%s' — balises <picture> supprimées.", DOC_NAME)
-        # Remove all <picture> tags
+        
+        # Retire toutes les balises <picutre>
         enriched_content = remove_picture_tags(content)
         output_path.write_text(enriched_content, encoding="utf-8")
         _log.info("OK - Doctags sans images sauvegardé : %s", output_path)
-        # Optionally, skip markdown export or write an empty file
+
+        # Optionnel : créer un Markdown vide pour la cohérence du pipeline, ou le supprimer
         markdown_path.write_text("", encoding="utf-8")
         return
     
     output_path.write_text(enriched_content, encoding="utf-8")
     _log.info("OK - Doctags enrichi sauvegardé : %s", output_path)
 
-    # Export Markdown
+    # Extrait les descriptions dans un Markdown
     _log.info("ÉTAPE 5 — Export des descriptions en Markdown")
     export_descriptions_to_markdown(results, DOC_NAME, markdown_path)
 

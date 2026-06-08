@@ -4,16 +4,23 @@ from pathlib import Path
 import os
 import sys
 
+# Appel des fonctions de configuration pour récupérer les chemins et paramètres nécessaires
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from utils.config import load_vlm_config
 config = load_vlm_config()
 
-def deduplicate_columns(columns):
-    # Docstring for deduplicate_columns
-    # :param columns: Description
-    # ici on ajoute un suffixe numérique aux colonnes dupliquées pour les rendre uniques (ex: "col", "col_2", "col_3", etc.)
+
+def deduplicate_columns(columns) -> list[str]:
+    """
+    Docstring for deduplicate_columns
+    - On ajoute un suffixe numérique aux colonnes dupliquées pour les rendre uniques (ex: "col", "col_2", "col_3", etc.)
+
+    :param columns: Description
+    :return: Description
+    :rtype: list[str]
+    """
     counts = {}
     new_cols = []
     for col in columns:
@@ -25,26 +32,48 @@ def deduplicate_columns(columns):
             new_cols.append(f"{col}_{counts[col]}")
     return new_cols
 
-def safe_row_dict(row):
-    # Convertit une ligne en dict JSON-safe (NaN → None, nombres → string)
+
+def safe_row_dict(row) -> dict:
+    """
+    Docstring for safe_row_dict
+    - Convertit une ligne en dict JSON-safe (NaN → None, nombres → string)
+
+    :param row: Description
+    :return: Description
+    :rtype: dict
+    """
     return {k: (None if pd.isna(v) else str(v)) for k, v in row.items()}
 
-def has_numeric_headers(csv_path):
-    # Vérifie si les noms de colonnes sont numériques (0, 1, 2...) -> vrai header potentiellement en row 1
-    df_peek = pd.read_csv(csv_path, index_col = 0, nrows = 0)
-    return all(str(col).strip().isdigit() for col in df_peek.columns)
 
-def first_row_is_header(csv_path):
-    # Vérifie si la première ligne de données contient des vrais noms de colonnes (texte non numérique)
+def has_numeric_headers(csv_path) -> bool:
+    """
+    Docstring for has_numeric_headers
+    - Vérifie si les noms de colonnes sont numériques (0, 1, 2...) -> vrai header potentiellement en row 1
+
+    :param csv_path: Description
+    """
+    df_peek = pd.read_csv(csv_path, index_col = 0, nrows = 0)
+    return all(str(col).strip().isdigit() for col in df_peek.columns) # retourne True si tous les noms de colonnes sont numériques
+
+
+def first_row_is_header(csv_path) -> bool:
+    """
+    Docstring for first_row_is_header
+    - Vérifie si la première ligne de données contient des vrais noms de colonnes (texte non numérique)
+    - La première ligne est un vrai header si toutes les valeurs sont des chaînes non numériques
+    
+    :param csv_path: Description
+    """
     df_peek = pd.read_csv(csv_path, index_col = 0, nrows = 1)
     if df_peek.empty:
         return False
     first_row = df_peek.iloc[0]
-    # La première ligne est un vrai header si toutes les valeurs sont des chaînes non numériques
+
     return all(
-        isinstance(v, str) and not str(v).replace('.', '').replace('-', '').isdigit()
-        for v in first_row
+        isinstance(v, str) and not str(v).replace('.', '').replace('-', '').isdigit() 
+        for v in first_row # retourne True si v est une chaîne non numérique (en ignorant les points et les tirets pour les nombres négatifs ou à virgule)
     )
+
 DOC_NAME = os.environ.get("DOC_NAME", "")
 tables_dir = Path(f"preprocessing/src/afac-preprocessing/data/output_files/stage2_test/{DOC_NAME}/tables")
 
