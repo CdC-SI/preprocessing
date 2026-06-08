@@ -14,9 +14,17 @@ scripts = [
     "preprocessing/src/afac-preprocessing/stage4_doctags_to_markdown/convert_doctags_to_markdown.py", 
 ]
 
-def update_gen_id(gen_id: int):
-    """Met à jour GEN_ID dans le .env sans toucher aux autres variables."""
-    
+
+def update_gen_id(gen_id: int) -> None:
+    """
+    Docstring for update_gen_id
+    - Met à jour la variable d'environnement GEN_ID dans le fichier .env.test avec la valeur fournie en argument. 
+    - Si la variable GEN_ID existe déjà, elle est remplacée par la nouvelle valeur. 
+    - Sinon, elle est ajoutée à la fin du fichier.
+
+    :param gen_id: Description
+    :type gen_id: int
+    """
     if env_file.exists():
         content = env_file.read_text(encoding="utf-8")
     else:

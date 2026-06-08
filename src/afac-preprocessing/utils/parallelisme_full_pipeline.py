@@ -22,7 +22,16 @@ pdfs = sorted(Path("preprocessing/src/afac-preprocessing/data/input_files").glob
                 key=lambda p: p.name# trier les fichiers PDF par ordre alphabétique de leur nom sans extension
                 )  
 
-def run_pipeline(pdf):
+
+def run_pipeline(pdf) -> str:
+    """
+    Docstring for run_pipeline
+    - Lance la pipeline de traitement pour un document PDF donné en exécutant successivement les scripts définis dans la liste `scripts`.
+
+    :param pdf: Description
+    :return: Description
+    :rtype: str
+    """
     print(f"=== Lancement du traitement du document : {pdf}...") 
     env = os.environ.copy() # copie de l'environnement courant
     env["DOC_NAME"] = pdf.stem  # définir la variable d'environnement DOC_NAME
