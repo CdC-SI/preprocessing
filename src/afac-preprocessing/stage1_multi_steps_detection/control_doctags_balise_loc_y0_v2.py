@@ -11,6 +11,9 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from utils.config import load_vlm_config
 config = load_vlm_config()
 
+TAG_UL_CLOSE = "</unordered_list>"
+TAG_OL_CLOSE = "</ordered_list>"
+
 # Class Block pour stocker les informations d'un bloc de texte extrait des doctags
 @dataclass
 class Block:
@@ -60,13 +63,29 @@ def parse_blocks(content: str) -> list[Block]:
     while i < len(lines):
         line = lines[i]
 
+        # Collect ordered_list as a single block — prevents </ordered_list> (y0=None)
+        # from being hoisted before its own list items during sort_page.
+        if "<ordered_list>" in line:
+            ol_parts = [line]
+            i += 1
+            while i < len(lines):
+                ol_parts.append(lines[i])
+                if "</ordered_list>" in lines[i]:
+                    i += 1
+                    break
+                i += 1
+            ol_text = "\n".join(ol_parts)
+            x0, y0 = extract_xy0(ol_text)
+            blocks.append(Block(raw=ol_text, y0=y0, x0=x0, is_list_item=False))
+            continue
+
         # Expand unordered_list into list_item blocks
         if "<unordered_list>" in line:
             ul_parts = [line]
             i += 1
             while i < len(lines):
                 ul_parts.append(lines[i])
-                if "</unordered_list>" in lines[i]:
+                if TAG_UL_CLOSE in lines[i]:
                     i += 1
                     break
                 i += 1
@@ -164,12 +183,12 @@ def render_blocks(blocks: list[Block]) -> str:
             out.append(b.raw)
         else:
             if in_ul:
-                out.append("</unordered_list>")
+                out.append(TAG_UL_CLOSE)
                 in_ul = False
             out.append(b.raw)
 
     if in_ul:
-        out.append("</unordered_list>")
+        out.append(TAG_UL_CLOSE)
 
     return "\n".join(out)
 

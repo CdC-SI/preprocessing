@@ -17,7 +17,7 @@ scripts = [
     "preprocessing/src/afac-preprocessing/stage4_doctags_to_markdown/convert_doctags_to_markdown.py",   
 ]
 
-pdf = Path("preprocessing/src/afac-preprocessing/data/input_files/Domicilié dans les DOM-TOM, UE.pdf") # CHANGER SELON LES TESTS
+pdf = Path("preprocessing/src/afac-preprocessing/data/input_files/Adhésion traitement.pdf") # CHANGER SELON LES TESTS
 env = os.environ.copy()# copie de l'environnement courant
 env["DOC_NAME"] = pdf.stem  # définir la variable d'environnement DOC_NAME
 
