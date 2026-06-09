@@ -485,3 +485,172 @@ DOCTAGS:
 {page_tags}
 
 """
+
+VLM_PROMPT_CORRECTION_STAGE_3_TEST_light = """
+Tu es un expert qui corrige et enrichit des fichiers DOCTAGS.
+
+Tu reçois :
+1. un DOCTAGS d'une page (avec balises <text>, <list_item>, etc. et coordonnées <loc_X>)
+2. Une liste d'URLs à insérer avec texte d'ancrage
+3. L'image originale de la page
+
+====================
+1. CORRECTION TEXTE
+====================
+Corrige les erreurs comme :
+- apostrophes typographiques → '
+- accents manquants ou faux
+- tirets – — → -
+- espaces en trop ou mots coupés
+- Les caractères OCR parasites (ex: , ) doivent être supprimés lorsqu'ils apparaissent comme du texte OCR erroné
+- Si une checkbox est déjà représentée par une balise doctags dédiée, ne pas ajouter de symbole supplémentaire dans le texte
+
+====================
+2. FORMATAGE TEXTE
+====================
+- Lorsqu'une information manquante est ajoutée, reproduire la disposition (lignes et retours à la ligne) observée dans le PDF.
+- Texte en gras dans PDF, modifier dans le doctag pour faire correspondre **exemple** format markdown
+- Texte sousligné dans PDF, modifier dans le doctag pour faire correspondre __exemple__ format markdown
+- Texte barré dans PDF, modifier dans le doctag pour faire correspondre ~~exemple~~ format markdown
+- Texte en italique dans PDF, modifier dans le doctag pour faire correspondre *exemple* format markdown
+- Ajouter uniquement du texte explicitement visible dans le PDF (aucune inférence, aucune reformulation).
+
+====================
+FORMATAGE ELEMENT EN COULEUR
+====================
+
+Elements en couleur :
+Conserve les couleurs visibles en utilisant exclusivement la syntaxe :
+detected_color = red, green, blue, yellow, etc. (in english)
+[[COLOR:detected_color]]monexemple[[/COLOR]]  
+
+Exemples :
+[[COLOR:detected_color]]Important[[/COLOR]]
+[[COLOR:detected_color]]Information[[/COLOR]]
+[[COLOR:detected_color]]![[/COLOR]]
+[[COLOR:detected_color]]ⓘ[[/COLOR]]
+
+Ne jamais utiliser :
+- <span>
+- <font>
+- CSS inline
+- balises HTML personnalisées
+
+====================
+5. URLS (OBLIGATOIRE)
+====================
+Pour chaque URL :
+- Trouve le texte d'ancrage dans les balises (correspondance approximative uniquement si le sens est clairement identique)
+- Si le texte d'ancrage = contenu entier de la balise → remplace tout le contenu par [texte](url)
+   Exemple: <text><loc_60><loc_168><loc_324><loc_173>Process bpanda</text>
+   Devient: <text><loc_60><loc_168><loc_324><loc_173>[Process bpanda](https://...)</text>
+- Si le texte d'ancrage est une sous-partie → remplace uniquement cette sous-partie
+   Exemple: <text><loc_60><loc_314>Il faut voir art. 1 al 1 LAVS pour...</text>
+   Devient: <text><loc_60><loc_314>Il faut voir [art. 1 al 1 LAVS](https://...) pour...</text>
+- Si le texte n'est pas trouvé → ajoute [texte](url) à la fin du contenu de la balise la plus proche
+- Ne modifie jamais le nom des balises (<text>, <list_item>, etc.)
+- Ne modifie jamais les coordonnées <loc_X>
+- Les liens doivent préserver toute structure Markdown existante (gras, italique, souligné, barré, listes), sans casser ni réordonner les balises internes.
+
+====================
+SORTIE
+====================
+- Retourner uniquement DOCTAGS final corrigé.
+- pas de description d'image
+- Pas d'explication.
+- Pas de bloc markdown ``` ni d'explication hors doctags.
+- Pas de texte autour.
+- Bien contrôler les tables si manquantes ou corrompues, selon le pipeline "3. TABLES ET LISTES"
+- Bien contrôler le texte en gras, italique, souligné, barré et ajouter les balises markdown correspondantes
+- Vérifier la couleur des éléments et les conserver en utilisant la syntaxe [[COLOR:detected_color]]monexemple[[/COLOR]]
+====================
+
+URLS: 
+{links_str}
+
+DOCTAGS:
+{page_tags}
+
+"""
+
+RESUME_PROMPT = """
+Tu es un expert en assurance sociale suisse (AFAC - Assurance Facultative).
+
+Tu reçois le contenu markdown complet d'un document opérationnel interne.
+
+Ta tâche : rédige un résumé factuel et concis du document en 3 à 5 phrases maximum.
+
+Règles :
+- Reste strictement fidèle au contenu du document, sans inférence ni ajout
+- Mentionne le sujet principal, le contexte réglementaire si présent, et les points opérationnels clés
+- Utilise un langage professionnel et neutre
+- Réponds en français
+- Ne commence jamais par "Ce document" ou "Le document"
+
+Retourne uniquement le champ "resume" (une chaîne de texte).
+"""
+
+INTENT_PROMPT_1 = """
+Tu es un expert métier en assurance sociale suisse (AFAC - Assurance Facultative).
+
+Tu reçois le contenu markdown complet d'un document opérationnel interne.
+
+Ta tâche : identifie les intentions métier portées par ce document — c'est-à-dire les objectifs, processus ou décisions que ce document est conçu à soutenir.
+
+Règles :
+- Chaque intent est une phrase courte à l'infinitif (ex : "Traiter une demande d'adhésion tardive")
+- Limite-toi aux intentions explicitement couvertes par le document
+- Entre 3 et 8 intents maximum
+- Réponds en français
+
+Retourne uniquement le champ "intent" (liste de chaînes).
+"""
+
+INTENT_PROMPT_2 = """
+Tu es un expert en gestion des connaissances et documentation opérationnelle.
+
+Tu reçois le contenu markdown complet d'un document interne relatif à l'assurance sociale suisse.
+
+Ta tâche : identifie les cas d'usage et situations professionnelles pour lesquels un collaborateur consulterait ce document.
+
+Règles :
+- Formule chaque intent comme un besoin utilisateur (ex : "Savoir comment modifier une date d'adhésion")
+- Couvre les cas principaux et les cas limites si le document les traite explicitement
+- Entre 3 et 8 intents maximum
+- Réponds en français
+
+Retourne uniquement le champ "intent" (liste de chaînes).
+"""
+
+INTENT_PROMPT_3 = """
+Tu es un expert juridique et réglementaire en droit des assurances sociales suisses.
+
+Tu reçois le contenu markdown complet d'un document opérationnel interne.
+
+Ta tâche : identifie les obligations légales, droits, conditions et règles réglementaires que ce document expose ou applique.
+
+Règles :
+- Formule chaque intent comme une règle ou obligation (ex : "Appliquer le délai légal d'adhésion selon l'art. X")
+- Limite-toi aux éléments explicitement mentionnés dans le document
+- Entre 2 et 6 intents maximum
+- Réponds en français
+
+Retourne uniquement le champ "intent" (liste de chaînes).
+"""
+
+HYQ_PROMPT = """
+Tu es un expert en recherche d'information et en ingénierie RAG (Retrieval-Augmented Generation).
+
+Tu reçois le contenu markdown complet d'un document opérationnel interne relatif à l'assurance sociale suisse.
+
+Ta tâche : génère une liste de questions hypothétiques auxquelles ce document peut répondre de manière directe et factuelle.
+
+Règles :
+- Chaque question doit être autonome, claire et précise
+- Formule les questions comme le ferait un collaborateur ou un agent cherchant une réponse concrète
+- Les questions doivent couvrir les sujets principaux ET les cas particuliers traités dans le document
+- Entre 5 et 12 questions maximum
+- Réponds en français
+
+Retourne uniquement le champ "hyq" (liste de chaînes).
+"""
