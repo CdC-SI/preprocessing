@@ -573,11 +573,56 @@ DOCTAGS:
 
 """
 
+VLM_PROMPT_STAGE4_CHECK = """
+Tu es un expert en contrôle qualité de documents markdown générés automatiquement par un pipeline OCR/VLM.
+
+Tu reçois :
+1. L'image de la PAGE {page_num} (sur {total_pages}) du PDF original
+2. Le markdown COMPLET du document (toutes pages confondues) — fourni comme contexte de référence
+
+Ta tâche : extraire et corriger le contenu de CETTE PAGE UNIQUEMENT en te basant sur l'image.
+Utilise le markdown complet uniquement pour comprendre ce qui a déjà été capturé et comment le corriger.
+
+⚠️ RÈGLE ABSOLUE — TABLEAUX ⚠️
+Dans le markdown fourni, les tableaux sont représentés sous forme de lignes JSON (une par ligne).
+Exemple de tableau correct dans le markdown :
+{{"Version": "1.0", "Date": null, "Description": "Création", "Nom": null}}
+{{"Version": "1.1", "Date": "01.01.2025", "Description": "Mise à jour", "Nom": "GT AM"}}
+
+Tu NE DOIS JAMAIS convertir ces lignes JSON en tableau markdown (| col | col |).
+Si tu vois un tableau dans l'image, copie les lignes JSON correspondantes telles qu'elles apparaissent dans le markdown.
+Ne reformule pas, ne réorganise pas, ne convertis pas. Copie-les à l'identique.
+
+⚠️ RÈGLE ABSOLUE — IMAGES ⚠️
+Tu ne DOIS jamais décrire, mettre un placehorlder ou quoi que se soit si tu détecte une images
+Ignores-les
+
+CORRECTIONS À EFFECTUER (pour cette page uniquement)
+- Texte manquant ou tronqué visible dans l'image mais absent ou incomplet dans le markdown
+- Erreurs OCR : apostrophes, accents, tirets, espaces, caractères parasites
+- Formatage manquant : **gras**, *italique*, <u>souligné</u>, ~~barré~~
+- Couleurs importantes représentées par <span style="color:...">texte</span>
+
+RÈGLES IMPORTANTES
+- Retourne UNIQUEMENT le contenu correspondant à ce qui est visible dans l'image de cette page
+- N'inclus PAS le contenu des autres pages
+- N'ajoute QUE ce qui est explicitement visible dans l'image
+- Ne reformule pas, ne résume pas, ne déduis pas
+- Pas de description des images
+- N'ajoute pas les header / footer / numéro de page s'ils sont présents dans l'image
+
+SORTIE
+Retourne UNIQUEMENT le markdown corrigé correspondant à cette page.
+Pas d'explication, pas de commentaire, pas de balises ```.
+
+MARKDOWN COMPLET DU DOCUMENT (contexte) :
+{full_markdown}
+
+"""
+
 RESUME_PROMPT = """
 Tu es un expert en assurance sociale suisse (AFAC - Assurance Facultative).
-
 Tu reçois le contenu markdown complet d'un document opérationnel interne.
-
 Ta tâche : rédige un résumé factuel et concis du document en 3 à 5 phrases maximum.
 
 Règles :
@@ -592,9 +637,7 @@ Retourne uniquement le champ "resume" (une chaîne de texte).
 
 INTENT_PROMPT_1 = """
 Tu es un expert métier en assurance sociale suisse (AFAC - Assurance Facultative).
-
 Tu reçois le contenu markdown complet d'un document opérationnel interne.
-
 Ta tâche : identifie les intentions métier portées par ce document — c'est-à-dire les objectifs, processus ou décisions que ce document est conçu à soutenir.
 
 Règles :
@@ -608,9 +651,7 @@ Retourne uniquement le champ "intent" (liste de chaînes).
 
 INTENT_PROMPT_2 = """
 Tu es un expert en gestion des connaissances et documentation opérationnelle.
-
 Tu reçois le contenu markdown complet d'un document interne relatif à l'assurance sociale suisse.
-
 Ta tâche : identifie les cas d'usage et situations professionnelles pour lesquels un collaborateur consulterait ce document.
 
 Règles :
@@ -624,9 +665,7 @@ Retourne uniquement le champ "intent" (liste de chaînes).
 
 INTENT_PROMPT_3 = """
 Tu es un expert juridique et réglementaire en droit des assurances sociales suisses.
-
 Tu reçois le contenu markdown complet d'un document opérationnel interne.
-
 Ta tâche : identifie les obligations légales, droits, conditions et règles réglementaires que ce document expose ou applique.
 
 Règles :
@@ -640,9 +679,7 @@ Retourne uniquement le champ "intent" (liste de chaînes).
 
 HYQ_PROMPT = """
 Tu es un expert en recherche d'information et en ingénierie RAG (Retrieval-Augmented Generation).
-
 Tu reçois le contenu markdown complet d'un document opérationnel interne relatif à l'assurance sociale suisse.
-
 Ta tâche : génère une liste de questions hypothétiques auxquelles ce document peut répondre de manière directe et factuelle.
 
 Règles :
