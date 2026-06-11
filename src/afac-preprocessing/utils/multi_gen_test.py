@@ -7,11 +7,12 @@ import os
 import re
 
 # Nombre d'exécutions souhaité
-NB_GENERATIONS = 1  # nombre de génération
+NB_GENERATIONS = 5  # nombre de génération
 
 scripts = [
     "preprocessing/src/afac-preprocessing/stage3_url_extraction_vlm_parse/url_tuning_vlm_v3.py", # Changer selon les version utilisée Base, v2, v3, ...)
     "preprocessing/src/afac-preprocessing/stage4_doctags_to_markdown/convert_doctags_to_markdown.py", 
+    "preprocessing/src/afac-preprocessing/stage4_doctags_to_markdown/markdown_control_vlm.py",
 ]
 
 
@@ -44,7 +45,7 @@ def update_gen_id(gen_id: int) -> None:
 
     env_file.write_text(content, encoding="utf-8")
 
-pdf = Path("preprocessing/src/afac-preprocessing/data/input_files/Domicilié dans les DOM-TOM, UE.pdf")  # CHANGER SELON LES TESTS
+pdf = Path("preprocessing/src/afac-preprocessing/data/input_files/Annulation et retaxation.pdf")  # CHANGER SELON LES TESTS
 env_file = Path(".env.test")
 
 for gen_id in range(1, NB_GENERATIONS + 1):
@@ -75,6 +76,6 @@ for gen_id in range(1, NB_GENERATIONS + 1):
             print(f"Erreur lors de l'exécution de {script}")
             sys.exit(result.returncode)
 
-    print(f"✓ Génération {gen_id} terminée")
+    print(f"Génération {gen_id} terminée")
 
 print("\nToutes les générations ont été exécutées avec succès.")

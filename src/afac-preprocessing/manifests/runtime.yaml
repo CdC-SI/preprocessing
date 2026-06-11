@@ -23,7 +23,9 @@ metadata:
 environment:
   variables:
     DOC_NAME: ""
-    GEN_ID: "" # pour générer plusieurs versions et les comparer 
+    GEN_ID: "" # pour générer plusieurs versions et les comparer
+    DOC_PATH: ""   # stage5 uniquement — chemin relatif dans folder_source/, ex : "Taxation/Annulation et retaxation.pdf"
+    DOC_TITLE: ""  # stage5 uniquement — nom du fichier avec extension, ex : "Annulation et retaxation.pdf"
     ENABLE_IMAGE_DESCRIPTION: "false"  # désactiver par defaut voir avec Kieran cf. SITAX
   dotenv_file: ".env.test" # choisir entre .env et .env.test
 
@@ -37,6 +39,8 @@ paths:
     stage2: "data/output_files/stage2_test"
     stage3: "data/output_files/stage3_test"
     stage4: "data/output_files/stage4_test"
+    stage5: "data/output_files/stage5_test"
+    metadata_output: "data/output_files/metadata"
 
 # REQUIREMENTS
 requirements:
@@ -130,7 +134,7 @@ pipeline:
       name: "OpenCV Bounding Box Visual Check"
       script: "stage1_multi_steps_detection/opencv_checker.py"
       enabled: true
-      depends_on: [stage1b_reorder]
+      depends_on: [stage1_reorder]
       inputs:
         - name: pdf_file
           path: "data/input_files/{DOC_NAME}.pdf"
@@ -153,7 +157,7 @@ pipeline:
       name: "Table Export via Docling (CSV + HTML)"
       script: "stage2_parser_ocr_vlm/export_table_docling.py"
       enabled: true
-      depends_on: [stage1b_reorder]
+      depends_on: [stage1_reorder]
       inputs:
         - name: pdf_file
           path: "data/input_files/{DOC_NAME}.pdf"
@@ -185,7 +189,7 @@ pipeline:
       name: "Inject JSONL Tables into Doctags"
       script: "stage2_parser_ocr_vlm/load_jsonline_docling.py"
       enabled: true
-      depends_on: [stage2_csv_to_jsonl, stage1b_reorder]
+      depends_on: [stage2_csv_to_jsonl, stage1_reorder]
       inputs:
         - name: doctags_reordered
           path: "data/output_files/stage1_test/{DOC_NAME}/{DOC_NAME}_reordered.doctags"
@@ -300,6 +304,73 @@ pipeline:
           color_tags: true # [[COLOR:red]]text[[/COLOR]] devient : <span style="color:red"> pour le markdown
           underline_tags: true  # \__text\__ devient : <u>text</u>
         encoding: "utf-8"
+
+    # STAGE 5, génération et enrichissement des métadonnées (orchestrateur — appelle enhancement + embedding)
+    - id: stage5_metadata_generation
+      name: "Metadata Generation & Enrichment (VLM)"
+      script: "metadata/metadata_generation.py"
+      enabled: true
+      depends_on: [stage4_doctags_to_markdown]
+      # Note : utilise argparse, pas DOC_NAME — appel : python3 metadata_generation.py "{DOC_PATH}"
+      inputs:
+        - name: doc_hierarchy
+          path: "metadata/folder_source/{DOC_PATH}"
+          format: pdf
+          required: true
+        - name: stage4_markdown
+          path: "data/output_files/stage4_test/{DOC_NAME}_vlm_check.md"
+          format: markdown
+          required: true
+        - name: stage1_json
+          path: "data/output_files/stage1_test/{DOC_NAME}/{DOC_NAME}.json"
+          format: json
+          required: true
+        - name: stage2_images_dir
+          path: "data/output_files/stage2_test/{DOC_NAME}/used_images/"
+          format: directory
+        - name: stage3_hyperlinks
+          path: "data/output_files/stage3_test/{DOC_NAME}/hyperlinks_data_{DOC_NAME}.jsonl"
+          format: jsonl
+      outputs:
+        - name: resume_md
+          path: "data/output_files/stage5_test/{DOC_NAME}/resume.md"
+          format: markdown
+        - name: intent_json
+          path: "data/output_files/stage5_test/{DOC_NAME}/intent.json"
+          format: json
+        - name: hyq_json
+          path: "data/output_files/stage5_test/{DOC_NAME}/hyq.json"
+          format: json
+        - name: embedding_json
+          path: "data/output_files/stage5_test/{DOC_NAME}/embedding.json"
+          format: json
+        - name: metadata_csv
+          path: "data/output_files/metadata/{DOC_NAME}_final.csv"
+          format: csv
+      parameters:
+        folder_source: "metadata/folder_source"
+        vlm:
+          max_tokens: 8192
+          timeout_seconds: 120
+
+    # STAGE 5, génération des embeddings des questions HYQ (pipeline indépendant, après stage5_metadata_generation)
+    - id: stage5_hyq_embedding
+      name: "HYQ Questions Embedding"
+      script: "metadata/hyq_embedding_doc.py"
+      enabled: true
+      depends_on: [stage5_metadata_generation]
+      # Note : utilise argparse — appel : python3 hyq_embedding_doc.py "{DOC_NAME}" "{DOC_TITLE}"
+      inputs:
+        - name: hyq_json
+          path: "data/output_files/stage5_test/{DOC_NAME}/hyq.json"
+          format: json
+          required: true
+      outputs:
+        - name: hyq_embeddings_dir
+          path: "data/output_files/stage5_test/{DOC_NAME}/hyq_{DOC_NAME}/"
+          format: directory
+      parameters:
+        doc_title: "{DOC_TITLE}" # nom du fichier avec extension, ex : "Annulation et retaxation.pdf"
 
 # LOGGING pour la console
 logging:

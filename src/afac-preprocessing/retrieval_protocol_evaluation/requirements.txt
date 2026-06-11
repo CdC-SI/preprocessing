@@ -1,38 +1,14 @@
-# requirements.txt pour pipeline de retrieval et extraction documentaire
+# requirements.txt — retrieval_protocol_evaluation
+# Script : test_reranker_embedding.py
+# Versions exactes vérifiées sur l'environnement de développement
 
-# Utilitaires généraux
-python-dotenv==1.2.2
-pillow==12.1.1
-
-# PDF et OCR
-PyMuPDF==1.26.0
-
-# OpenAI API
-openai==2.26.0
-
-# Serving (optionnel, pour déploiement modèle)
-kserve==0.16.0
-
-# NLP et embeddings
-sentence-transformers==2.6.1
-transformers==4.40.2
-torch>=2.0.0
-
-# Similarité, recherche, vectorisation
-faiss-cpu==1.8.0
-
-# Évaluation et ML
+# Métriques d'évaluation (precision, recall, nDCG, MRR)
 scikit-learn==1.4.2
-pandas==2.2.2
-numpy==1.26.4
+numpy==2.4.4
 
-# JSONL et manipulation fichiers
-jsonlines==4.0.0
+# Appels HTTP vers les APIs embedding et reranker
+requests==2.33.1
 
-# Progression et logs
-tqdm==4.66.2
-
-# Pour compatibilité (optionnel)
-typing-extensions>=4.0.0
-
-# (ajoutez ici d'autres dépendances spécifiques à votre pipeline si besoin)
+# Chargement des variables d'environnement (via utils/config.py)
+python-dotenv==1.2.2
+certifi==2026.4.22

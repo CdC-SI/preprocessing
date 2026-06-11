@@ -11,13 +11,14 @@ import httpx
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from prompts.prompts import VLM_PROMPT_STAGE4_CHECK
+from prompts.prompts import VLM_PROMPT_STAGE4_CHECK_EN
 from utils.config import load_vlm_config
 
 config = load_vlm_config()
 CA_PATH = config["CA_PATH"]
 VLM_URL = config["VLM_URL"]
 VLM_MODEL_NAME = config["VLM_MODEL_NAME"]
+
 
 _log = logging.getLogger(__name__)
 
@@ -83,6 +84,7 @@ async def call_vlm_async(image_b64: str, prompt: str) -> str:
             ],
         }],
         "max_tokens": 8192,
+        "temperature": 0.0, # Valeur Qwen par défaut
     }
     async with httpx.AsyncClient(verify=CA_PATH, timeout=180) as client:
         resp = await client.post(VLM_URL, json=payload)
@@ -113,7 +115,7 @@ async def process_page(
         _log.info("Traitement page %d/%d ...", page_num, total_pages)
         try:
             image_b64 = await asyncio.to_thread(pdf_page_to_base64, pdf_path, page_num)
-            prompt = VLM_PROMPT_STAGE4_CHECK.format(
+            prompt = VLM_PROMPT_STAGE4_CHECK_EN.format(
                 page_num=page_num,
                 total_pages=total_pages,
                 full_markdown=full_markdown,
@@ -183,6 +185,6 @@ if __name__ == "__main__":
 
     pdf_path = PROJECT_ROOT / "data" / "input_files" / f"{DOC_NAME}.pdf"
     md_path = PROJECT_ROOT / "data" / "output_files" / "stage4_test" / f"{DOC_NAME}{GEN_ID}.md"
-    output_path = PROJECT_ROOT / "data" / "output_files" / "stage4_test" / f"{DOC_NAME}_vlm_check.md"
+    output_path = PROJECT_ROOT / "data" / "output_files" / "stage4_test" / f"{DOC_NAME}{GEN_ID}_vlm_check.md"
 
     asyncio.run(run(pdf_path, md_path, output_path))

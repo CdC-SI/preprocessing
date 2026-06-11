@@ -1,48 +1,47 @@
+# requirements.txt — pipeline afac-preprocessing
+# Versions exactes vérifiées sur l'environnement de développement
+
+# Stage 1 : multi_steps_detection
+# Conversion PDF → DocTags / Markdown / JSON (Docling + EasyOCR)
 docling==2.93.0
-pandas==3.0.2
-python-dotenv==1.2.2
-wordfreq
-easyocr
-torch
-# # requirements.txt pour pipeline de retrieval et extraction documentaire
-
-# # Utilitaires généraux
-# pillow==12.1.1
+easyocr==1.7.2
+torch==2.11.0
+# Visualisation des boîtes DocTags sur les pages PDF
 opencv-python==4.13.0.92
+numpy==2.4.4
 
-# # PDF et OCR
-PyMuPDF==1.27.2.3
+# Stage 2 : parser_ocr_vlm
+# Export tables Docling → CSV/HTML, conversion CSV → JSONL
+pandas==3.0.2
+tabulate==0.10.0
+# Description images via VLM (appels HTTP synchrones)
+requests==2.33.1
+# Chargement / écriture fichiers JSONL
+jsonlines==4.0.0
 
-# Graphe
+# Stage 3 : url_extraction_vlm_parse
+# Extraction liens PDF + appels VLM asynchrones
+httpx==0.28.1
+
+# Stage 4 : doctags_to_markdown
+# Conversion DocTags → DoclingDocument → Markdown
+docling-core==2.74.1
+
+# Metadata (stage 5)
+# Client OpenAI-compatible (embeddings + structured outputs)
+openai==2.26.0
+pydantic==2.13.4
+
+# graph_url
+# Construction et visualisation du graphe d'URLs
+networkx==3.6.1
 matplotlib==3.10.0
 pyvis==0.3.2
 Jinja2==3.1.6
 
-# OpenAI API
-openai==2.26.0
+# utils/config.py (partagé par tous les stages)
+python-dotenv==1.2.2
+certifi==2026.4.22
 
-# # Serving (optionnel, pour déploiement modèle)
-# kserve==0.16.0
-
-# # NLP et embeddings
-# sentence-transformers==2.6.1
-# transformers==4.40.2
-# torch>=2.0.0
-
-# # Similarité, recherche, vectorisation
-# faiss-cpu==1.8.0
-
-# # Évaluation et ML
-scikit-learn==1.4.2
-numpy==2.4.4
-
-# # JSONL et manipulation fichiers
-jsonlines==4.0.0
-
-# # Progression et logs
-# tqdm==4.66.2
-
-# # Pour compatibilité (optionnel)
-# typing-extensions>=4.0.0
-
-# # (ajoutez ici d'autres dépendances spécifiques à votre pipeline si besoin)
+# PDF (partagé Stage 1, 2, 3, 4, metadata)
+PyMuPDF==1.27.2.3
