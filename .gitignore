@@ -25,7 +25,7 @@ src/afac-preprocessing/data/**
 src/afac-preprocessing/graph_url/graph_output
 src/afac-preprocessing/prompts/__pycache__
 src/afac-preprocessing/utils/__pycache__
-src/afac-preprocessing/metadata/folder_source
-src/afac-preprocessing/metadata/__pycache__
+src/afac-preprocessing/stage5_metadata/folder_source
+src/afac-preprocessing/stage5_metadata/__pycache__
 graphify-out
 src/afac-preprocessing/trash

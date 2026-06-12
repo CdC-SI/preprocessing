@@ -1,39 +1,31 @@
-from pathlib import Path
-from docling_core.types.doc.document import DocTagsDocument, DoclingDocument
-import os
+"""
+Stage 4 - Script de conversion des doctags enrichis en Markdown
+Script 1 : convert_doctags_to_markdown.py
+
+Ce script convertit les doctags enrichis (avec les URL extraites et intégrées) en Markdown,
+en utilisant la bibliothèque Docling pour interpréter les doctags et générer le Markdown final.
+"""
 import logging
-import sys
+import os
 import re
+from pathlib import Path
 
-# Appel des fonctions de configuration pour récupérer les chemins et paramètres nécessaires
+from docling_core.types.doc.document import DocTagsDocument, DoclingDocument
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PROJECT_ROOT))
 
-from utils.config import load_vlm_config
-config = load_vlm_config()
 _log = logging.getLogger(__name__)
-
-# Root
-GEN_ID = os.environ.get("GEN_ID", "")
-DOC_NAME = os.environ.get("DOC_NAME", "")
-doctags_path = PROJECT_ROOT / "data" / "output_files" / "stage3_test" / DOC_NAME / f"{DOC_NAME}_reordered_with_tables_pictures_url_vlm.doctags"
-output_dir = PROJECT_ROOT / "data" / "output_files" / "stage4_test"
-output_dir.mkdir(parents=True, exist_ok=True)
-md_path = output_dir / f"{DOC_NAME}{GEN_ID}.md"
-
-_log.info("Looking for doctags: %s (exists=%s)", doctags_path, doctags_path.exists())
 
 
 def _split_pages(content: str) -> str:
     """
-    Docstring for _split_pages
-    - Si le contenu est un seul bloc <doctag>, le découpe en un bloc par page en utilisant
+    Si le contenu est un seul bloc <doctag>, le découpe en un bloc par page en utilisant
     </page_footer> comme délimiteur, ce que from_multipage_doctags_and_images attend.
-    - Sans ce découpage, Docling s'arrête après la première page et ignore le reste.
+    Sans ce découpage, Docling s'arrête après la première page et ignore le reste.
 
-    :param content: Description
+    :param content: contenu doctags brut
     :type content: str
-    :return: Description
+    :return: contenu découpé en blocs <doctag> par page
     :rtype: str
     """
     if content.count("<doctag>") > 1:
@@ -52,14 +44,13 @@ def _split_pages(content: str) -> str:
 
 def _hoist_misplaced_tags(content: str) -> str:
     """
-    Docstring for _hoist_misplaced_tags
-    - Docling ne peut pas gérer les <section_header_level_N> ou <unordered_list> imbriqués
+    Docling ne peut pas gérer les <section_header_level_N> ou <unordered_list> imbriqués
     dans un <ordered_list>. Il les écrase dans la liste, perdant les en-têtes et les frontières de section.
-    - Extrait ces balises des blocs <ordered_list> et les place juste après le </ordered_list> correspondant.
+    Extrait ces balises des blocs <ordered_list> et les place juste après le </ordered_list> correspondant.
 
-    :param content: Description
+    :param content: contenu doctags
     :type content: str
-    :return: Description
+    :return: contenu avec les balises mal placées extraites
     :rtype: str
     """
     HOIST = re.compile(
@@ -86,59 +77,71 @@ def _hoist_misplaced_tags(content: str) -> str:
     return OL.sub(_fix_ol, content)
 
 
-content = doctags_path.read_text(encoding="utf-8")
-content = _split_pages(content)
-content = _hoist_misplaced_tags(content)
-doctags = DocTagsDocument.from_multipage_doctags_and_images(content, None) # Conversion via Docling
-doc = DoclingDocument.load_from_doctags(doctags)
-
-# print(doc) # Affiche la structure du document
-markdown = doc.export_to_markdown() # Exportation en Markdown
-# print(markdown) # Affiche le Markdown généré
-
-
-def replace_color(match) -> str:
+def _replace_color(match: re.Match) -> str:
     """
-    Docstring for replace_color
-    - Remplace les balises de couleur personnalisées [[COLOR:color]]texte[[/COLOR]] 
-    par des spans HTML <span style="color:color">texte</span> pour que la couleur soit prise en compte dans le Markdown final.
+    Remplace les balises personnalisées [[COLOR:color]]texte[[/COLOR]]
+    par des spans HTML <span style="color:color">texte</span>.
 
-    :param match: Description
-    :return: Description
+    :param match: résultat de re.sub avec groupes (color, texte)
+    :return: span HTML avec la couleur appliquée
     :rtype: str
     """
     color = match.group(1)
     text = match.group(2)
     return f'<span style="color:{color}">{text}</span>'
 
-markdown = re.sub(
-    r'\[\[COLOR:([^\]]+)\]\](.*?)\[\[/COLOR\]\]', # Regex pour trouver les balises de couleur et les remplacer par des spans HTML
-    replace_color,
-    markdown,
-    flags=re.DOTALL,
-)
 
-
-def replace_underline(match) -> str:
+def _replace_underline(match: re.Match) -> str:
     """
-    Docstring for replace_underline
-    - Remplace les balises de soulignement personnalisées __texte__ par des balises HTML <u>texte</u> 
-    pour que le soulignement soit pris en compte dans le Markdown final.
+    Remplace les balises de soulignement personnalisées \\_\\_texte\\_\\_
+    par des balises HTML <u>texte</u>.
 
-    :param match: Description
-    :return: Description
+    :param match: résultat de re.sub avec groupe (texte)
+    :return: balise HTML <u> avec le texte souligné
     :rtype: str
     """
-    text = match.group(1)
-    return f'<u>{text}</u>'
+    return f'<u>{match.group(1)}</u>'
 
-markdown = re.sub(
-    r'\\_\\_(.*?)\\_\\_', # Regex pour trouver les balises de soulignement et les remplacer par des balises HTML <u>
-    replace_underline,
-    markdown,
-    flags=re.DOTALL
-)
 
-md_path.write_text(markdown, encoding="utf-8")
-_log.info("Markdown généré : %s", md_path)
-print(f"Markdown généré : {md_path}")
+def main() -> None:
+    GEN_ID = os.environ.get("GEN_ID", "")
+    DOC_NAME = os.environ.get("DOC_NAME", "")
+
+    doctags_path = (
+        PROJECT_ROOT / "data" / "output_files" / "stage3_test"
+        / DOC_NAME / f"{DOC_NAME}_reordered_with_tables_pictures_url_vlm.doctags"
+    )
+    output_dir = PROJECT_ROOT / "data" / "output_files" / "stage4_test"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    md_path = output_dir / f"{DOC_NAME}{GEN_ID}.md"
+
+    _log.info("Looking for doctags: %s (exists=%s)", doctags_path, doctags_path.exists())
+
+    content = doctags_path.read_text(encoding="utf-8")
+    content = _split_pages(content)
+    content = _hoist_misplaced_tags(content)
+
+    doctags = DocTagsDocument.from_multipage_doctags_and_images(content, None)  # Conversion via Docling
+    doc = DoclingDocument.load_from_doctags(doctags)
+    markdown = doc.export_to_markdown()
+
+    markdown = re.sub(
+        r'\[\[COLOR:([^\]]+)\]\](.*?)\[\[/COLOR\]\]',  # balises couleur personnalisées → spans HTML
+        _replace_color,
+        markdown,
+        flags=re.DOTALL,
+    )
+    markdown = re.sub(
+        r'\\_\\_(.*?)\\_\\_',  # balises soulignement personnalisées → <u>
+        _replace_underline,
+        markdown,
+        flags=re.DOTALL,
+    )
+
+    md_path.write_text(markdown, encoding="utf-8")
+    _log.info("Markdown généré : %s", md_path)
+    print(f"Markdown généré : {md_path}")
+
+
+if __name__ == "__main__":
+    main()

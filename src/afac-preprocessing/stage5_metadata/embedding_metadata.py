@@ -1,4 +1,6 @@
 """
+Stage 5 - Script qui génère l'embedding du markdown stage4 pour chaque document, et écrit le résultat dans stage5.
+Script 3 : embedding_metadata.py
 Génère l'embedding du contenu markdown (stage 4) de chaque document via un modèle d'embedding,
 écrit le vecteur dans stage5/<doc_name>/embedding.json, et retourne le vecteur
 sous forme de chaîne CSV (ex: "0.4, 0.8, 1.5") pour la colonne EMBEDDING du CSV final.
@@ -42,9 +44,8 @@ client = OpenAI(
 
 def _read_stage4(stage4_dir: Path, doc_name: str) -> str:
     """
-    Lit le markdown du stage 4 pour un document donné. 
-    Si un fichier unique existe, le lit. Sinon, lit tous les chunks et les concatène.
-    
+    Lit le markdown du stage 4 pour un document donné.
+
     :param stage4_dir: Dossier stage4
     :type stage4_dir: Path
     :param doc_name: Nom du document sans extension
@@ -52,12 +53,9 @@ def _read_stage4(stage4_dir: Path, doc_name: str) -> str:
     :return: Contenu markdown du document
     :rtype: str
     """
-    single = stage4_dir / f"{doc_name}.md"
+    single = stage4_dir / f"{doc_name}_vlm_check.md"
     if single.exists():
         return single.read_text(encoding="utf-8")
-    chunks = sorted(stage4_dir.glob(f"{doc_name}_*.md"))
-    if chunks:
-        return "\n\n".join(p.read_text(encoding="utf-8") for p in chunks)
     return ""
 
 

@@ -1,26 +1,34 @@
+"""
+Stage 1 - Multi-étapes de détection : Pipeline de conversion de documents avec Docling
+Script 3 : control_doctags_balise_loc_y0_v2.py
+
+Le pipeline docling peut se troumper dans l'ordre des blocs de texte extraits, notamment pour les blocs de texte qui ont des coordonnées y0 similaires ou absentes.
+Ce script a pour objectif de réordonner les blocs de texte extraits dans les fichiers .doctags,
+en fonction de leurs coordonnées y0 (et x0 pour départager les blocs avec le même y0)
+"""
 from pathlib import Path
-import re
 import os
+import re
 import sys
+import logging
+from pathlib import Path
 from dataclasses import dataclass
 
 # Appel des fonctions de configuration pour récupérer les chemins et paramètres nécessaires
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from utils.config import load_vlm_config
-config = load_vlm_config()
+_log = logging.getLogger(__name__)
 
 TAG_UL_CLOSE = "</unordered_list>"
-TAG_OL_CLOSE = "</ordered_list>"
 
-# Class Block pour stocker les informations d'un bloc de texte extrait des doctags
+
 @dataclass
 class Block:
-    raw: str
-    y0: int | None
-    x0: int | None
-    is_list_item: bool = False
+    raw: str                   # Le texte brut du bloc, incluant les balises de localisation
+    y0: int | None             # La coordonnée y0 extraite du bloc, ou None si elle n'est pas présente
+    x0: int | None             # La coordonnée x0 extraite du bloc, ou None si elle n'est pas présente
+    is_list_item: bool = False # Indique si le bloc est un élément de liste à puces (list_item) ou non, utilisé pour gérer les balises de liste lors du rendu
 
 
 def extract_xy0(s: str) -> tuple[int | None, int | None]:
@@ -63,46 +71,48 @@ def parse_blocks(content: str) -> list[Block]:
     while i < len(lines):
         line = lines[i]
 
-        # Collect ordered_list as a single block — prevents </ordered_list> (y0=None)
-        # from being hoisted before its own list items during sort_page.
+        # Ordered list traité comme un seul bloc : évite que </ordered_list> (y0=None)
+        # remonte avant ses items lors du tri — bug rencontré en test.
         if "<ordered_list>" in line:
             ol_parts = [line]
             i += 1
-            while i < len(lines):
+            while i < len(lines): # Boucle pour accumuler les lignes jusqu'à la balise de fermeture </ordered_list>
                 ol_parts.append(lines[i])
                 if "</ordered_list>" in lines[i]:
                     i += 1
-                    break
+                    break # Sort de la boucle une fois la balise de fermeture trouvée
                 i += 1
             ol_text = "\n".join(ol_parts)
             x0, y0 = extract_xy0(ol_text)
             blocks.append(Block(raw=ol_text, y0=y0, x0=x0, is_list_item=False))
             continue
 
-        # Expand unordered_list into list_item blocks
+        # Unordered list : items extraits individuellement pour pouvoir être triés,
+        # marqués is_list_item=True pour que render_blocks les réenveloppe correctement.
         if "<unordered_list>" in line:
             ul_parts = [line]
             i += 1
-            while i < len(lines):
+            while i < len(lines): # Boucle pour accumuler les lignes jusqu'à la balise de fermeture </unordered_list>
                 ul_parts.append(lines[i])
                 if TAG_UL_CLOSE in lines[i]:
                     i += 1
-                    break
+                    break # Sort de la boucle une fois la balise de fermeture trouvée
                 i += 1
-
             ul_text = "\n".join(ul_parts)
-            items = re.findall(r"<list_item>.*?</list_item>", ul_text, flags=re.DOTALL)
-            for it in items:
-                x0, y0 = extract_xy0(it)
-                blocks.append(Block(raw=it.replace("\n", "").strip(), y0=y0, x0=x0, is_list_item=True))
+            for item in re.findall(r"<list_item>.*?</list_item>", ul_text, flags=re.DOTALL):
+                x0, y0 = extract_xy0(item)
+                blocks.append(Block(raw=item.replace("\n", "").strip(), y0=y0, x0=x0, is_list_item=True))
             continue
 
-        # Regular one-line block
+        # Pour les autres blocs, on extrait simplement x0 et y0 et on les stocke dans la liste des blocs.
         x0, y0 = extract_xy0(line)
         blocks.append(Block(raw=line, y0=y0, x0=x0, is_list_item=False))
         i += 1
 
-    return blocks
+    # La fonction retourne une liste d'instances de Block, chacune contenant le texte brut du bloc, 
+    # ses coordonnées y0 et x0 (ou None si elles ne sont pas présentes), 
+    # et un indicateur is_list_item pour les éléments de liste à puces.
+    return blocks 
 
 
 def split_pages(blocks: list[Block]) -> list[list[Block]]:
@@ -120,16 +130,16 @@ def split_pages(blocks: list[Block]) -> list[list[Block]]:
     :rtype: list[list[Block]]
     """
     pages: list[list[Block]] = []
-    cur: list[Block] = []
+    current_page: list[Block] = []
 
-    for b in blocks:
-        cur.append(b)
-        if "<page_footer>" in b.raw or "<page_break>" in b.raw:
-            pages.append(cur)
-            cur = []
+    for block in blocks:
+        current_page.append(block)
+        if "<page_footer>" in block.raw or "<page_break>" in block.raw:
+            pages.append(current_page)
+            current_page = []
 
-    if cur:
-        pages.append(cur)
+    if current_page:
+        pages.append(current_page)
 
     return pages
 
@@ -143,16 +153,20 @@ def sort_page(blocks: list[Block]) -> list[Block]:
     - Les blocs avec coordonnées sont triés par y0 croissant, puis par x0 croissant pour les blocs ayant le même y0.
     - En cas d'égalité sur y0 et x0, l'ordre d'origine est conservé.
 
+    Le tri est effectué en deux étapes :
+    On sépare les blocs en deux groupes : 
+    1. Ceux qui ont des coordonnées y0 (avec_pos), les blocs avec coordonnées sont triés par y0, puis x0,
+    2. Tandis que ceux qui n'en ont pas (no_pos), conservent leur ordre d'origine.
+
     :param blocks: Description
     :type blocks: list[Block]
     :return: Description
     :rtype: list[Block]
     """
-    # no coords first (stable), then y0, then x0, then stable order
+
     indexed = list(enumerate(blocks))
     no_pos = [(i, b) for i, b in indexed if b.y0 is None]
     with_pos = [(i, b) for i, b in indexed if b.y0 is not None]
-
     with_pos.sort(key=lambda t: (t[1].y0, t[1].x0 if t[1].x0 is not None else 10**9, t[0]))
     return [b for _, b in no_pos] + [b for _, b in with_pos]
 
@@ -175,19 +189,19 @@ def render_blocks(blocks: list[Block]) -> str:
     out: list[str] = []
     in_ul = False
 
-    for b in blocks:
-        if b.is_list_item:
-            if not in_ul:
+    for block in blocks:
+        if block.is_list_item:
+            if not in_ul: # Si on rencontre un élément de liste à puces et qu'on n'est pas déjà dans une liste, on ouvre une balise <unordered_list>
                 out.append("<unordered_list>")
                 in_ul = True
-            out.append(b.raw)
+            out.append(block.raw)
         else:
             if in_ul:
-                out.append(TAG_UL_CLOSE)
+                out.append(TAG_UL_CLOSE) # Si on rencontre un bloc qui n'est pas un élément de liste à puces alors qu'on est dans une liste, on ferme la balise </unordered_list>
                 in_ul = False
-            out.append(b.raw)
+            out.append(block.raw)
 
-    if in_ul:
+    if in_ul: # Si on termine la page alors qu'on est toujours dans une liste à puces, on ferme la balise </unordered_list> pour éviter les erreurs de formatage.
         out.append(TAG_UL_CLOSE)
 
     return "\n".join(out)
@@ -210,21 +224,20 @@ def reorder_doctags(input_path: Path, output_path: Path) -> None:
     content = input_path.read_text(encoding="utf-8")
     content = re.sub(r"</?doctag>\s*", "", content).strip()
 
-    blocks = parse_blocks(content)
-    pages = split_pages(blocks)
-
-    result_pages = []
-    for p in pages:
-        sorted_p = sort_page(p)  # y0 then x0
-        result_pages.append(render_blocks(sorted_p))
+    pages = split_pages(parse_blocks(content))
+    result_pages = [render_blocks(sort_page(page)) for page in pages]
 
     final = "<doctag>\n" + "\n".join(result_pages) + "\n</doctag>\n"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(final, encoding="utf-8")
-    print(f"Doctags réordonné : {output_path}")
+    _log.info(f"Doctags réordonné : {output_path}")
 
 
 if __name__ == "__main__":
+    """
+    - src pour source
+    - dsl pour destination
+    """
     DOC_NAME = os.environ.get("DOC_NAME", "")
     project_root = Path(__file__).resolve().parent.parent
     base = project_root / "data" / "output_files" / "stage1_test"

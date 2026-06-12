@@ -7,11 +7,12 @@ metadata:
      - Étape 1 : Détection d'éléments avec Docling + easyOCR
      - Étape 2 : Export de tables (CSV + HTML) + description d'images avec le VLM
      - Étape 3 : Extraction de liens hypertextes + correction avec le VLM
-     - Étape 4 : Conversion finale des doctags en Markdown
+     - Étape 4 : Conversion finale des doctags en Markdown + vérification page par page avec le VLM
+     - Étape 5 : Génération et enrichissement des métadonnées (VLM) + embeddings HYQ
   authors:
     - name: Matthias_Jutzi
   created_at: "2026-06-05" # ANNEE-MOIS-JOUR (YYYY-MM-DD)
-  updated_at: "" # à mettre à jour à chaque modification du pipeline
+  updated_at: "2026-06-12" # à mettre à jour à chaque modification du pipeline
   tags:
     - ocr
     - vlm
@@ -44,20 +45,35 @@ paths:
 
 # REQUIREMENTS
 requirements:
-  python: ">=3.10"
-  system:
-    - tesseract
-    - poppler-utils
+  python: ">=3.11"
   pip:
-    - docling>=2.0.0
-    - docling-core>=2.0.0
-    - PyMuPDF>=1.23.0
-    - httpx>=0.27.0
-    - pandas>=2.0.0
-    - jsonlines>=3.1.0
-    - opencv-python>=4.9.0
-    - numpy>=1.26.0
-    - requests>=2.31.0
+    # Stage 1 — PDF parsing, OCR, visualisation
+    - docling>=2.93.0
+    - easyocr>=1.7.2
+    - torch>=2.11.0
+    - opencv-python>=4.13.0.92
+    - numpy>=2.4.4
+    # Stage 2 — export tables, JSONL, appels VLM synchrones
+    - pandas>=3.0.2
+    - tabulate>=0.10.0
+    - requests>=2.33.1
+    - jsonlines>=4.0.0
+    # Stage 3 — extraction liens, appels VLM asynchrones
+    - httpx>=0.28.1
+    # Stage 4 — conversion DocTags → Markdown
+    - docling-core>=2.74.1
+    # Stage 5 — métadonnées, embeddings (client OpenAI-compatible)
+    - openai>=2.26.0
+    - pydantic>=2.13.4
+    # graph_url — graphe d'URLs
+    - networkx>=3.6.1
+    - matplotlib>=3.10.0
+    - pyvis>=0.3.2
+    - Jinja2>=3.1.6
+    # Partagé tous les stages
+    - PyMuPDF>=1.27.2.3
+    - python-dotenv>=1.2.2
+    - certifi>=2026.4.22
   optional:
     - cuda-toolkit>=11.8 # pour l'accélération GPU avec easyOCR
 
@@ -116,7 +132,7 @@ pipeline:
     # STAGE 1, tri des doctags par position y0 
     - id: stage1_reorder
       name: "Doctags Reordering (y0 sort)"
-      script: "stage1_multi_steps_detection/control_doctags_balise_loc_y0.py"
+      script: "stage1_multi_steps_detection/control_doctags_balise_loc_y0_v2.py"
       enabled: true
       depends_on: [stage1_docling_easyocr]
       inputs:
@@ -292,12 +308,12 @@ pipeline:
       depends_on: [stage3_url_vlm_enrichment]
       inputs:
         - name: doctags_final
-          path: "data/output_files/stage3_test/{DOC_NAME}/{DOC_NAME}_reordered_with_tables_pictures_url_vlm.doctags"
+          path: "data/output_files/stage3_test/{DOC_NAME}/{DOC_NAME}_reordered_with_tables_pictures_url_vlm{GEN_ID}.doctags"
           format: doctags
           required: true
       outputs:
         - name: markdown_final
-          path: "data/output_files/stage4_test/{DOC_NAME}_{GEN_ID}.md"
+          path: "data/output_files/stage4_test/{DOC_NAME}{GEN_ID}.md"
           format: markdown
       parameters:
         post_processing:
@@ -305,12 +321,37 @@ pipeline:
           underline_tags: true  # \__text\__ devient : <u>text</u>
         encoding: "utf-8"
 
+    # STAGE 4, vérification du Markdown généré page par page avec le VLM
+    - id: stage4_markdown_vlm_check
+      name: "Markdown VLM Check (page-by-page)"
+      script: "stage4_doctags_to_markdown/markdown_control_vlm.py"
+      enabled: true
+      depends_on: [stage4_doctags_to_markdown]
+      inputs:
+        - name: pdf_file
+          path: "data/input_files/{DOC_NAME}.pdf"
+          format: pdf
+          required: true
+        - name: markdown_final
+          path: "data/output_files/stage4_test/{DOC_NAME}{GEN_ID}.md"
+          format: markdown
+          required: true
+      outputs:
+        - name: markdown_vlm_checked
+          path: "data/output_files/stage4_test/{DOC_NAME}{GEN_ID}_vlm_check.md"
+          format: markdown
+      parameters:
+        max_workers: 1
+        vlm:
+          max_tokens: 8192
+          timeout_seconds: 120
+
     # STAGE 5, génération et enrichissement des métadonnées (orchestrateur — appelle enhancement + embedding)
     - id: stage5_metadata_generation
       name: "Metadata Generation & Enrichment (VLM)"
       script: "metadata/metadata_generation.py"
       enabled: true
-      depends_on: [stage4_doctags_to_markdown]
+      depends_on: [stage4_markdown_vlm_check]
       # Note : utilise argparse, pas DOC_NAME — appel : python3 metadata_generation.py "{DOC_PATH}"
       inputs:
         - name: doc_hierarchy
@@ -318,7 +359,7 @@ pipeline:
           format: pdf
           required: true
         - name: stage4_markdown
-          path: "data/output_files/stage4_test/{DOC_NAME}_vlm_check.md"
+          path: "data/output_files/stage4_test/{DOC_NAME}{GEN_ID}_vlm_check.md"
           format: markdown
           required: true
         - name: stage1_json

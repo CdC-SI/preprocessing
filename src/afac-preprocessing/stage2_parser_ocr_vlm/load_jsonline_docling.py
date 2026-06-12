@@ -1,3 +1,10 @@
+"""
+Stage 2 - Script de chargement des tables JSONL dans les doctags
+Script 3 : load_jsonline_docling.py
+
+Ce  script remplace les balises <otsl>...</otsl> dans les doctags par des balises <text> contenant le contenu JSONL correspondant.
+Les fichiers JSONL sont chargés depuis tables_dir, triés par nom, dans l'ordre d'apparition des balises <otsl>.
+"""
 import json
 import re
 from pathlib import Path
@@ -9,7 +16,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from utils.config import load_vlm_config
-config = load_vlm_config()
+load_vlm_config()
 
 
 def load_jsonl_rows(jsonl_path: Path) -> list[dict]:
@@ -43,7 +50,7 @@ def jsonl_rows_to_block(rows: list[dict]) -> str:
     :rtype: str
     """
     
-    return "\n".join(json.dumps(row, ensure_ascii = False) for row in rows)
+    return "\n".join(json.dumps(row, ensure_ascii=False) for row in rows)
 
 
 def replace_otsl_with_jsonl(
@@ -132,8 +139,6 @@ def replace_otsl_with_jsonl(
 if __name__ == "__main__":
     # Root et sortie
     DOC_NAME = os.environ.get("DOC_NAME", "")
-    PROJECT_ROOT = Path(__file__).resolve().parents[1]
-
     doctags_path = PROJECT_ROOT / "data" / "output_files" / "stage1_test" / DOC_NAME / f"{DOC_NAME}_reordered.doctags"
     tables_dir = PROJECT_ROOT / "data" / "output_files" / "stage2_test" / DOC_NAME / "tables"
     output_path = PROJECT_ROOT / "data" / "output_files" / "stage2_test" / DOC_NAME / f"{DOC_NAME}_reordered_with_tables.doctags"

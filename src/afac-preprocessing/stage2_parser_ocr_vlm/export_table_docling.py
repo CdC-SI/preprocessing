@@ -1,4 +1,13 @@
-# https://docling-project.github.io/docling/_generated/examples/export_tables/
+"""
+Stage 2 - Script d'export des tables extraites du document avec Docling
+Script 1 : export_table_docling.py
+
+Documentation utilisée : 
+https://docling-project.github.io/docling/_generated/examples/export_tables/
+
+Ce script utilise la bibliothèque Docling pour extraire les tables d'un document PDF 
+et les exporter dans différents formats (CSV, HTML). 
+"""
 import logging
 import time
 from pathlib import Path
@@ -12,25 +21,20 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from utils.config import load_vlm_config
-config = load_vlm_config()
+load_vlm_config()
 
 _log = logging.getLogger(__name__)
 
 
 def main():
-
-    # Root
+    #Root
     DOC_NAME = os.environ.get("DOC_NAME", "")
-    project_root = Path(__file__).resolve().parent.parent
-    data_folder = project_root / "data" / "input_files"
-    input_doc_path = data_folder / f"{DOC_NAME}.pdf"
-    output_dir = project_root / "data" / "output_files" / "stage2_test" / DOC_NAME / "tables"
+    input_doc_path = PROJECT_ROOT / "data" / "input_files" / f"{DOC_NAME}.pdf"
+    output_dir = PROJECT_ROOT / "data" / "output_files" / "stage2_test" / DOC_NAME / "tables"
     output_dir.mkdir(parents=True, exist_ok=True)
-    doc_converter = DocumentConverter()
 
     start_time = time.time()
-    conv_res = doc_converter.convert(input_doc_path)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    conv_res = DocumentConverter().convert(input_doc_path)
     doc_filename = conv_res.input.file.stem
 
     # Export les tables extraites du document dans différents formats (CSV, HTML) avec Docling

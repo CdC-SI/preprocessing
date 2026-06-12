@@ -1,10 +1,16 @@
-import os
-import logging
-import asyncio
-import sys
-import base64
-from pathlib import Path
+"""
+Stage 4 - Script de contrôle du Markdown généré par le VLM
+Script 2 : markdown_control_vlm.py
 
+Ce script effectue une vérification approfondie du Markdown généré à partir des doctags enrichis,
+en utilisant un VLM (Vision-Language Model) pour analyser chaque page du PDF original.
+"""
+import asyncio
+import base64
+import logging
+import os
+import sys
+from pathlib import Path
 import fitz  # PyMuPDF
 import httpx
 
@@ -18,7 +24,6 @@ config = load_vlm_config()
 CA_PATH = config["CA_PATH"]
 VLM_URL = config["VLM_URL"]
 VLM_MODEL_NAME = config["VLM_MODEL_NAME"]
-
 
 _log = logging.getLogger(__name__)
 
@@ -34,11 +39,10 @@ def pdf_page_to_base64(pdf_path: Path, page_num: int, dpi: int = 150) -> str:
     :param dpi: résolution de rendu
     :return: image encodée en base64
     """
-    doc = fitz.open(str(pdf_path))
-    page = doc[page_num - 1]
-    pix = page.get_pixmap(dpi=dpi)
-    img_bytes = pix.tobytes("png")
-    doc.close()
+    with fitz.open(str(pdf_path)) as doc:
+        page = doc[page_num - 1]
+        pix = page.get_pixmap(dpi=dpi)
+        img_bytes = pix.tobytes("png")
     return base64.b64encode(img_bytes).decode("utf-8")
 
 
@@ -84,7 +88,7 @@ async def call_vlm_async(image_b64: str, prompt: str) -> str:
             ],
         }],
         "max_tokens": 8192,
-        "temperature": 0.0, # Valeur Qwen par défaut
+        "temperature": 0.0,  # Valeur Qwen par défaut
     }
     async with httpx.AsyncClient(verify=CA_PATH, timeout=180) as client:
         resp = await client.post(VLM_URL, json=payload)
@@ -149,9 +153,8 @@ async def run(pdf_path: Path, md_path: Path, output_path: Path) -> None:
 
     full_markdown = md_path.read_text(encoding="utf-8")
 
-    doc = fitz.open(str(pdf_path))
-    total_pages = doc.page_count
-    doc.close()
+    with fitz.open(str(pdf_path)) as doc:
+        total_pages = doc.page_count
     print(f"{total_pages} page(s) à contrôler.\n")
 
     semaphore = asyncio.Semaphore(MAX_WORKERS)

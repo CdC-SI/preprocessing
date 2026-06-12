@@ -1,6 +1,7 @@
 
 """
-Docstring pour le script enhancement_metadata.py
+Stage 5 - Script d'enrichissement des métadonnées avec VLM
+Script 2 : enhancement_metadata.py
 Dans ce script, nous allons ajouter les appels vlm pour enrichir les métadonnées avec :
 - resume: str, demande un VLM de résumer le document markdown généré en stage 4
 - intent: list[str], demande un VLM de générer une liste d'intent à partir du markdown généré en stage 4
@@ -70,14 +71,11 @@ class HyQOutput(BaseModel):
     hyq: list[str]
 
 
-# Stage 4 content loader (mirrors metadata_generation.py)
+# Stage 4 content loader (mirrors get_stage4_content in metadata_generation.py)
 def _read_stage4(stage4_dir: Path, doc_name: str) -> str:
-    single = stage4_dir / f"{doc_name}.md"
+    single = stage4_dir / f"{doc_name}_vlm_check.md"
     if single.exists():
         return single.read_text(encoding="utf-8")
-    chunks = sorted(stage4_dir.glob(f"{doc_name}_*.md"))
-    if chunks:
-        return "\n\n".join(p.read_text(encoding="utf-8") for p in chunks)
     return ""
 
 

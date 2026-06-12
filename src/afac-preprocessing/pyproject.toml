@@ -1,0 +1,40 @@
+[project]
+name = "afac-preprocessing"
+version = "1.0.0"
+description = "Pipeline de prétraitement de documents PDF avec OCR, structuration, enrichissement VLM et export Markdown."
+requires-python = ">=3.11"
+dependencies = [
+    # Stage 1 — PDF parsing, OCR, visualisation
+    "docling==2.93.0",
+    "easyocr==1.7.2",
+    "torch==2.11.0",
+    "opencv-python==4.13.0.92",
+    "numpy==2.4.4",
+    # Stage 2 — export tables, JSONL, appels VLM synchrones
+    "pandas==3.0.2",
+    "tabulate==0.10.0",
+    "requests==2.33.1",
+    "jsonlines==4.0.0",
+    # Stage 3 — extraction liens, appels VLM asynchrones
+    "httpx==0.28.1",
+    # Stage 4 — conversion DocTags → Markdown
+    "docling-core==2.74.1",
+    # Stage 5 — métadonnées, embeddings (client OpenAI-compatible)
+    "openai==2.26.0",
+    "pydantic==2.13.4",
+    # graph_url — graphe d'URLs
+    "networkx==3.6.1",
+    "matplotlib==3.10.0",
+    "pyvis==0.3.2",
+    "Jinja2==3.1.6",
+    # Partagé tous les stages
+    "PyMuPDF==1.27.2.3",
+    "python-dotenv==1.2.2",
+    "certifi==2026.4.22",
+]
+
+[tool.uv]
+system-certs = true
+
+[tool.uv.sources]
+# Ajouter ici des sources privées si nécessaire (ex. index interne)

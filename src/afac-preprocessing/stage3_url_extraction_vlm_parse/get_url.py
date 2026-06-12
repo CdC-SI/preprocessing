@@ -1,3 +1,11 @@
+"""
+Stage 3 - Script d'extraction des liens hypertextes (URL, mailto) avec PyMuPDF
+Script 1 : get_url.py
+
+Ce script utilise la bibliothèque PyMuPDF pour ouvrir le PDF source et extraire les liens hypertextes de chaque page.
+Il vérifie si les liens sont des liens externes (commençant par http://, https:// ou mailto:), 
+puis associe le texte des mots qui se trouvent dans le rectangle du lien pour fournir un contexte textuel à chaque lien extrait.
+"""
 from pathlib import Path
 import fitz  # PyMuPDF
 import jsonlines  # pour sauvegarder les résultats dans un fichier JSONL
@@ -9,7 +17,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from utils.config import load_vlm_config
-config = load_vlm_config()
+load_vlm_config()
 
 
 def is_external_link(uri) -> bool:
@@ -37,7 +45,7 @@ def get_link_text(link, words) -> str:
     rx0, ry0, rx1, ry1 = rect
     link_words = [
         w[4] for w in words # w[0], w[1], w[2], w[3] sont les coordonnées du mot, w[4] est le texte du mot
-        if rx0 <= (w[0] + w[2]) /2 <= rx1 and ry0 <= (w[1] + w[3]) /2 <= ry1 # on vérifie si le centre du mot est dans le rectangle du lien pour l'associer au lien.
+        if rx0 <= (w[0] + w[2]) / 2 <= rx1 and ry0 <= (w[1] + w[3]) / 2 <= ry1 # on vérifie si le centre du mot est dans le rectangle du lien pour l'associer au lien.
     ]
     return " ".join(link_words).strip() if link_words else "No text"
 
@@ -88,24 +96,28 @@ def extract_url_links(pdf_path) -> list[dict]:
             results.append(link_details)
     return results
 
-# Root
-DOC_NAME = os.environ.get("DOC_NAME", "")
-project_root = Path(__file__).resolve().parent.parent
-pdf_path = project_root / "data" / "input_files" / f"{DOC_NAME}.pdf"
-hyperlink_data_path = project_root / "data" / "output_files" / "stage3_test" / DOC_NAME / f"hyperlinks_data_{DOC_NAME}.json"
-hyperlink_data_path.parent.mkdir(parents=True, exist_ok=True) # créer le dossier de sortie s'il n'existe pas
+def main():
+    # Root
+    DOC_NAME = os.environ.get("DOC_NAME", "")
+    pdf_path = PROJECT_ROOT / "data" / "input_files" / f"{DOC_NAME}.pdf"
+    hyperlink_data_path = PROJECT_ROOT / "data" / "output_files" / "stage3_test" / DOC_NAME / f"hyperlinks_data_{DOC_NAME}.jsonl"
+    hyperlink_data_path.parent.mkdir(parents=True, exist_ok=True) # créer le dossier de sortie s'il n'existe pas
 
-# Extrait et debug les liens hypertextes
-hyperlinks_data = extract_url_links(pdf_path)
-for data in hyperlinks_data:
-    print(f"Page number: {data['page_number']}")
-    print(f"Text: {data['text']}")
-    print(f"Type: {data['type']}")
-    print(f"Hyperlink: {data['hyperlink']}")
-    print(f"Details: {data['details']}")
-    print("\n")
+    # Extrait et debug les liens hypertextes
+    hyperlinks_data = extract_url_links(pdf_path)
+    for data in hyperlinks_data:
+        print(f"Page number: {data['page_number']}")
+        print(f"Text: {data['text']}")
+        print(f"Type: {data['type']}")
+        print(f"Hyperlink: {data['hyperlink']}")
+        print(f"Details: {data['details']}")
+        print("\n")
 
-with jsonlines.open(hyperlink_data_path.with_suffix('.jsonl'), mode='w') as writer:
-    for item in hyperlinks_data:
-        writer.write(item)
-print(f"Hyperlinks saved to: {hyperlink_data_path.with_suffix('.jsonl')}")
+    with jsonlines.open(hyperlink_data_path, mode='w') as writer:
+        for item in hyperlinks_data:
+            writer.write(item)
+    print(f"Hyperlinks saved to: {hyperlink_data_path}")
+
+
+if __name__ == "__main__":
+    main()

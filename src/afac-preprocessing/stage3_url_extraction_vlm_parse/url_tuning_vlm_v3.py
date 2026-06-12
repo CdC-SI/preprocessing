@@ -1,7 +1,11 @@
-# Ce script utilise le VLM Qwen 3.5 pour analyser les URL du fichier JSONL et les faire matcher avec leur texte au format markdown [text](myurl)
-# Le VLM reconstruit entièrement le doctags page par page (en utilisant le doctags original comme support + l'image PDF + les liens)
-# Les résultats sont concaténés en un seul fichier doctags final
+"""
+Stage 3 - Script d'extraction et d'intégration des liens hypertextes (URL, mailto) avec le VLM Qwen 3.5
+Script 2 : url_tuning_vlm_v3.py
 
+Ce script utilise le VLM Qwen 3.5 pour analyser les URL du fichier JSONL et les faire matcher avec leur texte au format markdown [text](myurl)
+Le VLM reconstruit entièrement le doctags page par page (en utilisant le doctags original comme support + l'image PDF + les liens)
+Les résultats sont concaténés en un seul fichier doctags final
+"""
 import os
 import logging
 import asyncio
@@ -17,7 +21,8 @@ import httpx
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from prompts.prompts import VLM_PROMPT_CORRECTION_STAGE_3_TEST_enhance
+from prompts.prompts import VLM_PROMPT_CORRECTION_STAGE_3_TEST_light_EN
+
 from utils.config import load_vlm_config
 
 config = load_vlm_config()
@@ -86,21 +91,8 @@ async def check_vlm_connectivity() -> bool:
             _log.info("VLM accessible. Réponse : %s", data["choices"][0]["message"]["content"].strip())
             return True
     except Exception as e:
-        logging.exception("Impossible de joindre le VLM : %s", e)
+        _log.exception("Impossible de joindre le VLM : %s", e)
         return False
-
-
-def load_doctags(doctags_path: Path) -> str:
-    """
-    Docstring for load_doctags
-    - Charge le contenu du fichier doctags en tant que chaîne de caractères.
-
-    :param doctags_path: Description
-    :type doctags_path: Path
-    :return: Description
-    :rtype: str
-    """
-    return doctags_path.read_text(encoding="utf-8")
 
 
 def load_jsonl_links(jsonl_path: Path) -> list[dict]:
@@ -178,7 +170,7 @@ def build_prompt(page_tags: str, page_links: list[dict]) -> str:
     if not links_str:
         links_str = "Aucune URL pour cette page."
 
-    return VLM_PROMPT_CORRECTION_STAGE_3_TEST_enhance.format(
+    return VLM_PROMPT_CORRECTION_STAGE_3_TEST_light_EN.format(
         page_tags=page_tags,
         links_str=links_str,
     )
@@ -209,15 +201,15 @@ async def process_page(
     :rtype: tuple[int, str]
     """
     async with semaphore:
-        _log.info(f"Page {page_num} : {len(page_links)} lien(s) à insérer...")
+        _log.info("Page %d : %d lien(s) à insérer...", page_num, len(page_links))
         try:
             image_b64 = await asyncio.to_thread(pdf_page_to_base64, pdf_path, page_num)
             prompt = build_prompt(page_tags, page_links)
             result = await call_vlm_async(prompt, image_b64)
-            _log.info(f"Page {page_num} traitée.")
+            _log.info("Page %d traitée.", page_num)
             return page_num, result
         except Exception as e:
-            logging.exception(f"Erreur page {page_num} : {e}")
+            _log.exception("Erreur page %d : %s", page_num, e)
             return page_num, page_tags  # fallback : retourne le doctags original de la page
 
 
@@ -339,7 +331,7 @@ async def run(pdf_path: Path, doctags_path: Path, jsonl_path: Path, output_path:
     print(f"JSONL    : {jsonl_path.name}")
     print(f"{'='*60}\n")
 
-    doctags = load_doctags(doctags_path)
+    doctags = doctags_path.read_text(encoding="utf-8")
     links = load_jsonl_links(jsonl_path)
 
     doc = fitz.open(str(pdf_path))
@@ -373,16 +365,14 @@ async def run(pdf_path: Path, doctags_path: Path, jsonl_path: Path, output_path:
     print(f"\nDoctags final sauvegardé : {output_path}")
 
 if __name__ == "__main__":
-    BASE = PROJECT_ROOT
-    DATA = BASE / "data" / "output_files" / "stage3_test"
-
+    DATA = PROJECT_ROOT / "data" / "output_files" / "stage3_test"
     GEN_ID = os.environ.get("GEN_ID", "")
     DOC_NAME = os.environ.get("DOC_NAME", "")
     if not DOC_NAME:
         raise RuntimeError("DOC_NAME not set. Please define it in your .env.test.")
 
-    pdf_path = BASE / "data" / "input_files" / f"{DOC_NAME}.pdf"
-    doctags_path = BASE / "data" / "output_files" / "stage2_test" / DOC_NAME / f"{DOC_NAME}_reordered_with_tables_pictures.doctags"
+    pdf_path = PROJECT_ROOT / "data" / "input_files" / f"{DOC_NAME}.pdf"
+    doctags_path = PROJECT_ROOT / "data" / "output_files" / "stage2_test" / DOC_NAME / f"{DOC_NAME}_reordered_with_tables_pictures.doctags"
     jsonl_path = DATA / DOC_NAME / f"hyperlinks_data_{DOC_NAME}.jsonl"
     output_path = DATA / DOC_NAME / f"{DOC_NAME}_reordered_with_tables_pictures_url_vlm{GEN_ID}.doctags"
 

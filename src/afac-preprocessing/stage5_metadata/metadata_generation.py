@@ -1,15 +1,17 @@
-# Creation des metadata personnalisees pour chaque document de la base de données
-# Ces metadata seront utilisées pour le reranking et l'embedding
-# Elles contiennent des informations sur le document, comme son titre, son auteur, sa date de publication, les liens entrant/sortant
-# Le fichier de sortie est un csv
-
 """
+Stage 5 - Script de génération de metadata pour chaque document
+Script 1 : metadata_generation.py
+
+Creation des metadata personnalisees pour chaque document de la base de données
+Ces metadata seront utilisées pour le reranking et l'embedding
+Elles contiennent des informations sur le document (voir ci-dessous)
+
 Exemple de structure de metadata pour un document :
 
 ### Restructuration du document final :
 - id : uuid
 - user_uuid : empty string default
-- source : str -> "cfc_afac" ne change pas 
+- source : str -> "afac" ne change pas
 - title : str
 - doctype : pdf, word, html, ...
 - version : voir la metadata du document ex : "Version": "4.2", extrait du document lui même
@@ -29,7 +31,7 @@ Exemple de structure de metadata pour un document :
 - embedding_model : str # nom du modèle d'embedding utilisé pour générer les embeddings, ex : "text-embedding-3-small"
 - indexed_at : ISO 8601 format YYYY-MM-DDTHH:MM:SSZ # date d'indexation du document dans la base de données, ex : "2024-03-12T10:12:00Z"
 - page_num: str représente
-- summary : str # résumé du document généré par un modèle de langage, à partir du markdown final (stage4), ex : "Ce document traite des conditions générales d'assurance facultative pour les véhicules, incluant les garanties, exclusions et procédures de réclamation."
+- resume : str # résumé du document généré par un modèle de langage, à partir du markdown final (stage4), ex : "Ce document traite des conditions générales d'assurance facultative pour les véhicules, incluant les garanties, exclusions et procédures de réclamation."
 - intent : List[str] # intention du document générée par un modèle de langage, à partir du markdown final (stage4), ex : "Le document a pour but d'informer les assurés des conditions générales de leur contrat d'assurance facultative, afin de clarifier les garanties offertes et les démarches à suivre en cas de sinistre."
 - hyq : List[str] # questions fréquentes générées par un modèle de langage, à partir du markdown final (stage4), ex : "Quelles sont les garanties incluses dans l'assurance facultative ? Comment faire une réclamation en cas de sinistre ? Y a-t-il des exclusions de garantie à connaître ?"
 
@@ -48,7 +50,6 @@ Usage :
     python metadata.py "Taxation/Taxation E+N au prorata.pdf"
     python metadata.py "Taxation/DISPENSE/Annulation d'une dispense.pdf" --output ./out/docs.csv
 """
-
 import argparse
 import csv
 import json
@@ -87,10 +88,10 @@ def get_hierarchy(folder_source: Path, relative_doc_path: str) -> dict:
     depuis le chemin relatif dans folder_source.
 
     Exemple : "Taxation/DISPENSE/Annulation d'une dispense.pdf"
-        source -> "cfc_afac"
+        source -> "afac"
         parent_label -> ["DISPENSE"]
-        children_label -> ["SUB_FOLDER1", "SUB_FOLDER2"] (tous les dossiers du chemin du fichier sauf le dernier)
-        sibling -> autres fichier dans le même niveau
+        children_label -> sous-dossiers présents dans DISPENSE (dossiers frères du document)
+        sibling -> autres fichiers présents dans DISPENSE (fichiers frères du document)
     """
     doc_path = Path(relative_doc_path)
     source = "afac" # Documents AFAC ne change pas ici
@@ -98,7 +99,7 @@ def get_hierarchy(folder_source: Path, relative_doc_path: str) -> dict:
 
     # Dossier parent direct du document
     parent_dir = (folder_source / doc_path).parent
-    print(f"DEBUG: doc_path={doc_path}, parent_dir={parent_dir}, parts={parts}")
+
     parent_label = [parts[-2]] if len(parts) >= 2 else [] # dossier immédiat
 
     # Trouver les dossiers au même niveau que le document courant
@@ -352,11 +353,8 @@ def get_stage4_info(stage4_dir: Path, doc_name: str) -> tuple[str, int]:
     """
     Docstring for get_stage4_info
     - Retourne (content_filename, chunk_count).
-    - content_filename est le nom du fichier markdown généré par le pipeline d'extraction (ex : "Détachement.md").
-    - chunk_count est le nombre de chunks générés par le pipeline d'extraction, déduit du nombre de fichiers markdown dans stage4_dir/doc_name/ :
-    - Si stage4_dir/doc_name/ contient un fichier unique nommé doc_name.md, alors content_filename = doc_name.md et chunk_count = 1
-    - Si stage4_dir/doc_name/ contient plusieurs fichiers nommés doc_name_1.md, doc_name_2.md, … alors content_filename = doc_name_[1-N].md et chunk_count = N
-    - Si stage4_dir/doc_name/ n'existe pas ou est vide, alors content_filename = doc_name.md et chunk_count = 0
+    - Retourne (content_filename, chunk_count).
+    - Cherche stage4_dir/{doc_name}_vlm_check.md ; si présent chunk_count=1, sinon 0.
 
     :param stage4_dir: Description
     :type stage4_dir: Path
@@ -405,16 +403,15 @@ def get_pdf_creation_date(pdf_path: Path) -> str:
     :rtype: str
     """
     try:
-        doc = fitz.open(str(pdf_path))
-        raw = doc.metadata.get("creationDate", "")
-        doc.close()
+        with fitz.open(str(pdf_path)) as doc:
+            raw = doc.metadata.get("creationDate", "")
         if not raw:
             return ""
         # Format fitz : D:YYYYMMDDHHmmSS[+HH'mm'] ou D:YYYYMMDDHHmmSSZ
         raw = raw.lstrip("D:").replace("'", "").split("+")[0].split("-")[0].rstrip("Z")
         return datetime.strptime(raw[:14], "%Y%m%d%H%M%S").strftime(ISO_8601_FMT)
     except Exception:
-        return "unknown"
+        return ""
 
 
 def get_page_num(page_count: int) -> str:

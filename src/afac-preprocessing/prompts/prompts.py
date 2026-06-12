@@ -573,6 +573,87 @@ DOCTAGS:
 
 """
 
+VLM_PROMPT_CORRECTION_STAGE_3_TEST_light_EN = """
+You are an expert at correcting and enhancing DOCTAGS files.
+
+You will receive:
+1. A DOCTAGS file of a page (with <text>, <list_item>, etc. tags and <loc_X> coordinates)
+2. A list of URLs to insert with anchor text
+3. The original image of the page
+
+1. TEXT CORRECTION
+Corrects errors such as:
+- typographical apostrophes → '
+- missing or incorrect accents
+- hyphens – — → -
+- extra spaces or broken words
+- Extraneous OCR characters (e.g., , ) must be removed when they appear as erroneous OCR text
+- If a checkbox is already represented by a dedicated doctags tag, do not add an additional symbol in the Text
+
+2. TEXT FORMATTING
+- When missing information is added, reproduce the layout (lines and line breaks) observed in the PDF.
+
+- For bold text in the PDF, modify the doctag to match **example** in Markdown format.
+- For underlined text in the PDF, modify the doctag to match __example__ in Markdown format.
+- For strikethrough text in the PDF, modify the doctag to match ~~example~~ in Markdown format.
+- For italicized text in the PDF, modify the doctag to match *example* in Markdown format.
+- Add only text explicitly visible in the PDF (no inferences, no rewording).
+
+FORMATING COLOR ELEMENTS
+Color Elements:
+Preserves visible colors using only the syntax:
+detected_color = red, green, blue, yellow, etc. (in English)
+[[COLOR:detected_color]]monexemple[[/COLOR]]  
+
+Examples:
+[[COLOR:detected_color]]Important[[/COLOR]]
+[[COLOR:detected_color]]Information[[/COLOR]]
+[[COLOR:detected_color]]![[/COLOR]]
+[[COLOR:detected_color]]ⓘ[[/COLOR]]
+
+Never use:
+- <span>
+- <font>
+- Inline CSS
+- Custom HTML tags
+
+5. URLs (REQUIRED)
+For each URL:
+- Find the anchor text within the tags (approximate match only if the meaning is clearly identical)
+- If the anchor text = entire content of the tag → replaces all content with [text](url)
+
+Example: <text><loc_60><loc_168><loc_324><loc_173>Process bpanda</text>
+
+Becomes: <text><loc_60><loc_168><loc_324><loc_173>[Process bpanda](https://...)</text>
+- If the anchor text is a sub-section → replaces only that sub-section
+
+Example: <text><loc_60><loc_314>See art. 1 para. 1 LAVS for...</text>
+
+Becomes: <text><loc_60><loc_314>See [art. [1 to 1 LAVS](https://...) for...</text>
+- If the text is not found → add [text](url) to the end of the content of the nearest tag
+- Never modify the tag names (<text>, <list_item>, etc.)
+- Never modify the <loc_X> coordinates
+- Links must preserve any existing Markdown structure (bold, italic, underlined, strikethrough, lists), without breaking or reordering internal tags.
+
+OUTPUT
+- Rturn only the final, corrected DOCTAGS.
+
+- No image description
+- No explanation.
+- No Markdown block ``` or explanation outside of doctags.
+- No surrounding text.
+- Carefully check for missing or corrupted tables, according to the "3. TABLES AND LISTS" pipeline.
+- Carefully check bold, italic, underlined, and strikethrough text and add the corresponding Markdown tags.
+- Verify element colors and preserve them using the syntax [[COLOR:detected_color]]myexample[[/COLOR]]
+
+URLS:
+{links_str}
+
+DOCTAGS:
+{page_tags}
+
+"""
+
 VLM_PROMPT_STAGE4_CHECK = """
 Tu es un expert en contrôle qualité de documents markdown générés automatiquement par un pipeline OCR/VLM.
 
@@ -644,17 +725,42 @@ ABSOLUTE RULE — TABLES!
 - Copy them verbatim.
 
 ABSOLUTE RULE — IMAGES!
-
 - You MUST never describe, placeholder, or do anything like that.
 - If you detect an image, ignore it.
 
-CORRECTIONS TO MAKE (for this page only)
+CORRECTIONS TO MAKE 
 - Missing or truncated text visible in the image but absent or incomplete in the Markdown.
 - OCR errors: apostrophes, accents, hyphens, spaces, extraneous characters.
 - Missing formatting: **bold**, *italic*, <u>underline</u>, ~~strikethrough~~
-- Important colors represented by <span style="color:...">text</span>
+- Important colors if missed in the markdown add them represented by <span style="color:...">text</span>
 - Important symbols/icons (e.g., !, ⓘ, ➤, etc.) visible in the document but absent from the Markdown.
-- If a symbol is used for ">", such as an arrow or "➤", do not add it.
+
+ABSOLUTE RULE — LISTS
+- List hierarchy is more important than the visual bullet symbol.
+- When a nested item is represented in the document by a symbol such as:
+- ➤ • ► ▪ □ ✓ → 1. a. I. etc.
+- you MUST preserve the Markdown nesting level first.
+- The symbol may be kept as text, but it MUST NOT replace the Markdown indentation.
+Correct:
+- Item 1
+  - ➤ Subitem 1
+  - ➤ Subitem 2
+or
+- Item 1
+  - Subitem 1
+  - Subitem 2
+
+Incorrect:
+- Item 1
+➤ Subitem 1
+➤ Subitem 2
+Incorrect:
+- Item 1
+- ➤ Subitem 1
+- ➤ Subitem 2
+Always reconstruct the logical list hierarchy visible in the document, even when the OCR/VLM detects custom bullets, icons, numbering styles, Roman numerals, letters, arrows, or other symbols.
+Markdown indentation = structure
+Icon = decoration
 
 IMPORTANT RULES
 - ONLY return the content corresponding to what is visible in The image of this page

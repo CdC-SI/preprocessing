@@ -1,4 +1,6 @@
 """
+Stage 5 - Script qui génère les embeddings des questions hyq pour un document donné, et écrit le résultat dans des CSV.
+Script 4 : hyq_embedding_doc.py
 Ce script à pour objectif de générer les embeddings des questions hyq pour un document précis.
 En sortie de pipeline en stage 5, on retient le json des hyq générées.
 Ce script est un petit clone du script metadata_generation.py, mais qui se concentre uniquement
@@ -102,8 +104,8 @@ def write_hyq_csv(
     questions: list[str],
 ) -> Path:
     """
-    Pour chaque question hyq, génère son embedding et écrit une ligne dans le CSV
-    stage5/<doc_name>/hyq_<doc_name>/<doc_name>_hyq.csv.
+    Pour chaque question hyq, génère son embedding et écrit un CSV dédié :
+    stage5/<doc_name>/hyq_<doc_name>/question_1.csv, question_2.csv, …
 
     :param stage5_dir: Dossier racine stage5
     :type stage5_dir: Path

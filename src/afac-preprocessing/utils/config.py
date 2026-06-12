@@ -23,35 +23,35 @@ def load_vlm_config():
         )
     load_dotenv(dotenv_path=dotenv_path)
 
-# CA path
+    # CA path
     custom_ca = os.environ.get("VLM_CA_PEM")
     ca_path = (
-        custom_ca 
-        if custom_ca and Path(custom_ca).exists() 
+        custom_ca
+        if custom_ca and Path(custom_ca).exists()
         else certifi.where()
     )
 
-# VLM configuration: URL, model name, 
+    # VLM configuration: URL, model name
     vlm_url = os.environ.get("VLM_URL", "")
     vlm_model_name = os.environ.get("VLM_MODEL_NAME", "")
     if not vlm_url:
         raise RuntimeError(
             f"VLM_URL not set. Ensure {dotenv_path} exists and contains VLM_URL."
-    )
-    
+        )
+
     embedding_url = os.environ.get("EMBEDDING_URL", "")
     embedding_model_name = os.environ.get("EMBEDDING_MODEL_NAME", "")
     if not embedding_url:
         raise RuntimeError(
-            f"VLM_URL not set. Ensure {dotenv_path} exists and contains VLM_URL."
-    )
-    
+            f"EMBEDDING_URL not set. Ensure {dotenv_path} exists and contains EMBEDDING_URL."
+        )
+
     reranker_url = os.environ.get("RERANKER_URL", "")
-    reranker_model_name = os.environ.get("RERANKER_MOL_NAME", "")
+    reranker_model_name = os.environ.get("RERANKER_MODEL_NAME", "")
     if not reranker_url:
         raise RuntimeError(
-            f"VLM_URL not set. Ensure {dotenv_path} exists and contains VLM_URL."
-    )
+            f"RERANKER_URL not set. Ensure {dotenv_path} exists and contains RERANKER_URL."
+        )
     
     GEN_ID = os.environ.get("GEN_ID", "")
     DOC_NAME = os.environ.get("DOC_NAME", "")

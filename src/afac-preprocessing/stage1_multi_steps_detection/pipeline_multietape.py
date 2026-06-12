@@ -1,11 +1,18 @@
-# Documentation utilisée :
-# https://docling-project.github.io/docling/_generated/examples/custom_convert/
+"""
+Stage 1 - Multi-étapes de détection : Pipeline de conversion de documents avec Docling
+Script 1 : pipeline_multietape.py
+
+Documentation utilisée :
+https://docling-project.github.io/docling/_generated/examples/custom_convert/
+
+Il s'agit du premier script du pipeline de conversion d'un document source, par exemple un PDF, 
+en différents formats exportables (JSON, Markdown, texte brut, DocTags). 
+Ce script utilise la bibliothèque Docling pour effectuer la conversion et l'extraction de la structure du document.
+"""
 import sys
 import json
 import time
 import os
-import json
-import time
 import logging
 from pathlib import Path
 from docling.datamodel.accelerator_options import AcceleratorDevice, AcceleratorOptions
@@ -21,12 +28,6 @@ from docling.document_converter import DocumentConverter, PdfFormatOption
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from utils.config import load_vlm_config
-
-config = load_vlm_config()
-CA_PATH = config["CA_PATH"]
-VLM_URL = config["VLM_URL"]
-VLM_MODEL_NAME = config["VLM_MODEL_NAME"]
 _log = logging.getLogger(__name__)
 
 
@@ -41,36 +42,25 @@ def main():
     # Récupère le nom du document à traiter depuis les variables d'environnement
     DOC_NAME = os.environ.get("DOC_NAME", "")
     project_root = Path(__file__).resolve().parent.parent
-    data_folder = project_root / "data" / "input_files"
-    input_doc_path = data_folder / f"{DOC_NAME}.pdf"
-
-    ocr_options = EasyOcrOptions(lang=["fr"])
+    input_doc_path = project_root / "data" / "input_files" / f"{DOC_NAME}.pdf"
 
     pipeline_options = PdfPipelineOptions()
     pipeline_options.do_ocr = True
     pipeline_options.do_table_structure = True
-    pipeline_options.table_structure_options = TableStructureOptions(
-        do_cell_matching=True
-    )
-    pipeline_options.ocr_options = ocr_options
+    pipeline_options.table_structure_options = TableStructureOptions(do_cell_matching=True)
+    pipeline_options.ocr_options = EasyOcrOptions(lang=["fr"])
     pipeline_options.accelerator_options = AcceleratorOptions(
         num_threads=4, device=AcceleratorDevice.CUDA
     )
 
     doc_converter = DocumentConverter(
-        format_options={
-            InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
-        }
+        format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)}
     )
 
-    # Métrique de temps de conversion pour le logging
-    start_time = time.time() 
+    start_time = time.time()
     conv_result = doc_converter.convert(input_doc_path)
-    end_time = time.time() - start_time
+    _log.info(f"Document converti en {time.time() - start_time:.2f}s.")
 
-    _log.info(f"Document converted in {end_time:.2f} seconds.")
-
-    # Path des outputs
     output_dir = project_root / "data" / "output_files" / "stage1_test" / DOC_NAME
     output_dir.mkdir(parents=True, exist_ok=True)
     doc_filename = conv_result.input.file.stem
@@ -93,7 +83,8 @@ def main():
     # Docling pour le DocTags
     with (output_dir / f"{doc_filename}.doctags").open("w", encoding="utf-8") as fp:
         fp.write(conv_result.document.export_to_doctags())
-        print(f"Document DocTags exporté : {output_dir / f'{doc_filename}.doctags'}")
+        print(f"DocTags exporté : {output_dir / f'{doc_filename}.doctags'}")
+
 
 if __name__ == "__main__":
     main()

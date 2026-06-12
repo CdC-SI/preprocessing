@@ -1,3 +1,12 @@
+"""
+Stage 2 - Script de description des images avec contexte textuel via VLM (ON/OFF global et par document)
+Script 4 : description_image_context.py
+
+Ce script parse les balises <picture> du doctags pour extraire les coordonnées des images, 
+puis crop les images correspondantes à partir du PDF source, 
+construit un prompt contextualisé avec les éléments textuels avant/après l'image, 
+et envoie le tout à un VLM pour générer une description de l'image.
+"""
 import logging
 import os
 import re
@@ -385,7 +394,7 @@ def describe_all_pictures(
     doc_elements: list[dict],
     doc_name: str = "",
     n_before: int = N_BEFORE,
-    n_after:  int = N_AFTER,
+    n_after: int = N_AFTER,
 ) -> dict[int, dict]:
     """
     Docstring for describe_all_pictures
@@ -585,7 +594,6 @@ def export_descriptions_to_markdown(results: dict[int, dict], doc_name: str, out
 
 
 def main():
-    PROJECT_ROOT = Path(__file__).resolve().parents[1]
     DOC_NAME = os.environ.get("DOC_NAME", "")
 
     _log.info(
@@ -621,11 +629,10 @@ def main():
 
     # Remplacement des <picture> dans le doctags
     _log.info("ÉTAPE 4 — Remplacement des balises <picture> dans le doctags")
-    enriched_content = replace_picture_tags(content, results)
     if not is_image_description_enabled(DOC_NAME):
         _log.warning("Descriptions VLM désactivées pour '%s' — balises <picture> supprimées.", DOC_NAME)
-        
-        # Retire toutes les balises <picutre>
+
+        # Retire toutes les balises <picture>
         enriched_content = remove_picture_tags(content)
         output_path.write_text(enriched_content, encoding="utf-8")
         _log.info("OK - Doctags sans images sauvegardé : %s", output_path)
@@ -633,7 +640,8 @@ def main():
         # Optionnel : créer un Markdown vide pour la cohérence du pipeline, ou le supprimer
         markdown_path.write_text("", encoding="utf-8")
         return
-    
+
+    enriched_content = replace_picture_tags(content, results)
     output_path.write_text(enriched_content, encoding="utf-8")
     _log.info("OK - Doctags enrichi sauvegardé : %s", output_path)
 
