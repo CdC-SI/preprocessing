@@ -337,11 +337,17 @@ def describe_image_b64(image_b64: str, prompt: str) -> str:
             ],
         }],
         "max_tokens": 3000, # Qwen 3.5 accepte plus si necessaire
+        "chat_template_kwargs": {"enable_thinking": False},  # désactive le mode thinking Qwen3 (évite content=null)
     }
     try:
         response = requests.post(VLM_URL, json=payload, verify=CA_PATH, timeout=120)
         data = response.json()
-        return data["choices"][0]["message"]["content"].strip()
+        message = data["choices"][0]["message"]
+        content = message.get("content")
+        if content is not None:
+            return content.strip()
+        _log.warning("content=null, full message: %s", message)
+        return ""
     except Exception as e:
         _log.info("Erreur API VLM : %s", e)
         return ""

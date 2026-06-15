@@ -55,15 +55,20 @@ async def call_vlm_async(prompt: str, image_b64: str) -> str:
                 {"type": "text", "text": prompt},
             ],
         }],
-        "max_tokens": 8192, # A modifier si necessaire
-        # "temperature": 0.0, # température à 0 pour des réponses plus déterministes, important pour la correction de texte et l'extraction d'URL
-   
+        "max_tokens": 8192,
+        "chat_template_kwargs": {"enable_thinking": False},  # désactive le mode thinking Qwen3 (évite content=null)
     }
     async with httpx.AsyncClient(verify=CA_PATH, timeout=120) as client:
         resp = await client.post(VLM_URL, json=payload)
         resp.raise_for_status()
         data = resp.json()
-        return data["choices"][0]["message"]["content"].strip()
+        message = data["choices"][0]["message"]
+        content = message.get("content")
+        if content is not None:
+            return content.strip()
+        # Tool-calling models may return null content — log the full message to diagnose
+        _log.warning("content=null, full message: %s", message)
+        raise ValueError(f"VLM returned null content. Full message: {message}")
 
 
 async def check_vlm_connectivity() -> bool:
@@ -87,8 +92,7 @@ async def check_vlm_connectivity() -> bool:
         async with httpx.AsyncClient(verify=CA_PATH, timeout=30) as client:
             resp = await client.post(VLM_URL, json=payload)
             resp.raise_for_status()
-            data = resp.json()
-            _log.info("VLM accessible. Réponse : %s", data["choices"][0]["message"]["content"].strip())
+            _log.info("VLM accessible. HTTP %s", resp.status_code)
             return True
     except Exception as e:
         _log.exception("Impossible de joindre le VLM : %s", e)
@@ -143,7 +147,7 @@ def pdf_page_to_base64(pdf_path: Path, page_num: int) -> str:
     """
     doc = fitz.open(str(pdf_path))
     page = doc[page_num - 1]
-    pix = page.get_pixmap(dpi=150)
+    pix = page.get_pixmap(dpi=100)
     img_bytes = pix.tobytes("png")
     doc.close()
     return base64.b64encode(img_bytes).decode("utf-8")

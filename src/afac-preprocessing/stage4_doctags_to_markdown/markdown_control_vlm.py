@@ -122,8 +122,7 @@ async def check_vlm_connectivity() -> bool:
         async with httpx.AsyncClient(verify=CA_PATH, timeout=30) as client:
             resp = await client.post(VLM_URL, json=payload)
             resp.raise_for_status()
-            data = resp.json()
-            _log.info("VLM accessible. Réponse : %s", data["choices"][0]["message"]["content"].strip())
+            _log.info("VLM accessible. HTTP %s", resp.status_code)
             return True
     except Exception as e:
         _log.exception("Impossible de joindre le VLM : %s", e)
@@ -149,12 +148,18 @@ async def call_vlm_async(image_b64: str, prompt: str) -> str:
         }],
         "max_tokens": 8192,
         "temperature": 0.0,
+        "chat_template_kwargs": {"enable_thinking": False},  # désactive le mode thinking Qwen3 (évite content=null)
     }
     async with httpx.AsyncClient(verify=CA_PATH, timeout=180) as client:
         resp = await client.post(VLM_URL, json=payload)
         resp.raise_for_status()
         data = resp.json()
-        return data["choices"][0]["message"]["content"].strip()
+        message = data["choices"][0]["message"]
+        content = message.get("content")
+        if content is not None:
+            return content.strip()
+        _log.warning("content=null, full message: %s", message)
+        raise ValueError(f"VLM returned null content. Full message: {message}")
 
 
 async def process_page(

@@ -158,14 +158,14 @@ Correct OCR errors :
 
 Task 6: Color detection:
 For text and icons, etc in color, preserve the visible colors using only the syntax:
-Any color in english words (red, blue, green, orange, etc.) or hex code (#RRGGBB) is acceptable as a color specification.
+detected_color = Any color in english words (red, blue, green, orange, etc.) or hex code (#RRGGBB) is acceptable as a color specification.
 [[COLOR:detected_color]]myexample[[/COLOR]]  
 
 Examples:
-[[COLOR:red]]Important[[/COLOR]]
-[[COLOR:blue]]Information[[/COLOR]]
-[[COLOR:orange]]![[/COLOR]]
-[[COLOR:green]]ⓘ[[/COLOR]]
+[[COLOR:detected_colo]]Important[[/COLOR]]
+[[COLOR:detected_color]]Information[[/COLOR]]
+[[COLOR:detected_color]]![[/COLOR]]
+[[COLOR:detected_color]]ⓘ[[/COLOR]]
 
 Never use:
 - <span>

@@ -96,6 +96,7 @@ def generate_resume(markdown_content: str) -> str:
             {"role": "user", "content": markdown_content},
         ],
         response_format=ResumeOutput,
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
     )
     return response.choices[0].message.parsed.resume
 
@@ -120,6 +121,7 @@ def generate_intent(markdown_content: str) -> list[str]:
                 {"role": "user", "content": markdown_content},
             ],
             response_format=IntentOutput,
+            extra_body={"chat_template_kwargs": {"enable_thinking": False}},
         )
         for item in response.choices[0].message.parsed.intent:
             normalized = item.strip()
@@ -145,6 +147,7 @@ def generate_hyq(markdown_content: str) -> list[str]:
             {"role": "user", "content": markdown_content},
         ],
         response_format=HyQOutput,
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
     )
     return response.choices[0].message.parsed.hyq
 
