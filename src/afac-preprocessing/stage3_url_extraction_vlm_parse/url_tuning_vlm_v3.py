@@ -21,7 +21,7 @@ import httpx
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from prompts.prompts import VLM_PROMPT_CORRECTION_STAGE_3_TEST_light_EN
+from prompts.prompts import VLM_PROMPT_CORRECTION_STAGE_3_EN
 
 from utils.config import load_vlm_config
 
@@ -170,7 +170,7 @@ def build_prompt(page_tags: str, page_links: list[dict]) -> str:
     if not links_str:
         links_str = "Aucune URL pour cette page."
 
-    return VLM_PROMPT_CORRECTION_STAGE_3_TEST_light_EN.format(
+    return VLM_PROMPT_CORRECTION_STAGE_3_EN.format(
         page_tags=page_tags,
         links_str=links_str,
     )
@@ -299,7 +299,7 @@ def assemble_doctags(pages: dict[int, str]) -> str:
         content = re.sub(r'\n{2,}', '\n', content)
         if content:
             parts.append(content)
-    body = "\n".join(parts).strip()
+    body = "\n<page_break>\n".join(parts).strip() # 
     # assure une seule paire de balises en sortie
     return f"<doctag>\n{body}\n</doctag>"
 

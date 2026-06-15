@@ -9,7 +9,6 @@ import logging
 import os
 import re
 from pathlib import Path
-
 from docling_core.types.doc.document import DocTagsDocument, DoclingDocument
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent

@@ -17,7 +17,6 @@ import json
 import sys
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
-
 import httpx
 from openai import OpenAI
 

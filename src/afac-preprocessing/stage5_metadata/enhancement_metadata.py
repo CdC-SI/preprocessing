@@ -26,7 +26,7 @@ from openai import OpenAI
 from pydantic import BaseModel
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from prompts.prompts import (
+from prompts.metadata_prompts import (
     HYQ_PROMPT,
     INTENT_PROMPT_1,
     INTENT_PROMPT_2,
