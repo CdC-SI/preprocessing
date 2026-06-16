@@ -208,8 +208,15 @@ Any area showing a software UI, terminal screen, form template, or legacy mainfr
 Visual indicators: screen codes (e.g., GDAS01M), function key lines (F1=AIDE, F3=MENU), form fields as dots (NNSS 756 _ . . .), numbered menus inside a framed box.
 Do NOT transcribe text from these areas even if readable.
 
-ABSOLUTE RULE — TABLES:
-Copy JSON lines exactly as they appear in the Markdown. Never convert to Markdown table format.
+ABSOLUTE RULE :
+Preserve tables as JSON lines, do not convert to Markdown tables like the example below:
+- In the provided Markdown, tables are represented as JSONline.
+- Example of a correct table in the Markdown sent to your context:
+{{"Version": "1.0", "Date": null, "Description": "Creation", "Name": null}}
+{{"Version": "1.1", "Date": "01.01.2025", "Description": "Update", "Name": "GT AM"}}
+- Never modified these JSON lines into a Markdown table (| col | col |).
+- If you see a table in the document, copy the corresponding JSON lines exactly as they appear in the Markdown.
+- Do not rewrite, rearrange, or convert them.
 
 ABSOLUTE RULE — LISTS:
 Preserve the Markdown nesting level based on the logical hierarchy visible in the document image, not the bullet symbols.
