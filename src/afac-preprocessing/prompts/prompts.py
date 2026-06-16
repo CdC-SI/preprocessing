@@ -195,7 +195,8 @@ Do NOT add content that is not in the Markdown. Do NOT restructure or rewrite.
 Allowed corrections:
 - OCR errors: apostrophes, accents, hyphens, spaces, extraneous characters
 - Missing formatting: **bold**, *italic*, <u>underline</u>, ~~strikethrough~~
-- Missing colors: <span style="color:...">text</span>
+- Missing colors: <span style="color:...">text</span> or bad color
+- Replace the bad <span style="color:..."> with <span style="color:detected_color"> and detected_color is any color in english words (red, blue, green, orange, etc.) or hex code (#RRGGBB) is acceptable as a color specification.
 - Missing symbols/icons (e.g., !, ⓘ, ➤) that are part of the normal document text flow
 
 ABSOLUTE RULE — NO NEW CONTENT:
