@@ -140,6 +140,7 @@ Becomes: <text><loc_60><loc_314>See [art. 1 to 1 LAVS](https://...) for...</text
 - Never modify the tag names (<text>, <list_item>, etc.)
 - Never modify the <loc_X> coordinates
 - Links must preserve any existing Markdown structure (bold, italic, underlined, strikethrough, lists), without breaking or reordering internal tags.
+- Skip the color tags for url
 
 Task 5:
 Correct OCR errors :
@@ -172,7 +173,7 @@ Never use:
 - <font>
 - Inline CSS
 - Custom HTML tags
-- Never make those changes for markdown urls (e.g., [text](url)).
+- No color for tag with markdown url in it
 
 OUTPUT:
 - Generate the final, corrected DOCTAGS for this page.
