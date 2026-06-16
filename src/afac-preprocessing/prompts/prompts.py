@@ -172,6 +172,7 @@ Never use:
 - <font>
 - Inline CSS
 - Custom HTML tags
+- Never make those changes for markdown urls (e.g., [text](url)).
 
 OUTPUT:
 - Generate the final, corrected DOCTAGS for this page.
@@ -196,7 +197,6 @@ Allowed corrections:
 - OCR errors: apostrophes, accents, hyphens, spaces, extraneous characters
 - Missing formatting: **bold**, *italic*, <u>underline</u>, ~~strikethrough~~
 - Missing colors: <span style="color:...">text</span> or bad color
-- Replace the bad <span style="color:..."> with <span style="color:detected_color"> and detected_color is any color in english words (red, blue, green, orange, etc.) or hex code (#RRGGBB) is acceptable as a color specification.
 - Missing symbols/icons (e.g., !, ⓘ, ➤) that are part of the normal document text flow
 
 ABSOLUTE RULE — NO NEW CONTENT:
@@ -217,6 +217,9 @@ Preserve tables as JSON lines, do not convert to Markdown tables like the exampl
 - Never modified these JSON lines into a Markdown table (| col | col |).
 - If you see a table in the document, copy the corresponding JSON lines exactly as they appear in the Markdown.
 - Do not rewrite, rearrange, or convert them.
+
+ABSOLUTE RULE — MARDOWN URLS:
+Do not modify the URLs or their anchor text. If a URL is present in the Markdown
 
 ABSOLUTE RULE — LISTS:
 Preserve the Markdown nesting level based on the logical hierarchy visible in the document image, not the bullet symbols.
