@@ -13,7 +13,8 @@ spec:
       description: Image conteneur du projet
     - name: formats
       type: string
-      default: "json md txt doctags csv html"
+      default: "doctags json md txt"
+      description: "Formats texte à exporter (doctags json md txt). Tables CSV/HTML via --no-tables."
     - name: lang
       type: string
       default: "fr"
@@ -28,22 +29,26 @@ spec:
       default: "150"
     - name: run-opencv-check
       type: string
-      default: "true"
+      default: "false"
       description: "Activer la validation visuelle OpenCV (true/false)"
+    - name: vlm-language
+      type: string
+      default: "french"
+      description: "Langue de la réponse VLM"
+    - name: vlm-workers
+      type: string
+      default: "1"
+      description: "Nombre de threads VLM parallèles"
+    - name: image-description
+      type: string
+      default: "--no-image-description"
+      description: "Activer la description VLM : '--image-description' ou '--no-image-description'"
 
   workspaces:
     - name: data
       description: PVC partagé — contient input/ et les sorties par stage
 
-  # Graphe d'exécution
-  #
-  # stage1-ocr-export
-  # 1) stage1-reorder-doctags    (séquentiel)
-  # 2) stage1-csv-to-jsonlines   (parallèle avec reorder)
-  # 3) stage1-opencv-check       (parallèle, optionnel)
-
   tasks:
-
     # Stage 1 : OCR + export tous formats
     - name: stage1-ocr-export
       taskRef:
@@ -112,17 +117,36 @@ spec:
       workspaces:
         - name: data
           workspace: data
-
-    # Stage 2 : VLM parse (placeholder)
-    - name: stage2-vlm-parse
+    
+    - name: stage2-load-jsonline-doctags
       taskRef:
-        name: stage2-vlm-parse
+        name: stage2-load-jsonline-doctags
       runAfter: [stage1-reorder-doctags, stage1-csv-to-jsonlines]
       params:
         - name: doc-name
           value: $(params.doc-name)
         - name: image
           value: $(params.image)
+      workspaces:
+        - name: data
+          workspace: data
+
+    # Stage 2b : Description images via VLM
+    - name: stage2-image-description
+      taskRef:
+        name: stage2-image-description
+      runAfter: [stage2-load-jsonline-doctags]
+      params:
+        - name: doc-name
+          value: $(params.doc-name)
+        - name: image
+          value: $(params.image)
+        - name: language
+          value: $(params.vlm-language)
+        - name: workers
+          value: $(params.vlm-workers)
+        - name: image-description
+          value: $(params.image-description)
       workspaces:
         - name: data
           workspace: data

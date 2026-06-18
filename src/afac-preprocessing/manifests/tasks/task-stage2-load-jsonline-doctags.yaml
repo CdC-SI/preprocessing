@@ -1,0 +1,35 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: stage2-load-jsonline-doctags
+  annotations:
+    description: >
+      Injecte les tables JSONL dans le .doctags réordonné en remplaçant
+      les balises <otsl> par leur contenu JSONL correspondant, via
+      load_jsonline_doctags_modulaire.py.
+      Entrée : <doc-name>_reordered.doctags + tables/*.jsonl
+      Sortie  : <doc-name>_reordered_with_tables.doctags
+spec:
+  params:
+    - name: doc-name
+      type: string
+      description: Nom du document sans extension
+    - name: image
+      type: string
+      default: "afac-preprocessing:latest"
+
+  workspaces:
+    - name: data
+
+  steps:
+    - name: run
+      image: $(params.image)
+      command: ["uv", "run", "python"]
+      args:
+        - stage1_modulaire/load_jsonline_doctags_modulaire.py
+        - --doctags
+        - $(workspaces.data.path)/stage1/$(params.doc-name)/$(params.doc-name)_reordered.doctags
+        - --tables-dir
+        - $(workspaces.data.path)/stage1/$(params.doc-name)/tables
+        - --output
+        - $(workspaces.data.path)/stage1/$(params.doc-name)/$(params.doc-name)_reordered_with_tables.doctags

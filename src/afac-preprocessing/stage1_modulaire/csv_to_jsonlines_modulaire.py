@@ -66,7 +66,7 @@ def _detect_header_row(csv_path: Path) -> int:
 
     Retourne 0 (header en row 0) ou 1 (header en row 1).
     """
-    df_peek = pd.read_csv(csv_path, index_col=0, nrows=1)
+    df_peek = pd.read_csv(csv_path, nrows=1)
     if df_peek.empty:
         return 0
 
@@ -96,7 +96,7 @@ def process_csv(csv_path: Path, output_dir: Path) -> bool:
     :rtype: bool
     """
     header_row = _detect_header_row(csv_path)
-    df = pd.read_csv(csv_path, index_col=0, header=header_row)
+    df = pd.read_csv(csv_path, header=header_row)
     df.columns = deduplicate_columns([str(col) for col in df.columns])
 
     if df.empty:

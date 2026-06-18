@@ -29,9 +29,8 @@ from docling.document_converter import ConversionResult, DocumentConverter, PdfF
 
 _log = logging.getLogger(__name__)
 
-TEXT_FORMATS = frozenset({"json", "md", "txt", "doctags"}) # formats texte disponibles
-TABLE_FORMATS = frozenset({"csv", "html"}) # formats tables disponibles
-ALL_FORMATS = TEXT_FORMATS | TABLE_FORMATS # merge les deux ensembles de formats
+TEXT_FORMATS = frozenset({"json", "md", "txt", "doctags"})
+TABLE_FORMATS = frozenset({"csv", "html"})
 
 DEVICE_MAP: dict[str, AcceleratorDevice] = {
     "cuda": AcceleratorDevice.CUDA,
@@ -177,9 +176,11 @@ def parse_args() -> argparse.Namespace:
             "Exemples :\n"
             "  uv run python pipeline_multietape_modulaire.py --input doc.pdf\n"
             "  uv run python pipeline_multietape_modulaire.py --input doc.pdf "
-            "--formats md json csv --lang fr en --threads 8\n"
+            "--formats doctags json\n"
             "  uv run python pipeline_multietape_modulaire.py --input doc.pdf "
-            "--no-ocr --no-tables --formats json\n"
+            "--formats doctags --no-tables\n"
+            "  uv run python pipeline_multietape_modulaire.py --input doc.pdf "
+            "--no-ocr --formats json\n"
         ),
     )
     parser.add_argument(
@@ -204,14 +205,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--formats", "-f",
         nargs="+",
-        default=sorted(ALL_FORMATS),
-        choices=sorted(ALL_FORMATS),
+        default=sorted(TEXT_FORMATS),
+        choices=sorted(TEXT_FORMATS),
         metavar="FORMAT",
         help=(
-            f"Formats à exporter parmi : {sorted(ALL_FORMATS)}. "
-            "Défaut : tous. "
-            "Formats texte : json md txt doctags. "
-            "Formats tables : csv html."
+            f"Formats texte à exporter parmi : {sorted(TEXT_FORMATS)}. "
+            "Défaut : tous (doctags json md txt). "
+            "L'extraction des tables (csv, html) est contrôlée séparément par --no-tables."
         ),
     )
     parser.add_argument(
@@ -230,8 +230,8 @@ def parse_args() -> argparse.Namespace:
         "--no-tables",
         action="store_true",
         help=(
-            "Désactiver la détection de structure des tableaux. "
-            "Les formats csv et html sont ignorés si cette option est active."
+            "Désactiver l'extraction des tableaux (csv + html). "
+            "Désactive aussi la détection de structure Docling pour accélérer la conversion."
         ),
     )
     parser.add_argument(
@@ -335,21 +335,9 @@ def main() -> None:
     output_dir = resolve_output(args, input_path)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    formats = frozenset(args.formats)
-    text_fmts = formats & TEXT_FORMATS
-    table_fmts = formats & TABLE_FORMATS
-
-    # Point 2 — séparer détection de structure (qualité MD/JSON) et export CSV/HTML
-    # do_table_structure : actif dès que --no-tables absent, pour avoir des tableaux bien formés dans le MD même sans demander csv/html
-    # do_table_export : actif seulement si csv ou html sont dans --formats
+    text_fmts = frozenset(args.formats)
     do_table_structure = not args.no_tables
-    do_table_export = not args.no_tables and bool(table_fmts)
-
-    if args.no_tables and table_fmts:
-        _log.warning(
-            "Formats tables demandés (%s) mais --no-tables actif — ignorés.",
-            ", ".join(sorted(table_fmts)),
-        )
+    do_table_export = not args.no_tables
 
     converter = build_converter(
         ocr=not args.no_ocr,
@@ -368,7 +356,7 @@ def main() -> None:
         export_text_formats(conv_result, output_dir, text_fmts)
 
     if do_table_export:
-        export_tables(conv_result, output_dir, table_fmts)
+        export_tables(conv_result, output_dir, TABLE_FORMATS)
 
     _log.info("Résultats dans : %s", output_dir)
     sys.exit(0)  # Exit code explicite pour Tekton
