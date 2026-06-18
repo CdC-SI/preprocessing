@@ -1,0 +1,60 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: stage1-ocr-export
+  annotations:
+    description: >
+      OCR + export formats (json, md, txt, doctags) + tables (csv, html)
+      via pipeline_multietape_modulaire.py — un seul appel Docling/EasyOCR.
+spec:
+  params:
+    - name: doc-name
+      type: string
+      description: Nom du PDF sans extension (ex. MonDoc)
+    - name: formats
+      type: string
+      default: "json md txt doctags csv html"
+      description: Formats à exporter, séparés par des espaces
+    - name: lang
+      type: string
+      default: "fr"
+      description: Langue(s) EasyOCR séparées par des espaces
+    - name: threads
+      type: string
+      default: "4"
+      description: Nombre de threads CPU pour Docling
+    - name: device
+      type: string
+      default: "cuda"
+      description: "Accélérateur : cuda ou cpu"
+    - name: image
+      type: string
+      default: "afac-preprocessing:latest"
+      description: Image conteneur du projet
+
+  workspaces:
+    - name: data
+      description: PVC partagé entre toutes les étapes du pipeline
+
+  steps:
+    - name: run
+      image: $(params.image)
+      command: ["uv", "run", "python"]
+      args:
+        - stage1_modulaire/pipeline_multietape_modulaire.py
+        - --input
+        - $(workspaces.data.path)/input/$(params.doc-name).pdf
+        - --output-dir
+        - $(workspaces.data.path)/stage1/$(params.doc-name)
+        - --formats
+        - $(params.formats)
+        - --lang
+        - $(params.lang)
+        - --threads
+        - $(params.threads)
+        - --device
+        - $(params.device)
+      resources:
+        requests:
+          memory: "4Gi"
+          cpu: "2"

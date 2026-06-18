@@ -1,0 +1,39 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: stage1-opencv-check
+  annotations:
+    description: >
+      Validation visuelle optionnelle : superpose les bounding boxes DocTags
+      sur le PDF et exporte les images PNG via opencv_checker_modulaire.py.
+      N'est pas dans le chemin critique du pipeline.
+spec:
+  params:
+    - name: doc-name
+      type: string
+      description: Nom du document sans extension
+    - name: dpi
+      type: string
+      default: "150"
+      description: "Résolution de rendu en DPI (150 = rapide, 300 = précis)"
+    - name: image
+      type: string
+      default: "afac-preprocessing:latest"
+
+  workspaces:
+    - name: data
+
+  steps:
+    - name: run
+      image: $(params.image)
+      command: ["uv", "run", "python"]
+      args:
+        - stage1_modulaire/opencv_checker_modulaire.py
+        - --pdf
+        - $(workspaces.data.path)/input/$(params.doc-name).pdf
+        - --doctags
+        - $(workspaces.data.path)/stage1/$(params.doc-name)/$(params.doc-name).doctags
+        - --output-dir
+        - $(workspaces.data.path)/stage1/$(params.doc-name)/opencv_validation
+        - --dpi
+        - $(params.dpi)
