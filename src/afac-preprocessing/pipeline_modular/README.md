@@ -730,3 +730,93 @@ Le log final indique le chemin du fichier produit :
 ```
 Markdown généré : data/output_files/MonDoc/MonDoc.md
 ```
+
+# Script markdown_control_vlm_modular.py — Contrôle qualité du Markdown par VLM
+
+Vérifie et corrige le Markdown généré à partir des doctags en utilisant un VLM (Vision-Language Model). Pour chaque page, envoie l'image PNG de la page PDF + le Markdown extrait des doctags au VLM, qui retourne une version corrigée. Les pages corrigées sont réassemblées en un fichier Markdown final.
+
+**Place dans le pipeline :** dernière étape — lit le `.doctags` enrichi produit par `url_tuning_vlm_modular.py` et le PDF source, produit le Markdown `.md` vérifié livrable.
+
+## Variables d'environnement requises
+| Variable | Obligatoire | Description |
+| ------- | ----- | -------------|
+| `VLM_URL` | Oui | Endpoint de l'API VLM (ex. `https://vlm.host/v1/chat/completions`). |
+| `VLM_MODEL_NAME` | Oui | Nom du modèle à passer dans la requête. |
+| `CA_PATH` | Non | Chemin vers un certificat CA custom pour la connexion HTTPS au VLM. |
+| `DOC_NAME` | Si `--pdf` absent | Nom du document pour la résolution automatique des chemins. |
+
+## Commande complète (tous les paramètres)
+```
+uv run python pipeline_modular/simple_extraction/markdown_control_vlm_modular.py \
+  --pdf      data/input_files/MonDoc.pdf \
+  --doctags  data/output_files/MonDoc/MonDoc_url_vlm.doctags \
+  --output   data/output_files/MonDoc/MonDoc_vlm_check.md \
+  --workers  2 \
+  --dpi      150 \
+  --suffix   _v2 \
+  --log-level  INFO \
+  --log-format json \
+  --dotenv   .env.test
+```
+
+## Chemins résolus automatiquement depuis le stem du PDF
+```
+uv run python pipeline_modular/simple_extraction/markdown_control_vlm_modular.py \
+  --pdf data/input_files/MonDoc.pdf
+```
+
+## Workflow .env.test (dev local)
+```
+uv run python pipeline_modular/simple_extraction/markdown_control_vlm_modular.py \
+  --dotenv .env.test
+```
+
+## Paramètres :
+| Paramètre | Alias | Défaut | Description |
+| ------- | ----- | -------- | -------------|
+| --pdf | -p | (voir note) | Chemin vers le PDF source — utilisé pour rendre chaque page en image PNG. |
+| --doctags | -d | `data/output_files/<stem>/<stem>_url_vlm.doctags` | Fichier `.doctags` source à contrôler. |
+| --output | -o | `data/output_files/<stem>/<stem>_vlm_check<suffix>.md` | Fichier Markdown corrigé en sortie. |
+| --workers | -w | `1` | Nombre de requêtes VLM simultanées (1–10). |
+| --dpi | | `150` | Résolution de rendu (DPI) des pages PDF envoyées au VLM (72–600). |
+| --suffix | -s | *(vide)* | Suffixe ajouté au nom de sortie auto. Ex. `--suffix _v2` → `MonDoc_vlm_check_v2.md`. Ignoré si `--output` est fourni. |
+| --log-level | | `INFO` | Niveau de log : `DEBUG`, `INFO`, `WARNING`, `ERROR`. |
+| --log-format | | `text` | Format de log : `text` (lisible) ou `json` (Loki / sidecars Tekton). |
+| --dotenv | | (aucun) | Fichier `.env` à charger pour `VLM_URL`, `CA_PATH`, `VLM_MODEL_NAME` et `DOC_NAME`. |
+
+*Note : `--pdf` absent : résout automatiquement `data/input_files/<DOC_NAME>.pdf` depuis la variable `DOC_NAME`.*
+
+**Sorties :**
+```
+data/output_files/MonDoc/
+├── MonDoc_url_vlm.doctags      ← entrée (produit par url_tuning_vlm_modular.py)
+└── MonDoc_vlm_check.md         ← sortie
+```
+
+## Comportement page par page
+
+| Situation | Comportement |
+| ------- | ----- |
+| VLM non joignable au démarrage | Arrêt immédiat avant tout appel, `exit 1` |
+| Nombre de pages PDF ≠ nombre de pages doctags | Arrêt immédiat, `exit 1` |
+| Conversion doctags → Markdown dépasse 300 s | `RuntimeError`, `exit 1` |
+| Erreur HTTP 4xx sur une page | Non retentée — page exclue de la sortie, traitement continue |
+| Erreur HTTP 5xx / 429 / timeout sur une page | Jusqu'à 3 tentatives avec backoff (1 s, 2 s), puis page exclue |
+| Toutes les pages échouent | Fichier de sortie **non écrit**, `exit 1` |
+| Pages partiellement échouées | Pages valides assemblées, pages échouées signalées dans les logs, `exit 0` |
+
+**Exit codes**
+| Code | Explication |
+| ------- | ----- |
+| 0 | Markdown vérifié produit avec succès (même si certaines pages ont échoué) |
+| 1 | VLM inaccessible, incohérence PDF/doctags, toutes les pages en échec, ou exception inattendue |
+
+Le log final indique le chemin du fichier produit et les pages éventuellement exclues :
+```
+3/3 page(s) traitées.
+Markdown vérifié sauvegardé : data/output_files/MonDoc/MonDoc_vlm_check.md
+```
+```
+2/3 page(s) échouée(s) non incluses dans la sortie : [2, 3]
+Markdown vérifié sauvegardé : data/output_files/MonDoc/MonDoc_vlm_check.md
+```
