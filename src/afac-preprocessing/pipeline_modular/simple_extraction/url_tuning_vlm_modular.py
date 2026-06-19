@@ -25,7 +25,7 @@ import fitz  # PyMuPDF
 import httpx
 from dotenv import load_dotenv
 
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(_PROJECT_ROOT))
 
 from prompts.prompts import VLM_PROMPT_CORRECTION_STAGE_3_EN

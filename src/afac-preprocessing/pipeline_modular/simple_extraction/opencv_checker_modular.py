@@ -180,7 +180,7 @@ def parse_args() -> argparse.Namespace:
 
 # Résolution des chemins
 def _project_root() -> Path:
-    return Path(__file__).resolve().parent.parent
+    return Path(__file__).resolve().parent.parent.parent
 
 
 def _resolve_doc_name(args: argparse.Namespace) -> str:

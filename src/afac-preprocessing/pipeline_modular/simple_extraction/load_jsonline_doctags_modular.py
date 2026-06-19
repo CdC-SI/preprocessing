@@ -176,7 +176,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def _project_root() -> Path:
-    return Path(__file__).resolve().parent.parent
+    return Path(__file__).resolve().parent.parent.parent
 
 
 def _load_doc_name(args: argparse.Namespace) -> str:

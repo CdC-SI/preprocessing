@@ -299,7 +299,7 @@ def _project_root() -> Path:
     :return: Description
     :rtype: Path
     """
-    return Path(__file__).resolve().parent.parent
+    return Path(__file__).resolve().parent.parent.parent
 
 
 def resolve_input(args: argparse.Namespace) -> Path:

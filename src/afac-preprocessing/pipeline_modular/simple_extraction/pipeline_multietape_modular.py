@@ -269,7 +269,7 @@ def _project_root() -> Path:
     :return: Description
     :rtype: Path
     """
-    return Path(__file__).resolve().parent.parent # Correspond à preprocessing/src/afac-preprocessing
+    return Path(__file__).resolve().parent.parent.parent  # Correspond à preprocessing/src/afac-preprocessing
 
 
 def resolve_input(args: argparse.Namespace) -> Path:
