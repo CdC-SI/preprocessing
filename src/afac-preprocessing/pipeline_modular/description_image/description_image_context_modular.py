@@ -1,22 +1,3 @@
-"""
-description_image_context_modulaire.py — Description des images via VLM avec contexte textuel.
-
-Parse les balises <picture> du doctags, crop les images depuis le PDF source,
-construit un prompt contextualisé (éléments textuels avant/après) et envoie
-le tout au VLM pour générer une description. La description VLM est activable
-via CLI (--image-description / --no-image-description) ou la variable d'env
-ENABLE_IMAGE_DESCRIPTION.
-
-Se lance après load_jsonline_doctags_modulaire.py.
-
-Usage :
-    uv run python description_image_context_modulaire.py \\
-        --doctags data/output_files/MonDoc/MonDoc_reordered_with_tables.doctags \\
-        --pdf     data/input_files/MonDoc.pdf \\
-        --image-description
-    uv run python description_image_context_modulaire.py --dotenv .env.test --no-image-description
-    uv run python description_image_context_modulaire.py --dotenv .env.test
-"""
 import argparse
 import base64
 import logging
@@ -28,15 +9,21 @@ import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TypedDict
+from urllib.parse import urlparse, urlunparse
 import fitz  # PyMuPDF
 import requests
-from dotenv import load_dotenv
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
-if str(_PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(_PROJECT_ROOT))
 
-from prompts.prompts import WIKI_PROMPT_TEMPLATE  # noqa: E402
+try:
+    from prompts.prompts import WIKI_PROMPT_TEMPLATE
+    from utils.config import load_vlm_config
+except ModuleNotFoundError:
+    # Fallback dev local : le projet n'est pas installé ni PYTHONPATH configuré.
+    # En Tekton, définir PYTHONPATH=<project_root> dans le TaskRun pour éviter ce bloc.
+    sys.path.insert(0, str(_PROJECT_ROOT))
+    from prompts.prompts import WIKI_PROMPT_TEMPLATE
+    from utils.config import load_vlm_config
 
 _log = logging.getLogger(__name__)
 
@@ -89,6 +76,7 @@ class VLMConfig:
     url: str
     ca_path: str
     model_name: str
+    timeout: int = 120
 
 
 @dataclass
@@ -238,6 +226,15 @@ def build_context(pic: PictureTag, doc_elements: list[DocElement], n_before: int
     return ctx_before, ctx_after
 
 
+def _clip_rect(page: fitz.Page, pic: PictureTag, norm: int) -> fitz.Rect:
+    """Convertit les coordonnées DocTags normalisées en Rect PyMuPDF pour le crop."""
+    pw, ph = page.rect.width, page.rect.height
+    return fitz.Rect(
+        pic["x0"] / norm * pw, pic["y0"] / norm * ph,
+        pic["x1"] / norm * pw, pic["y1"] / norm * ph,
+    )
+
+
 def crop_to_b64(pdf_doc: fitz.Document, pic: PictureTag, norm: int = NORM, dpi: int = DPI_DEFAULT) -> str:
     """
     Docstring for crop_to_b64
@@ -255,11 +252,7 @@ def crop_to_b64(pdf_doc: fitz.Document, pic: PictureTag, norm: int = NORM, dpi: 
     :rtype: str
     """
     page = pdf_doc[pic["page"]]
-    pw, ph = page.rect.width, page.rect.height
-    pix = page.get_pixmap(dpi=dpi, clip=fitz.Rect(
-        pic["x0"] / norm * pw, pic["y0"] / norm * ph,
-        pic["x1"] / norm * pw, pic["y1"] / norm * ph,
-    ))
+    pix = page.get_pixmap(dpi=dpi, clip=_clip_rect(page, pic, norm))
     return base64.b64encode(pix.tobytes("png")).decode("utf-8")
 
 
@@ -290,7 +283,8 @@ def describe_image_b64(image_b64: str, prompt: str, vlm_cfg: VLMConfig) -> str:
         "chat_template_kwargs": {"enable_thinking": False},
     }
     try:
-        response = requests.post(vlm_cfg.url, json=payload, verify=vlm_cfg.ca_path or False, timeout=120)
+        response = requests.post(vlm_cfg.url, json=payload, verify=vlm_cfg.ca_path or False, timeout=vlm_cfg.timeout)
+        response.raise_for_status()
         data = response.json()
         message = data["choices"][0]["message"]
         content = message.get("content")
@@ -301,6 +295,36 @@ def describe_image_b64(image_b64: str, prompt: str, vlm_cfg: VLMConfig) -> str:
     except Exception:
         _log.exception("Erreur API VLM")
         return ""
+
+
+def check_vlm_connection(vlm_cfg: VLMConfig) -> bool:
+    """
+    Vérifie la connectivité au VLM via GET /v1/models avant tout traitement.
+    Loggue OK avec les modèles disponibles, ou ERROR avec la cause.
+    Retourne True si le VLM est joignable et le modèle configuré est présent.
+    """
+    parsed = urlparse(vlm_cfg.url)
+    models_url = urlunparse((parsed.scheme, parsed.netloc, "/v1/models", "", "", ""))
+    try:
+        resp = requests.get(models_url, verify=vlm_cfg.ca_path or False, timeout=10)
+        resp.raise_for_status()
+        available = [m.get("id", "?") for m in resp.json().get("data", [])]
+        _log.info("VLM OK — %s | modèles disponibles : %s", models_url, available or ["(aucun)"])
+        if vlm_cfg.model_name and vlm_cfg.model_name not in available:
+            _log.warning(
+                "Modèle configuré '%s' absent de la liste VLM : %s",
+                vlm_cfg.model_name, available,
+            )
+        return True
+    except requests.exceptions.ConnectionError:
+        _log.error("VLM non joignable — connexion refusée : %s", models_url)
+    except requests.exceptions.Timeout:
+        _log.error("VLM non joignable — timeout (10s) : %s", models_url)
+    except requests.exceptions.HTTPError as exc:
+        _log.exception("VLM non joignable — HTTP %s : %s", exc.response.status_code, models_url)
+    except Exception:
+        _log.exception("Erreur inattendue lors de la vérification VLM : %s", models_url)
+    return False
 
 
 def export_picture_images(
@@ -332,11 +356,7 @@ def export_picture_images(
     with fitz.open(str(pdf_path)) as doc:
         for i, pic in enumerate(pictures, start=1):
             page = doc[pic["page"]]
-            pw, ph = page.rect.width, page.rect.height
-            pix = page.get_pixmap(dpi=dpi, clip=fitz.Rect(
-                pic["x0"] / norm * pw, pic["y0"] / norm * ph,
-                pic["x1"] / norm * pw, pic["y1"] / norm * ph,
-            ))
+            pix = page.get_pixmap(dpi=dpi, clip=_clip_rect(page, pic, norm))
             img_path = output_dir / (
                 f"{doc_name}_page{pic['page'] + 1}_"
                 f"x{pic['x0']}_y{pic['y0']}_x{pic['x1']}_y{pic['y1']}.png"
@@ -404,6 +424,8 @@ def describe_all_pictures(
     n_before: int = N_BEFORE,
     n_after: int = N_AFTER,
     n_workers: int = 1,
+    dpi: int = DPI_DEFAULT,
+    norm: int = NORM,
 ) -> dict[int, VLMResult]:
     """
     Docstring for describe_all_pictures
@@ -450,7 +472,7 @@ def describe_all_pictures(
                 context_after=ctx_after,
                 language=language,
             )
-            image_b64 = crop_to_b64(pdf_doc, pic)
+            image_b64 = crop_to_b64(pdf_doc, pic, norm=norm, dpi=dpi)
             task_q.put(ImageTask(
                 index=i, total=total,
                 page=pic["page"],
@@ -461,8 +483,8 @@ def describe_all_pictures(
                 raw_tag=pic["raw_tag"],
             ))
 
-    task_q.join()
-    for _ in workers:
+    task_q.join()          # attendre que toutes les tâches soient traitées
+    for _ in workers:      # puis envoyer les sentinels d'arrêt
         task_q.put(None)
     for w in workers:
         w.join()
@@ -645,9 +667,40 @@ def parse_args() -> argparse.Namespace:
         help="Nombre de threads VLM parallèles. Défaut : 1 (séquentiel, safe pour les API à rate-limit).",
     )
     parser.add_argument(
+        "--timeout",
+        type=int, default=120, metavar="SEC",
+        help="Timeout en secondes pour chaque appel VLM. Défaut : 120.",
+    )
+    parser.add_argument(
+        "--dpi",
+        type=int, default=DPI_DEFAULT, metavar="N",
+        help=f"Résolution DPI pour le crop des images PDF. Défaut : {DPI_DEFAULT}.",
+    )
+    parser.add_argument(
+        "--n-before",
+        type=int, default=N_BEFORE, metavar="N",
+        help=f"Nombre d'éléments textuels avant l'image pour le contexte VLM. Défaut : {N_BEFORE}.",
+    )
+    parser.add_argument(
+        "--n-after",
+        type=int, default=N_AFTER, metavar="N",
+        help=f"Nombre d'éléments textuels après l'image pour le contexte VLM. Défaut : {N_AFTER}.",
+    )
+    parser.add_argument(
+        "--norm",
+        type=int, default=NORM, metavar="N",
+        help=f"Facteur de normalisation des coordonnées DocTags (système de coordonnées du .doctags). Défaut : {NORM}.",
+    )
+    parser.add_argument(
         "--dotenv",
         type=Path, default=None, metavar="FICHIER",
-        help="Fichier .env à charger (VLM_URL, CA_PATH, VLM_MODEL_NAME, DOC_NAME). Ignoré si --doctags et --pdf sont fournis.",
+        help="Fichier .env à charger (VLM_URL, VLM_CA_PEM, VLM_MODEL_NAME, DOC_NAME). Toujours chargé pour la config VLM ; si absent, les variables sont lues depuis l'environnement.",
+    )
+    parser.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="Niveau de log. Défaut : INFO. Passer DEBUG pour diagnostiquer un step Tekton.",
     )
     return parser.parse_args()
 
@@ -663,12 +716,8 @@ def _load_doc_name(args: argparse.Namespace) -> str:
     :return: Description
     :rtype: str
     """
-    if args.dotenv:
-        dotenv_path = args.dotenv.resolve()
-        if not dotenv_path.exists():
-            raise SystemExit(f"Erreur : fichier .env introuvable — {dotenv_path}")
-        load_dotenv(dotenv_path=dotenv_path)
-        _log.info("Environnement chargé depuis : %s", dotenv_path)
+    if args.dotenv and not Path(args.dotenv).resolve().exists():
+        raise SystemExit(f"Erreur : fichier .env introuvable — {Path(args.dotenv).resolve()}")
     doc_name = os.environ.get("DOC_NAME", "").strip()
     if not doc_name:
         raise SystemExit(
@@ -782,15 +831,32 @@ def resolve_images_dir(args: argparse.Namespace, doctags_path: Path) -> Path:
 
 # Point d'entrée
 def main() -> None:
+    args = parse_args()
+
     logging.basicConfig(
-        level=logging.INFO,
+        level=getattr(logging, args.log_level),
         format="%(asctime)s [%(levelname)s] %(message)s",
         datefmt="%H:%M:%S",
     )
 
-    args = parse_args()
+    image_desc_enabled = args.image_description
 
-    # Résolution des chemins
+    # Config VLM — chargée depuis load_vlm_config (dotenv + CA certifi)
+    try:
+        config = load_vlm_config(dotenv_path=args.dotenv)
+    except RuntimeError as exc:
+        if image_desc_enabled:
+            raise SystemExit(str(exc)) from exc
+        config = {"VLM_URL": "", "CA_PATH": "", "VLM_MODEL_NAME": ""}
+
+    vlm_cfg = VLMConfig(
+        url=config["VLM_URL"],
+        ca_path=config["CA_PATH"],
+        model_name=config["VLM_MODEL_NAME"],
+        timeout=args.timeout,
+    )
+
+    # Résolution des chemins (DOC_NAME déjà chargé via load_vlm_config)
     doctags_path = resolve_doctags(args)
     if not doctags_path.exists():
         raise SystemExit(f"Erreur : fichier .doctags introuvable — {doctags_path}")
@@ -804,22 +870,8 @@ def main() -> None:
     markdown_path = resolve_markdown(args, doctags_path, doc_name)
     images_dir = resolve_images_dir(args, doctags_path)
 
-    image_desc_enabled = args.image_description
-
-    # Config VLM (lue depuis l'env — chargé par --dotenv si besoin)
-    vlm_cfg = VLMConfig(
-        url=os.environ.get("VLM_URL", ""),
-        ca_path=os.environ.get("CA_PATH", ""),
-        model_name=os.environ.get("VLM_MODEL_NAME", ""),
-    )
-    if image_desc_enabled and not vlm_cfg.url:
-        raise SystemExit(
-            "Erreur : VLM_URL non défini. "
-            "Fournir --dotenv <fichier> ou définir VLM_URL dans l'environnement."
-        )
-
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    images_dir.mkdir(parents=True, exist_ok=True)
+    markdown_path.parent.mkdir(parents=True, exist_ok=True)
 
     _log.info("Doctags source   : %s", doctags_path)
     _log.info("PDF source       : %s", pdf_path)
@@ -844,9 +896,10 @@ def main() -> None:
         markdown_path.write_text("", encoding="utf-8")
         sys.exit(0)
 
-    # Étape 2 — Export PNG
+    # Étape 2 — Export PNG (dossier créé uniquement si des images sont présentes)
     _log.info("ÉTAPE 2 — Export des images PNG (coordonnées doctags)")
-    export_picture_images(pdf_path, pictures, doc_name, images_dir)
+    images_dir.mkdir(parents=True, exist_ok=True)
+    export_picture_images(pdf_path, pictures, doc_name, images_dir, dpi=args.dpi, norm=args.norm)
 
     # Étape 3 — Description VLM (ou suppression si désactivée)
     _log.info("ÉTAPE 3 — Description des images avec contexte textuel")
@@ -856,11 +909,25 @@ def main() -> None:
         markdown_path.write_text("", encoding="utf-8")
         sys.exit(0)
 
+    if not vlm_cfg.model_name:
+        raise SystemExit(
+            "Erreur : VLM_MODEL_NAME non défini. "
+            "Fournir --dotenv <fichier> ou définir VLM_MODEL_NAME dans l'environnement."
+        )
+
+    if not check_vlm_connection(vlm_cfg):
+        _log.error("Arrêt — VLM non joignable. Vérifier VLM_URL et VLM_CA_PEM.")
+        sys.exit(1)
+
     try:
         results = describe_all_pictures(
             pdf_path, pictures, doc_elements, vlm_cfg,
             language=args.language,
             n_workers=args.workers,
+            n_before=args.n_before,
+            n_after=args.n_after,
+            dpi=args.dpi,
+            norm=args.norm,
         )
     except Exception:
         _log.exception("Erreur lors de la description des images de '%s'", doc_name)

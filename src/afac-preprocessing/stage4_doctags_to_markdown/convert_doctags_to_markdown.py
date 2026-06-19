@@ -76,6 +76,19 @@ def _hoist_misplaced_tags(content: str) -> str:
     return OL.sub(_fix_ol, content)
 
 
+def preprocess_doctags(content: str) -> str:
+    """
+    Pré-traite le contenu doctags : découpage en pages et correction des balises mal placées.
+    Point d'entrée public pour les modules externes — évite de coupler sur les helpers privés.
+
+    :param content: contenu doctags brut
+    :return: contenu pré-traité, prêt pour DocTagsDocument
+    """
+    content = _split_pages(content)
+    content = _hoist_misplaced_tags(content)
+    return content
+
+
 def _replace_color(match: re.Match) -> str:
     """
     Remplace les balises personnalisées [[COLOR:color]]texte[[/COLOR]]

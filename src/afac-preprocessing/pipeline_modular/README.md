@@ -1,4 +1,4 @@
-# pipeline_multietape_modulaire.py — Référence CLI
+# pipeline_multietape_modular.py — Référence CLI
 Script unifié qui remplace pipeline_multietape.py (stage 1) et export_table_docling.py (stage 2).
 
 Une seule conversion Docling produit tous les formats demandés — pas de double passage EasyOCR.
@@ -6,7 +6,7 @@ Une seule conversion Docling produit tous les formats demandés — pas de doubl
 ## Commande complète (tous les paramètres)
 
 ```
-uv run python stage1_modulaire/pipeline_multietape_modulaire.py \
+uv run python pipeline_modular/simple_extraction/pipeline_multietape_modulaire.py \
   --input     data/input_files/MonDoc.pdf \
   --output-dir ./data/output_files/MonDoc \
   --formats   json md txt doctags \ # pour spécifier quels fichiers doivent être générés
@@ -44,24 +44,24 @@ uv run python stage1_modulaire/pipeline_multietape_modulaire.py \
 
 ## Ancien workflow .env.test (DOC_NAME défini dans le fichier)
 ```
-uv run python stage1_modulaire/pipeline_multietape_modulaire.py --dotenv .env.test
+uv run python pipeline_modular/simple_extraction/pipeline_multietape_modulaire.py --dotenv .env.test
 ```
 
 ## Extraction rapide, seulement Markdown + JSON
 ```
-uv run python stage1_modulaire/pipeline_multietape_modulaire.py \
+uv run python pipeline_modular/simple_extraction/pipeline_multietape_modulaire.py \
   --input data/input_files/MonDoc.pdf --formats md json
 ```
 
 ## PDF natif (pas de scan) — désactiver l'OCR pour aller plus vite
 ```
-uv run python stage1_modulaire/pipeline_multietape_modulaire.py \
+uv run python pipeline_modular/simple_extraction/pipeline_multietape_modulaire.py \
   --input data/input_files/MonDoc.pdf --no-ocr
 ```
 
 ## Seulement les tables, sortie personnalisée
 ```
-uv run python stage1_modulaire/pipeline_multietape_modulaire.py \
+uv run python pipeline_modular/simple_extraction/pipeline_multietape_modulaire.py \
   --input data/input_files/MonDoc.pdf \
   --formats csv html \
   --output-dir ./exports/tables
@@ -69,7 +69,7 @@ uv run python stage1_modulaire/pipeline_multietape_modulaire.py \
 
 ## Document multilingue (français + anglais)
 ```
-uv run python stage1_modulaire/pipeline_multietape_modulaire.py \
+uv run python pipeline_modular/simple_extraction/pipeline_multietape_modulaire.py \
   --input data/input_files/MonDoc.pdf --lang fr en
 ```
 
@@ -78,7 +78,7 @@ Superpose les bounding boxes Docling sur chaque page du PDF et exporte les image
 
 ## Chemins explicites
 ```
-uv run python stage1_modulaire/opencv_checker_modulaire.py \
+uv run python pipeline_modular/simple_extraction/opencv_checker_modulaire.py \
   --pdf      data/input_files/MonDoc.pdf \
   --doctags  data/output_files/MonDoc/MonDoc.doctags \
   --output-dir data/output_files/MonDoc/opencv_validation
@@ -86,12 +86,12 @@ uv run python stage1_modulaire/opencv_checker_modulaire.py \
 
 ## Ancien workflow .env.test
 ```
-uv run python stage1_modulaire/opencv_checker_modulaire.py --dotenv .env.test
+uv run python pipeline_modular/simple_extraction/opencv_checker_modulaire.py --dotenv .env.test
 ```
 
 ## DPI réduit pour aller plus vite (validation rapide)
 ```
-uv run python stage1_modulaire/opencv_checker_modulaire.py \
+uv run python pipeline_modular/simple_extraction/opencv_checker_modulaire.py \
   --pdf data/input_files/MonDoc.pdf --dpi 150
 ```
 
@@ -118,26 +118,26 @@ uv run python stage1_modulaire/opencv_checker_modulaire.py \
 | 0 | Toutes les pages sont exportées avec succès |
 | 1 | Une ou plusieurs pages en erreur (voir logs) |
 
-# Script csv_to_jsonlines_modulaire.py — Conversion tables CSV -> JSONL
+# Script csv_to_jsonlines_modular.py — Conversion tables CSV -> JSONL
 
 Convertit les fichiers CSV extraits par pipeline_multietape_modulaire.py en fichiers JSONL. Un `.jsonl` par CSV, une ligne JSON par ligne du tableau.
 
 ## Dossier explicite (mode Tekton)
 ```
-uv run python stage1_modulaire/csv_to_jsonlines_modulaire.py \
+uv run python pipeline_modular/simple_extraction/csv_to_jsonlines_modulaire.py \
   --input-dir data/output_files/MonDoc/tables
 ```
 
 ## JSONL dans un dossier séparé
 ```
-uv run python stage1_modulaire/csv_to_jsonlines_modulaire.py \
+uv run python pipeline_modular/simple_extraction/csv_to_jsonlines_modulaire.py \
   --input-dir  data/output_files/MonDoc/tables \
   --output-dir data/output_files/MonDoc/jsonlines
 ```
 
 ## Ancien workflow .env.test
 ```
-uv run python stage1_modulaire/csv_to_jsonlines_modulaire.py --dotenv .env.test
+uv run python pipeline_modular/simple_extraction/csv_to_jsonlines_modulaire.py --dotenv .env.test
 ```
 
 ## Paramètres :
@@ -183,20 +183,20 @@ Place dans le pipeline : après pipeline_multietape_modulaire.py (qui produit le
 
 ## Sortie auto : ajoute le suffixe _reordered au nom du fichier
 ```
-uv run python stage1_modulaire/reordered_doctags.py \
+uv run python pipeline_modular/simple_extraction/reordered_doctags.py \
   --input data/output_files/MonDoc/MonDoc.doctags
 ```
 
 ## Sortie personnalisée
 ```
-uv run python stage1_modulaire/reordered_doctags.py \
+uv run python pipeline_modular/simple_extraction/reordered_doctags.py \
   --input  data/output_files/MonDoc/MonDoc.doctags \
   --output data/output_files/MonDoc/MonDoc_reordered.doctags
 ```
 
 ## Ancien workflow .env.test
 ```
-uv run python stage1_modulaire/reordered_doctags.py --dotenv .env.test
+uv run python pipeline_modular/simple_extraction/reordered_doctags.py --dotenv .env.test
 ```
 
 ## Paramètres :
@@ -245,7 +245,7 @@ Toutes les fonctions intermédiaires sont pures (sans effet de bord) et importab
 | 0 | Fichier réordonné avec succès |
 | 1 | Erreur de traitement (fichier malformé, encodage, etc.) — traceback dans les logs |
 
-# Script load_jsonline_doctags_modulaire.py — Injection des tables JSONL dans les DocTags
+# Script load_jsonline_doctags_modular.py — Injection des tables JSONL dans les DocTags
 
 Remplace chaque balise `<otsl>…</otsl>` d'un fichier `.doctags` par un bloc `<text>` contenant le contenu JSONL de la table correspondante (ordre d'apparition = ordre alphabétique des fichiers).
 
@@ -253,14 +253,14 @@ Remplace chaque balise `<otsl>…</otsl>` d'un fichier `.doctags` par un bloc `<
 
 ## Chemins explicites (mode Tekton)
 ```
-uv run python stage1_modulaire/load_jsonline_doctags_modulaire.py \
+uv run python pipeline_modular/simple_extraction/load_jsonline_doctags_modulaire.py \
   --doctags    data/output_files/MonDoc/MonDoc_reordered.doctags \
   --tables-dir data/output_files/MonDoc/tables
 ```
 
 ## Sortie personnalisée
 ```
-uv run python stage1_modulaire/load_jsonline_doctags_modulaire.py \
+uv run python pipeline_modular/simple_extraction/load_jsonline_doctags_modulaire.py \
   --doctags    data/output_files/MonDoc/MonDoc_reordered.doctags \
   --tables-dir data/output_files/MonDoc/tables \
   --output     data/output_files/MonDoc/MonDoc_reordered_with_tables.doctags
@@ -268,7 +268,7 @@ uv run python stage1_modulaire/load_jsonline_doctags_modulaire.py \
 
 ## Ancien workflow .env.test
 ```
-uv run python stage1_modulaire/load_jsonline_doctags_modulaire.py --dotenv .env.test
+uv run python pipeline_modular/simple_extraction/load_jsonline_doctags_modulaire.py --dotenv .env.test
 ```
 
 ## Paramètres :
@@ -328,20 +328,20 @@ Extrait tous les liens externes (`http`, `https`, `mailto`) d'un PDF page par pa
 
 ## Extraction minimale
 ```
-uv run python stage1_modulaire/url_extaction_modular.py \
+uv run python pipeline_modular/simple_extraction/url_extaction_modular.py \
   --pdf data/input_files/MonDoc.pdf
 ```
 
 ## Sortie personnalisée
 ```
-uv run python stage1_modulaire/url_extaction_modular.py \
+uv run python pipeline_modular/simple_extraction/url_extaction_modular.py \
   --pdf    data/input_files/MonDoc.pdf \
   --output data/output_files/MonDoc/hyperlinks_data_MonDoc.jsonl
 ```
 
 ## Ancien workflow .env.test
 ```
-uv run python stage1_modulaire/url_extaction_modular.py --dotenv .env.test
+uv run python pipeline_modular/simple_extraction/url_extaction_modular.py --dotenv .env.test
 ```
 
 ## Paramètres :
@@ -386,15 +386,23 @@ Terminé — 5 lien(s) extrait(s) -> data/output_files/MonDoc/hyperlinks_data_Mo
 Terminé — aucun lien externe trouvé dans MonDoc.pdf
 ```
 
-# Script description_image_context_modulaire.py — Description des images via VLM avec contexte
+# Script description_image_context_modular.py — Description des images via VLM avec contexte
 
 Parse les balises `<picture>` d'un fichier `.doctags`, crop les zones correspondantes depuis le PDF source, construit un prompt contextualisé (N éléments textuels avant/après l'image) et appelle un VLM pour générer une description. Remplace ensuite chaque balise `<picture>` par la description produite. Si la description est désactivée, les balises `<picture>` sont supprimées proprement.
 
 **Place dans le pipeline :** après `load_jsonline_doctags_modulaire.py` (qui produit le `_reordered_with_tables.doctags`), avant les étapes de post-traitement aval.
 
+## Variables d'environnement requises
+| Variable | Obligatoire | Description |
+| ------- | ----- | -------------|
+| `VLM_URL` | Oui (si `--image-description`) | Endpoint de l'API VLM (ex. `https://vlm.host/v1/chat/completions`). |
+| `VLM_MODEL_NAME` | Oui (si `--image-description`) | Nom du modèle à passer dans la requête. |
+| `VLM_CA_PEM` | Non | Chemin vers un certificat CA custom. Si absent, fallback `certifi`. |
+| `DOC_NAME` | Si `--doctags`/`--pdf` absents | Nom du document pour la résolution automatique des chemins. |
+
 ## Chemins explicites (mode Tekton)
 ```
-uv run python stage1_modulaire/description_image_context_modulaire.py \
+uv run python pipeline_modular/simple_extraction/description_image_context_modulaire.py \
   --doctags data/output_files/MonDoc/MonDoc_reordered_with_tables.doctags \
   --pdf     data/input_files/MonDoc.pdf \
   --image-description
@@ -402,7 +410,7 @@ uv run python stage1_modulaire/description_image_context_modulaire.py \
 
 ## Désactiver la description VLM (supprime les balises `<picture>`)
 ```
-uv run python stage1_modulaire/description_image_context_modulaire.py \
+uv run python pipeline_modular/simple_extraction/description_image_context_modulaire.py \
   --doctags data/output_files/MonDoc/MonDoc_reordered_with_tables.doctags \
   --pdf     data/input_files/MonDoc.pdf \
   --no-image-description
@@ -410,7 +418,7 @@ uv run python stage1_modulaire/description_image_context_modulaire.py \
 
 ## Sorties personnalisées
 ```
-uv run python stage1_modulaire/description_image_context_modulaire.py \
+uv run python pipeline_modular/simple_extraction/description_image_context_modulaire.py \
   --doctags    data/output_files/MonDoc/MonDoc_reordered_with_tables.doctags \
   --pdf        data/input_files/MonDoc.pdf \
   --output     data/output_files/MonDoc/MonDoc_final.doctags \
@@ -419,14 +427,25 @@ uv run python stage1_modulaire/description_image_context_modulaire.py \
   --image-description
 ```
 
-## Ancien workflow .env.test
+## Parallélisation et tuning avancé
 ```
-uv run python stage1_modulaire/description_image_context_modulaire.py --dotenv .env.test
+uv run python pipeline_modular/simple_extraction/description_image_context_modulaire.py \
+  --doctags    data/output_files/MonDoc/MonDoc_reordered_with_tables.doctags \
+  --pdf        data/input_files/MonDoc.pdf \
+  --image-description \
+  --workers    4 \
+  --timeout    60 \
+  --dpi        200 \
+  --n-before   3 \
+  --n-after    3 \
+  --language   french \
+  --log-level  DEBUG
 ```
 
-## Ancien workflow .env.test — description désactivée
+## Workflow .env.test (dev local)
 ```
-uv run python stage1_modulaire/description_image_context_modulaire.py --dotenv .env.test --no-image-description
+uv run python pipeline_modular/simple_extraction/description_image_context_modulaire.py --dotenv .env.test --image-description
+uv run python pipeline_modular/simple_extraction/description_image_context_modulaire.py --dotenv .env.test --no-image-description
 ```
 
 ## Paramètres :
@@ -436,22 +455,20 @@ uv run python stage1_modulaire/description_image_context_modulaire.py --dotenv .
 | --pdf | -p | (voir note) | Fichier PDF source pour le crop des images. |
 | --output | -o | `<même dossier>/<stem>_pictures.doctags` | Fichier `.doctags` enrichi en sortie. |
 | --markdown | -m | `<même dossier>/<doc_name>_image_descriptions.md` | Fichier Markdown listant toutes les descriptions générées. |
-| --images-dir | | `<même dossier>/used_images/` | Dossier de sortie pour les PNG cropés exportés. |
+| --images-dir | | `<même dossier>/used_images/` | Dossier de sortie pour les PNG cropés. Créé uniquement si des `<picture>` sont trouvées. |
 | --doc-name | | déduit de `DOC_NAME` ou du nom du `--doctags` | Nom du document — utilisé dans les logs et le Markdown. |
-| --image-description / --no-image-description | | `ENABLE_IMAGE_DESCRIPTION` ou `True` | Active ou désactive la description VLM. Voir priorité ci-dessous. |
-| --dotenv | | (aucun) | Fichier `.env` à charger pour résoudre `DOC_NAME`. Ignoré si `--doctags` et `--pdf` sont fournis. |
+| --image-description / --no-image-description | | `False` (désactivé) | Active ou désactive la description VLM. |
+| --workers | -w | `1` | Threads VLM parallèles. Garder à 1 si l'API a un rate-limit. |
+| --timeout | | `120` | Timeout en secondes pour chaque appel VLM. |
+| --dpi | | `150` | Résolution DPI pour le crop des images PDF. |
+| --n-before | | `5` | Nombre d'éléments textuels avant l'image inclus dans le contexte VLM. |
+| --n-after | | `5` | Nombre d'éléments textuels après l'image inclus dans le contexte VLM. |
+| --norm | | `500` | Facteur de normalisation des coordonnées DocTags. |
+| --language | | `french` | Langue de la réponse VLM. |
+| --log-level | | `INFO` | Niveau de log : `DEBUG`, `INFO`, `WARNING`, `ERROR`. |
+| --dotenv | | (aucun) | Fichier `.env` à charger (`VLM_URL`, `VLM_CA_PEM`, `VLM_MODEL_NAME`, `DOC_NAME`). Toujours chargé pour la config VLM ; si absent, les variables sont lues depuis l'environnement. |
 
 *Note : `--doctags` absent : résout automatiquement `data/output_files/<DOC_NAME>/<DOC_NAME>_reordered_with_tables.doctags`. `--pdf` absent : résout `data/input_files/<DOC_NAME>.pdf`.*
-
-## Priorité du switch `--image-description`
-Le switch est résolu dans l'ordre suivant (premier gagnant) :
-
-| Priorité | Source | Exemple |
-| ------- | ----- | -------- |
-| 1 (plus haute) | Argument CLI | `--image-description` / `--no-image-description` |
-| 2 | Dict `DOC_IMAGE_DESCRIPTION` (dans le script) | `"MonDoc": False` |
-| 3 | Variable d'environnement | `ENABLE_IMAGE_DESCRIPTION=false` |
-| 4 (défaut) | Valeur par défaut | `True` |
 
 **Sorties :**
 ```
@@ -459,7 +476,7 @@ data/output_files/MonDoc/
 ├── MonDoc_reordered_with_tables.doctags              ← entrée
 ├── MonDoc_reordered_with_tables_pictures.doctags     ← sortie (balises <picture> remplacées)
 ├── MonDoc_image_descriptions.md                      ← rapport Markdown des descriptions
-└── used_images/
+└── used_images/                                      ← créé uniquement si <picture> trouvées
     ├── MonDoc_page1_x12_y34_x56_y78.png             ← PNG cropés (nommés par coordonnées doctags)
     └── ...
 ```
@@ -468,8 +485,10 @@ data/output_files/MonDoc/
 
 | Situation | Comportement |
 | ------- | ----- |
-| Aucune balise `<picture>` dans le `.doctags` | Passthrough — doctags copié sans modification, Markdown vide, `exit 0` |
-| `--no-image-description` (ou switch désactivé) | Balises `<picture>` supprimées, Markdown vide, PNG exportés quand même, `exit 0` |
+| Aucune balise `<picture>` dans le `.doctags` | Passthrough — doctags copié sans modification, Markdown vide, dossier `used_images/` non créé, `exit 0` |
+| `--no-image-description` | Balises `<picture>` supprimées, Markdown vide, PNG exportés, `exit 0` |
+| `VLM_URL` ou `VLM_MODEL_NAME` non défini avec `--image-description` | Erreur immédiate, `exit 1` |
+| VLM non joignable (`check_vlm_connection` échoue) | Erreur immédiate avant tout appel image, `exit 1` |
 | `--image-description` — VLM répond correctement | Balises `<picture>` remplacées par `<text>description</text>` (ou inline dans `<list_item>`), `exit 0` |
 | `--image-description` — VLM ne répond pas pour une image | Balise `<picture>` conservée, warning dans les logs, `exit 0` |
 | Exception inattendue pendant le traitement VLM | Traceback dans les logs, `exit 1` |
@@ -486,18 +505,20 @@ data/output_files/MonDoc/
 | Code | Explication |
 | ------- | ----- |
 | 0 | Traitement réussi (ou passthrough sans erreur) |
-| 1 | Exception pendant la description VLM — traceback dans les logs |
+| 1 | VLM non joignable, `VLM_URL`/`VLM_MODEL_NAME` manquant, ou exception pendant le traitement |
 
 Le log final indique le résultat par étape :
 ```
+VLM OK — <VLM_URL>/v1/models | modèles disponibles : ['<VLM_MODEL_NAME>']
+CA utilisée : <chemin_résolu> (VLM_CA_PEM)   ← ou (certifi fallback) si VLM_CA_PEM absent
 ÉTAPE 1 — Parsing des balises <picture> + éléments du doctags
 ÉTAPE 2 — Export des images PNG (coordonnées doctags)
 ÉTAPE 3 — Description des images avec contexte textuel
 ÉTAPE 4 — Remplacement des balises <picture> dans le doctags
 ÉTAPE 5 — Export des descriptions en Markdown
-OK - 3/3 image(s) décrite(s) avec contexte
+3/3 image(s) décrite(s) avec contexte
 ```
-# Script description_image_context_modulaire.py — Description des images via VLM avec contexte
+# Script description_image_context_modular.py — Description des images via VLM avec contexte
 
 ## Rôle dans le pipeline
 S'exécute après `load_jsonline_doctags_modulaire.py` (qui produit le `_reordered_with_tables.doctags`) et avant les étapes de post-traitement.
@@ -524,7 +545,7 @@ S'exécute après `load_jsonline_doctags_modulaire.py` (qui produit le `_reorder
 
 ## Example d'une command complète et documentation des arguments:
 ```
-uv run python stage1_modulaire/description_image_context_modulaire.py \
+uv run python pipeline_modular/simple_extraction/description_image_context_modulaire.py \
   --doctags    data/output_files/MonDoc/MonDoc_reordered_with_tables.doctags \
   --pdf        data/input_files/MonDoc.pdf \
   --output     data/output_files/MonDoc/MonDoc_reordered_with_tables_pictures.doctags \
@@ -550,3 +571,162 @@ uv run python stage1_modulaire/description_image_context_modulaire.py \
 | `--dotenv` |	`.env.test`	| Charge `VLM_URL`, `CA_PATH`, `VLM_MODEL_NAME`, ignoré si `--doctags` et `--pdf` sont fournis |
 
 *Note: Note : `--dotenv` et `--doctags/--pdf` explicites peuvent coexister, dans ce cas `--dotenv` sert uniquement à charger `VLM_URL` / `CA_PATH` / `VLM_MODEL_NAME`, la résolution des chemins utilise les valeurs CLI*
+
+# Script url_tuning_vlm_modular.py — Intégration des liens hypertextes dans le doctags via VLM
+
+Reconstruit le doctags page par page en y intégrant les liens hypertextes (`http`, `https`, `mailto`) extraits par `url_extaction_modular.py`. Pour chaque page, le VLM reçoit le fragment de doctags, la liste des liens de la page et une image PNG de la page, et produit un doctags enrichi où les liens sont intégrés au format markdown `[text](url)`. Les pages traitées sont ensuite réassemblées en un fichier doctags final.
+
+**Place dans le pipeline :** après `url_extaction_modular.py` (qui produit le `.jsonl`) et après l'étape qui produit le `.doctags` d'entrée, avant les étapes de post-traitement aval.
+
+## Variables d'environnement requises
+| Variable | Obligatoire | Description |
+| ------- | ----- | -------------|
+| `VLM_URL` | Oui | Endpoint de l'API VLM (ex. `https://vlm.host/v1/chat/completions`). |
+| `VLM_MODEL_NAME` | Oui | Nom du modèle à passer dans la requête. |
+| `CA_PATH` | Non | Chemin vers un certificat CA custom pour la connexion HTTPS au VLM. |
+| `DOC_NAME` | Si `--pdf` absent | Nom du document pour la résolution automatique des chemins. |
+
+## Commande complète (tous les paramètres)
+```
+uv run python pipeline_modular/simple_extraction/url_tuning_vlm_modular.py \
+  --pdf      data/input_files/MonDoc.pdf \
+  --doctags  data/output_files/MonDoc/MonDoc.doctags \
+  --jsonl    data/output_files/MonDoc/hyperlinks_data_MonDoc.jsonl \
+  --output   data/output_files/MonDoc/MonDoc_url_vlm.doctags \
+  --workers  1 \
+  --dotenv   .env.test
+```
+
+## Chemins résolus automatiquement depuis le stem du PDF
+```
+uv run python pipeline_modular/simple_extraction/url_tuning_vlm_modular.py \
+  --pdf data/input_files/MonDoc.pdf
+```
+
+## Ancien workflow .env.test
+```
+uv run python pipeline_modular/simple_extraction/url_tuning_vlm_modular.py --dotenv .env.test
+```
+
+## Doctags d'entrée personnalisé (ex. : issu de stage2)
+```
+uv run python pipeline_modular/simple_extraction/url_tuning_vlm_modular.py \
+  --pdf     data/input_files/MonDoc.pdf \
+  --doctags data/output_files/MonDoc/MonDoc_reordered_with_tables_pictures.doctags \
+  --jsonl   data/output_files/MonDoc/hyperlinks_data_MonDoc.jsonl \
+  --output  data/output_files/MonDoc/MonDoc_reordered_with_tables_pictures_url_vlm.doctags
+```
+
+## Paramètres :
+| Paramètre | Alias | Défaut | Description |
+| ------- | ----- | -------- | -------------|
+| --pdf | -p | (voir note) | Chemin vers le PDF source — utilisé pour rendre chaque page en image. |
+| --doctags | -d | `data/output_files/<stem>/<stem>.doctags` | Fichier `.doctags` d'entrée à enrichir avec les liens. |
+| --jsonl | -j | `data/output_files/<stem>/hyperlinks_data_<stem>.jsonl` | Fichier JSONL produit par `url_extaction_modular.py`. |
+| --output | -o | `data/output_files/<stem>/<stem>_url_vlm.doctags` | Fichier `.doctags` enrichi en sortie. |
+| --workers | -w | `1` | Nombre de requêtes VLM simultanées. Garder à 1 si l'API a un rate-limit. |
+| --dotenv | | (aucun) | Fichier `.env` à charger pour `VLM_URL`, `CA_PATH`, `VLM_MODEL_NAME` et `DOC_NAME`. Toujours chargé avant la config VLM. |
+
+*Note : `--pdf` absent : résout automatiquement `data/input_files/<DOC_NAME>.pdf` depuis la variable `DOC_NAME`.*
+
+**Sorties :**
+```
+data/output_files/MonDoc/
+├── MonDoc.doctags                       ← entrée (ou tout autre .doctags spécifié)
+├── hyperlinks_data_MonDoc.jsonl         ← entrée (produit par url_extaction_modular.py)
+└── MonDoc_url_vlm.doctags               ← sortie
+```
+
+## Comportement page par page
+
+| Situation | Comportement |
+| ------- | ----- |
+| Page sans lien dans le JSONL | VLM appelé quand même — le doctags de la page reste inchangé (pas de lien à insérer) |
+| Page absente du split doctags | Ignorée — non envoyée au VLM |
+| VLM non joignable au démarrage | Arrêt immédiat avant tout appel, `exit 1` |
+| Erreur VLM sur une page | Fallback : le doctags original de la page est conservé, le traitement continue |
+| `<page_break>` présents dans le doctags | Split exact par `<page_break>` — méthode fiable |
+| Aucun `<page_break>` trouvé | Fallback : distribution approximative des blocs par nombre total de tags |
+
+## Assemblage du doctags final
+
+Après traitement de toutes les pages, les contenus sont réassemblés dans l'ordre :
+- Les balises `<doctag>` / `</doctag>` internes à chaque réponse VLM sont retirées
+- Les pages sont rejointées avec `<page_break>` comme séparateur
+- Le résultat final est enveloppé dans une seule paire `<doctag>…</doctag>`
+
+**Exit codes**
+| Code | Explication |
+| ------- | ----- |
+| 0 | Doctags enrichi produit avec succès |
+| 1 | VLM inaccessible au démarrage, ou exception inattendue — traceback dans les logs |
+
+Le log final indique le chemin du fichier produit :
+```
+Doctags final sauvegardé : data/output_files/MonDoc/MonDoc_url_vlm.doctags
+```
+
+# Script docling_markdown_converter_modular.py — Conversion des doctags en Markdown
+
+Convertit un fichier `.doctags` enrichi en Markdown via Docling. Applique deux pré-traitements avant la conversion et deux post-traitements sur le Markdown produit.
+
+**Place dans le pipeline :** dernière étape — lit le `.doctags` final (enrichi avec tables, images et URLs), produit le `.md` livrable.
+
+## Pré-traitements appliqués avant conversion Docling
+
+| Étape | Fonction | Rôle |
+| ------- | ----- | -------------|
+| 1 | `_split_pages` | Découpe un bloc `<doctag>` unique en un bloc par page. Essaie d'abord `</page_footer>` (doctags Docling natif), puis `<page_break>` (produit par `url_tuning_vlm_modular.py`). Sans ce découpage, Docling s'arrête à la première page. |
+| 2 | `_hoist_misplaced_tags` | Extrait les `<section_header_level_N>` et `<unordered_list>` imbriqués dans un `<ordered_list>` et les repositionne juste après le `</ordered_list>`. Docling écraserait sinon les en-têtes et frontières de section. |
+
+## Post-traitements appliqués sur le Markdown produit
+
+| Balise source | Rendu final |
+| ------- | -------------|
+| `[[COLOR:red]]texte[[/COLOR]]` | `<span style="color:red">texte</span>` |
+| `\_\_texte\_\_` | `<u>texte</u>` |
+
+## Commande minimale
+```
+uv run python pipeline_modular/simple_extraction/docling_markdown_converter_modular.py \
+  --input data/output_files/MonDoc/MonDoc.doctags
+```
+
+## Sortie personnalisée
+```
+uv run python pipeline_modular/simple_extraction/docling_markdown_converter_modular.py \
+  --input  data/output_files/MonDoc/MonDoc.doctags \
+  --output data/output_files/MonDoc/MonDoc.md
+```
+
+## Ancien workflow .env.test
+```
+uv run python pipeline_modular/simple_extraction/docling_markdown_converter_modular.py --dotenv .env.test
+```
+
+## Paramètres :
+| Paramètre | Alias | Défaut | Description |
+| ------- | ----- | -------- | -------------|
+| --input | -i | (voir note) | Fichier `.doctags` à convertir. |
+| --output | -o | `<même dossier que --input>/<stem>.md` | Fichier Markdown de sortie. Créé automatiquement si absent. |
+| --dotenv | | (aucun) | Fichier `.env` à charger pour résoudre `DOC_NAME`. Ignoré si `--input` est fourni. |
+
+*Note : `--input` absent : résout automatiquement `data/output_files/<DOC_NAME>/<DOC_NAME>.doctags` depuis la variable `DOC_NAME`.*
+
+**Sorties :**
+```
+data/output_files/MonDoc/
+├── MonDoc.doctags      ← entrée
+└── MonDoc.md           ← sortie
+```
+
+**Exit codes**
+| Code | Explication |
+| ------- | ----- |
+| 0 | Markdown généré avec succès |
+| 1 | Fichier `.doctags` invalide, erreur Docling, ou exception inattendue — traceback dans les logs |
+
+Le log final indique le chemin du fichier produit :
+```
+Markdown généré : data/output_files/MonDoc/MonDoc.md
+```

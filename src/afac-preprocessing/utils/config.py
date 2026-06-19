@@ -4,7 +4,6 @@ from pathlib import Path
 import logging
 from dotenv import load_dotenv
 
-# Logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -12,58 +11,39 @@ logging.basicConfig(
 )
 _log = logging.getLogger(__name__)
 
-# .env chargement
-def load_vlm_config():
+
+def load_vlm_config(dotenv_path: Path | None = None):
     project_root = Path(__file__).resolve().parent.parent
-    dotenv_path = project_root / ".env.test" # Choisir l'env à charger selon les besoins
-    _log.info(
-        "Loading dotenv from: %s (exists: %s)", 
-        dotenv_path.resolve(), 
-        dotenv_path.exists(),
-        )
-    load_dotenv(dotenv_path=dotenv_path)
+    resolved_path = Path(dotenv_path).resolve() if dotenv_path else project_root / ".env.test"
+    if resolved_path.exists():
+        load_dotenv(dotenv_path=resolved_path)
+        _log.info("Environnement chargé depuis : %s", resolved_path)
+    else:
+        _log.debug("Fichier .env absent (%s) — variables lues depuis l'environnement.", resolved_path)
 
-    # CA path
+    # CA path — VLM_CA_PEM ou fallback certifi
     custom_ca = os.environ.get("VLM_CA_PEM")
-    ca_path = (
-        custom_ca
-        if custom_ca and Path(custom_ca).exists()
-        else certifi.where()
-    )
+    if custom_ca and Path(custom_ca).exists():
+        ca_path = custom_ca
+        _log.info("CA utilisée : %s (VLM_CA_PEM)", ca_path)
+    else:
+        ca_path = certifi.where()
+        _log.info("CA utilisée : %s (certifi fallback)", ca_path)
 
-    # VLM configuration: URL, model name
     vlm_url = os.environ.get("VLM_URL", "")
-    vlm_model_name = os.environ.get("VLM_MODEL_NAME", "")
     if not vlm_url:
         raise RuntimeError(
-            f"VLM_URL not set. Ensure {dotenv_path} exists and contains VLM_URL."
+            f"VLM_URL not set. Ensure {resolved_path} exists and contains VLM_URL."
         )
-
-    embedding_url = os.environ.get("EMBEDDING_URL", "")
-    embedding_model_name = os.environ.get("EMBEDDING_MODEL_NAME", "")
-    if not embedding_url:
-        raise RuntimeError(
-            f"EMBEDDING_URL not set. Ensure {dotenv_path} exists and contains EMBEDDING_URL."
-        )
-
-    reranker_url = os.environ.get("RERANKER_URL", "")
-    reranker_model_name = os.environ.get("RERANKER_MODEL_NAME", "")
-    if not reranker_url:
-        raise RuntimeError(
-            f"RERANKER_URL not set. Ensure {dotenv_path} exists and contains RERANKER_URL."
-        )
-    
-    GEN_ID = os.environ.get("GEN_ID", "")
-    DOC_NAME = os.environ.get("DOC_NAME", "")
 
     return {
         "CA_PATH": ca_path,
         "VLM_URL": vlm_url,
-        "VLM_MODEL_NAME": vlm_model_name,
-        "EMBEDDING_URL": embedding_url,
-        "EMBEDDING_MODEL_NAME": embedding_model_name,
-        "RERANKER_URL": reranker_url,
-        "RERANKER_MODEL_NAME": reranker_model_name,
-        "GEN_ID": GEN_ID,
-        "DOC_NAME": DOC_NAME,
+        "VLM_MODEL_NAME": os.environ.get("VLM_MODEL_NAME", ""),
+        "EMBEDDING_URL": os.environ.get("EMBEDDING_URL", ""),
+        "EMBEDDING_MODEL_NAME": os.environ.get("EMBEDDING_MODEL_NAME", ""),
+        "RERANKER_URL": os.environ.get("RERANKER_URL", ""),
+        "RERANKER_MODEL_NAME": os.environ.get("RERANKER_MODEL_NAME", ""),
+        "GEN_ID": os.environ.get("GEN_ID", ""),
+        "DOC_NAME": os.environ.get("DOC_NAME", ""),
     }
