@@ -1,7 +1,6 @@
-
 """
 Stage 5 - Script d'enrichissement des métadonnées avec VLM
-Script 2 : enhancement_metadata.py
+Script 2 : enhancement_metadata_modular.py
 Dans ce script, nous allons ajouter les appels vlm pour enrichir les métadonnées avec :
 - resume: str, demande un VLM de résumer le document markdown généré en stage 4
 - intent: list[str], demande un VLM de générer une liste d'intent à partir du markdown généré en stage 4
@@ -13,19 +12,20 @@ Output (stage5_test/<doc_name>/):
     hyq.json    - liste de questions hypothétiques (list[str])
 
 Usage:
-    python3 enhancement_metadata.py "Annulation et retaxation"
-    python3 enhancement_metadata.py "Détachement" --stage4 ./data/output_files/stage4_test --stage5 ./data/output_files/stage5_test
+    uv run python enhancement_metadata_modular.py --dotenv .env.test --doc-name "MonDoc"
+    uv run python enhancement_metadata_modular.py --doc-name "MonDoc" --stage4 ./data/output_files/stage4_test --stage5 ./data/output_files/stage5_test
 """
 import argparse
 import json
+import logging
 import sys
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
+
 import httpx
 from openai import OpenAI
 from pydantic import BaseModel
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from prompts.metadata_prompts import (
     HYQ_PROMPT,
     INTENT_PROMPT_1,
@@ -34,30 +34,16 @@ from prompts.metadata_prompts import (
     RESUME_PROMPT,
 )
 from utils.config import load_vlm_config
+from utils.paths import project_root, resolve_doc_name
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_STAGE4 = PROJECT_ROOT / "data" / "output_files" / "stage4_test"
-DEFAULT_STAGE5 = PROJECT_ROOT / "data" / "output_files" / "stage5_test"
+DEFAULT_OUTPUT_FILES = project_root() / "data" / "output_files"
+DEFAULT_STAGE4 = DEFAULT_OUTPUT_FILES
+DEFAULT_STAGE5 = DEFAULT_OUTPUT_FILES
 
-# Config & client
-
-_config = load_vlm_config()
-CA_PATH = _config["CA_PATH"]
-VLM_MODEL_NAME = _config["VLM_MODEL_NAME"]
-
-# Le client OpenAI attend l'url de base qui termine par /v1, pas besoin de mettre en plus /chat/completions
-_parsed = urlparse(_config["VLM_URL"])
-_base_url = urlunparse((_parsed.scheme, _parsed.netloc, "/v1", "", "", ""))
-
-client = OpenAI(
-    base_url=_base_url,
-    api_key="no-key", # Si server interne, pas besoin de clé d'API
-    http_client=httpx.Client(verify=CA_PATH),
-)
+_log = logging.getLogger(__name__)
 
 
 # Pydantic models pour le response_format des appels VLM
-
 
 class ResumeOutput(BaseModel):
     resume: str
@@ -71,26 +57,31 @@ class HyQOutput(BaseModel):
     hyq: list[str]
 
 
-# Stage 4 content loader (mirrors get_stage4_content in metadata_generation.py)
+# Stage 4 content loader
 def _read_stage4(stage4_dir: Path, doc_name: str) -> str:
-    single = stage4_dir / f"{doc_name}_vlm_check.md"
+    single = stage4_dir / doc_name / f"{doc_name}_vlm_check.md"
     if single.exists():
         return single.read_text(encoding="utf-8")
     return ""
 
 
-# Enrichissement avec le VLM 
-def generate_resume(markdown_content: str) -> str:
+# Enrichissement avec le VLM
+
+def generate_resume(markdown_content: str, client: OpenAI, vlm_model_name: str) -> str:
     """
     Génère un résumé court du document markdown via structured output.
 
     :param markdown_content: Contenu markdown du document (stage 4)
     :type markdown_content: str
+    :param client: Client OpenAI configuré
+    :type client: OpenAI
+    :param vlm_model_name: Nom du modèle VLM
+    :type vlm_model_name: str
     :return: Résumé court du document
     :rtype: str
     """
     response = client.beta.chat.completions.parse(
-        model=VLM_MODEL_NAME,
+        model=vlm_model_name,
         messages=[
             {"role": "system", "content": RESUME_PROMPT},
             {"role": "user", "content": markdown_content},
@@ -101,13 +92,17 @@ def generate_resume(markdown_content: str) -> str:
     return response.choices[0].message.parsed.resume
 
 
-def generate_intent(markdown_content: str) -> list[str]:
+def generate_intent(markdown_content: str, client: OpenAI, vlm_model_name: str) -> list[str]:
     """
     Génère une liste d'intents/objectifs du document depuis 3 perspectives expertes.
     Les 3 appels sont fusionnés et dédupliqués pour enrichir le résultat.
 
     :param markdown_content: Contenu markdown du document (stage 4)
     :type markdown_content: str
+    :param client: Client OpenAI configuré
+    :type client: OpenAI
+    :param vlm_model_name: Nom du modèle VLM
+    :type vlm_model_name: str
     :return: Liste d'intents uniques extraits du document
     :rtype: list[str]
     """
@@ -115,7 +110,7 @@ def generate_intent(markdown_content: str) -> list[str]:
     seen: set[str] = set()
     for system_prompt in [INTENT_PROMPT_1, INTENT_PROMPT_2, INTENT_PROMPT_3]:
         response = client.beta.chat.completions.parse(
-            model=VLM_MODEL_NAME,
+            model=vlm_model_name,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": markdown_content},
@@ -131,17 +126,21 @@ def generate_intent(markdown_content: str) -> list[str]:
     return intents
 
 
-def generate_hyq(markdown_content: str) -> list[str]:
+def generate_hyq(markdown_content: str, client: OpenAI, vlm_model_name: str) -> list[str]:
     """
     Génère une liste de questions hypothétiques auxquelles le document peut répondre.
 
     :param markdown_content: Contenu markdown du document (stage 4)
     :type markdown_content: str
+    :param client: Client OpenAI configuré
+    :type client: OpenAI
+    :param vlm_model_name: Nom du modèle VLM
+    :type vlm_model_name: str
     :return: Liste de questions hypothétiques
     :rtype: list[str]
     """
     response = client.beta.chat.completions.parse(
-        model=VLM_MODEL_NAME,
+        model=vlm_model_name,
         messages=[
             {"role": "system", "content": HYQ_PROMPT},
             {"role": "user", "content": markdown_content},
@@ -161,12 +160,12 @@ def write_stage5(
     hyq: list[str],
 ) -> Path:
     """
-    Écrit les 3 fichiers d'enrichissement dans stage5_dir/<doc_name>/.
+    Écrit les 3 fichiers d'enrichissement dans stage5_dir/<doc_name>/metadata/.
 
     Fichiers produits :
-        resume.md   - résumé en texte markdown
-        intent.json - liste d'intents (array JSON)
-        hyq.json    - liste de questions hypothétiques (array JSON)
+        metadata/resume.md   - résumé en texte markdown
+        metadata/intent.json - liste d'intents (array JSON)
+        metadata/hyq.json    - liste de questions hypothétiques (array JSON)
 
     :param stage5_dir: Dossier racine stage5
     :type stage5_dir: Path
@@ -181,7 +180,7 @@ def write_stage5(
     :return: Chemin du dossier créé
     :rtype: Path
     """
-    out_dir = stage5_dir / doc_name
+    out_dir = stage5_dir / doc_name / "metadata"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     (out_dir / "resume.md").write_text(resume, encoding="utf-8")
@@ -195,9 +194,15 @@ def write_stage5(
 
 
 # Orchestration
-def run_enhancement(doc_name: str, stage4_dir: Path, stage5_dir: Path) -> dict:
+def run_enhancement(
+    doc_name: str,
+    stage4_dir: Path,
+    stage5_dir: Path,
+    dotenv_path: Path | None = None,
+) -> dict:
     """
     Lit le markdown stage4, appelle les 3 fonctions VLM et écrit les résultats dans stage5.
+    La config VLM est chargée ici (pas au niveau module) pour respecter le --dotenv tardif.
 
     :param doc_name: Nom du document (sans extension)
     :type doc_name: str
@@ -205,53 +210,89 @@ def run_enhancement(doc_name: str, stage4_dir: Path, stage5_dir: Path) -> dict:
     :type stage4_dir: Path
     :param stage5_dir: Dossier stage5
     :type stage5_dir: Path
+    :param dotenv_path: Fichier .env à charger pour la config VLM
+    :type dotenv_path: Path | None
     :return: Dictionnaire avec les 3 champs enrichis
     :rtype: dict
     """
+    config = load_vlm_config(dotenv_path=dotenv_path)
+    ca_path = config["CA_PATH"]
+    vlm_model_name = config["VLM_MODEL_NAME"]
+    parsed = urlparse(config["VLM_URL"])
+    base_url = urlunparse((parsed.scheme, parsed.netloc, "/v1", "", "", ""))
+    client = OpenAI(
+        base_url=base_url,
+        api_key="no-key",
+        http_client=httpx.Client(verify=ca_path),
+    )
+
     markdown_content = _read_stage4(stage4_dir, doc_name)
     if not markdown_content:
         raise FileNotFoundError(
             f"Aucun fichier markdown trouvé pour '{doc_name}' dans {stage4_dir}"
         )
 
-    print("Création du résumé : ")
-    resume = generate_resume(markdown_content)
+    _log.info("Création du résumé")
+    resume = generate_resume(markdown_content, client, vlm_model_name)
 
-    print("Création des 'intents' :")
-    intent = generate_intent(markdown_content)
+    _log.info("Création des 'intents'")
+    intent = generate_intent(markdown_content, client, vlm_model_name)
 
-    print("Création des questions hypothétiques (hyq) : ")
-    hyq = generate_hyq(markdown_content)
+    _log.info("Création des questions hypothétiques (hyq)")
+    hyq = generate_hyq(markdown_content, client, vlm_model_name)
 
     out_dir = write_stage5(stage5_dir, doc_name, resume, intent, hyq)
-    print(f"OK stage5 écrit dans : {out_dir}")
+    _log.info("stage5 écrit dans : %s", out_dir)
 
     return {"resume": resume, "intent": intent, "hyq": hyq}
 
 
-def main() -> None:
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Enrichit les métadonnées d'un document via VLM (resume, intent, hyq) et écrit les résultats dans stage5."
     )
     parser.add_argument(
-        "doc_name",
-        help='Nom du document sans extension. Ex: "Annulation et retaxation"',
+        "--doc-name",
+        type=str,
+        default=None,
+        help="Nom du document sans extension. Si absent, résout DOC_NAME depuis --dotenv ou l'environnement.",
+    )
+    parser.add_argument(
+        "--dotenv",
+        type=Path,
+        default=None,
+        metavar="FICHIER",
+        help="Fichier .env à charger (VLM_URL, VLM_CA_PEM, VLM_MODEL_NAME, DOC_NAME).",
     )
     parser.add_argument("--stage4", type=Path, default=DEFAULT_STAGE4)
     parser.add_argument("--stage5", type=Path, default=DEFAULT_STAGE5)
-    args = parser.parse_args()
+    parser.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="Niveau de journalisation. Défaut : INFO.",
+    )
+    return parser.parse_args()
 
-    print(f"\nEnrichissement de : {args.doc_name}")
-    result = run_enhancement(args.doc_name, args.stage4, args.stage5)
 
-    print("\n--- resume ---")
-    print(result["resume"])
-    print("\n--- intent ---")
-    for item in result["intent"]:
-        print(f"  - {item}")
-    print("\n--- hyq ---")
-    for q in result["hyq"]:
-        print(f"  - {q}")
+def main() -> None:
+    args = parse_args()
+    logging.basicConfig(
+        level=getattr(logging, args.log_level),
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        datefmt="%H:%M:%S",
+    )
+
+    doc_name = resolve_doc_name(args, primary_flag="--doc-name")
+    dotenv_path = args.dotenv
+
+    _log.info("Enrichissement de : %s", doc_name)
+    result = run_enhancement(doc_name, args.stage4, args.stage5, dotenv_path=dotenv_path)
+
+    _log.info("resume : %s", result["resume"])
+    _log.info("intent : %s", result["intent"])
+    _log.info("hyq    : %s", result["hyq"])
+    sys.exit(0)
 
 
 if __name__ == "__main__":

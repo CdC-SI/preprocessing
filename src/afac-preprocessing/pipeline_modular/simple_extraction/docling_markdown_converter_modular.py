@@ -15,15 +15,13 @@ Usage :
 """
 import argparse
 import logging
-import os
 import re
 import sys
 from pathlib import Path
 
 from docling_core.types.doc.document import DocTagsDocument, DoclingDocument
-from dotenv import load_dotenv
 
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+from utils.paths import project_root, load_env, resolve_doc_name
 
 _log = logging.getLogger(__name__)
 
@@ -108,55 +106,41 @@ def preprocess_doctags(content: str) -> str:
     content = _hoist_misplaced_tags(content)
     return content
 
-
-def _replace_color(match: re.Match) -> str:
-    """
-    Remplace les balises personnalisées [[COLOR:color]]texte[[/COLOR]]
-    par des spans HTML <span style="color:color">texte</span>.
-
-    :param match: résultat de re.sub avec groupes (color, texte)
-    :return: span HTML avec la couleur appliquée
-    :rtype: str
-    """
-    return f'<span style="color:{match.group(1)}">{match.group(2)}</span>'
-
-
-def _replace_underline(match: re.Match) -> str:
-    """
-    Remplace les balises de soulignement personnalisées \\_\\_texte\\_\\_
-    par des balises HTML <u>texte</u>.
-
-    :param match: résultat de re.sub avec groupe (texte)
-    :return: balise HTML <u> avec le texte souligné
-    :rtype: str
-    """
-    return f'<u>{match.group(1)}</u>'
+PAGE_BREAK = "<!-- page-break -->"
 
 
 def convert_doctags_to_markdown(doctags_path: Path) -> str:
     """
-    Docstring for convert_doctags_to_markdown
-    Lit le fichier .doctags, applique les pré-traitements, convertit en Markdown via Docling,
-    puis applique les post-traitements des balises personnalisées couleur et soulignement.
+    Lit le fichier .doctags, applique les pré-traitements, convertit en Markdown via Docling
+    page par page, puis joint les pages avec un séparateur <!-- page-break -->.
 
     :param doctags_path: chemin vers le fichier .doctags à convertir
     :type doctags_path: Path
-    :return: contenu Markdown final
+    :return: contenu Markdown final avec séparateurs de page
     :rtype: str
     """
+    from utils.markdown_utils import apply_markdown_transforms
+
     content = doctags_path.read_text(encoding="utf-8")
     content = _split_pages(content)
     content = _hoist_misplaced_tags(content)
 
-    doctags_doc = DocTagsDocument.from_multipage_doctags_and_images(content, None)
-    doc = DoclingDocument.load_from_doctags(doctags_doc)
-    markdown = doc.export_to_markdown()
+    page_blocks = re.findall(r"<doctag>(.*?)</doctag>", content, re.DOTALL)
 
-    _root = str(Path(__file__).resolve().parent.parent.parent)
-    if _root not in sys.path:
-        sys.path.insert(0, _root)
-    from utils.markdown_utils import apply_markdown_transforms
-    return apply_markdown_transforms(markdown)
+    if not page_blocks:
+        doctags_doc = DocTagsDocument.from_multipage_doctags_and_images(content, None)
+        doc = DoclingDocument.load_from_doctags(doctags_doc)
+        return apply_markdown_transforms(doc.export_to_markdown())
+
+    page_markdowns = []
+    for block in page_blocks:
+        single = f"<doctag>{block}</doctag>"
+        dt = DocTagsDocument.from_multipage_doctags_and_images(single, None)
+        doc = DoclingDocument.load_from_doctags(dt)
+        md = apply_markdown_transforms(doc.export_to_markdown())
+        page_markdowns.append(md.strip())
+
+    return f"\n\n{PAGE_BREAK}\n\n".join(page_markdowns)
 
 
 # CLI
@@ -202,11 +186,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--suffix", "-s",
         type=str,
-        default="",
+        default="_url_vlm",
         metavar="SUFFIXE",
         help=(
             "Suffixe à ajouter au nom du fichier .doctags résolu automatiquement. "
-            "Ex. : --suffix _url_vlm → <DOC_NAME>_url_vlm.doctags. "
+            "Défaut : _url_vlm → <DOC_NAME>_url_vlm.doctags. "
             "Ignoré si --input est fourni."
         ),
     )
@@ -235,14 +219,9 @@ def resolve_input(args: argparse.Namespace) -> Path:
     """
     if args.input:
         return args.input.resolve()
-    doc_name = os.environ.get("DOC_NAME", "").strip()
-    if not doc_name:
-        raise SystemExit(
-            "Erreur : fournir --input <chemin>, ou --dotenv <fichier> avec DOC_NAME, "
-            "ou définir la variable DOC_NAME dans l'environnement."
-        )
+    doc_name = resolve_doc_name(args, primary_flag="--input")
     suffix = getattr(args, "suffix", "")
-    return _PROJECT_ROOT / "data" / "output_files" / doc_name / f"{doc_name}{suffix}.doctags"
+    return project_root() / "data" / "output_files" / doc_name / f"{doc_name}{suffix}.doctags"
 
 
 def resolve_output(args: argparse.Namespace, input_path: Path) -> Path:
@@ -275,11 +254,7 @@ def main() -> None:
     args = parse_args()
 
     if args.dotenv:
-        dotenv_path = args.dotenv.resolve()
-        if not dotenv_path.exists():
-            raise SystemExit(f"Erreur : fichier .env introuvable — {dotenv_path}")
-        load_dotenv(dotenv_path=dotenv_path)
-        _log.info("Environnement chargé depuis : %s", dotenv_path)
+        load_env(args.dotenv)
 
     input_path = resolve_input(args)
     if not input_path.exists():

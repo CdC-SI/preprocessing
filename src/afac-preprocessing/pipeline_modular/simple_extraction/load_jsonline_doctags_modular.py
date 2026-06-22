@@ -17,12 +17,11 @@ Usage :
 import argparse
 import json
 import logging
-import os
 import re
 import sys
 from pathlib import Path
 
-from dotenv import load_dotenv
+from utils.paths import project_root, resolve_doc_name
 
 _log = logging.getLogger(__name__)
 
@@ -175,32 +174,11 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _project_root() -> Path:
-    return Path(__file__).resolve().parent.parent.parent
-
-
-def _load_doc_name(args: argparse.Namespace) -> str:
-    """Charge DOC_NAME depuis --dotenv ou l'environnement. Lève SystemExit si absent."""
-    if args.dotenv:
-        dotenv_path = args.dotenv.resolve()
-        if not dotenv_path.exists():
-            raise SystemExit(f"Erreur : fichier .env introuvable — {dotenv_path}")
-        load_dotenv(dotenv_path=dotenv_path)
-        _log.info("Environnement chargé depuis : %s", dotenv_path)
-    doc_name = os.environ.get("DOC_NAME", "").strip()
-    if not doc_name:
-        raise SystemExit(
-            "Erreur : fournir --doctags, ou --dotenv <fichier> avec DOC_NAME, "
-            "ou définir la variable DOC_NAME dans l'environnement."
-        )
-    return doc_name
-
-
 def resolve_doctags(args: argparse.Namespace) -> Path:
     if args.doctags:
         return args.doctags.resolve()
-    doc_name = _load_doc_name(args)
-    return _project_root() / "data" / "output_files" / doc_name / f"{doc_name}_reordered.doctags"
+    doc_name = resolve_doc_name(args, primary_flag="--doctags")
+    return project_root() / "data" / "output_files" / doc_name / f"{doc_name}_reordered.doctags"
 
 
 def resolve_tables_dir(args: argparse.Namespace, doctags_path: Path) -> Path:

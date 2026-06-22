@@ -10,9 +10,9 @@ Chaque appel VLM reçoit uniquement le markdown de SA page (extrait depuis les d
 à un contexte trop large.
 
 Usage :
-    uv run python markdown_control_vlm_modular.py --pdf doc.pdf --doctags doc.doctags
+    uv run python markdown_control_vlm_modular.py --input doc.pdf --doctags doc.doctags
     uv run python markdown_control_vlm_modular.py --dotenv .env.test
-    uv run python markdown_control_vlm_modular.py --pdf data/input_files/MonDoc.pdf
+    uv run python markdown_control_vlm_modular.py --input data/input_files/MonDoc.pdf
 """
 from __future__ import annotations
 
@@ -21,7 +21,6 @@ import asyncio
 import base64
 import json
 import logging
-import os
 import re
 import sys
 from pathlib import Path
@@ -32,19 +31,8 @@ if TYPE_CHECKING:
 
 import fitz  # PyMuPDF
 import httpx
-from collections.abc import Callable
-from docling_core.types.doc.document import DocTagsDocument, DoclingDocument
-from dotenv import load_dotenv
 
-def _project_root() -> Path:
-    """
-    Retourne afac-preprocessing/ : racine commune de utils/, prompts/, data/.
-    Ce script est à pipeline_modular/simple_extraction/ → 3 niveaux au-dessus.
-    PROJECT_ROOT peut surcharger en conteneur si la structure diffère.
-    """
-    if "PROJECT_ROOT" in os.environ:
-        return Path(os.environ["PROJECT_ROOT"]).resolve()
-    return Path(__file__).resolve().parent.parent.parent
+from utils.paths import project_root, load_env, resolve_doc_name
 
 _log = logging.getLogger(__name__)
 
@@ -67,17 +55,6 @@ class _JsonFormatter(logging.Formatter):
 _MAX_RETRIES = 3
 _RETRY_DELAYS: tuple[int, ...] = (1, 2)  # seconds between attempts (len == _MAX_RETRIES - 1)
 _DOCLING_TIMEOUT = 300  # max seconds for Docling doctags → markdown conversion before aborting
-
-
-def _ensure_project_path() -> None:
-    """
-    Ajoute les deux racines nécessaires aux imports locaux :
-    - afac-preprocessing/            → utils.*, prompts.*
-    - afac-preprocessing/pipeline_modular/  → simple_extraction.*
-    """
-    for p in (str(_project_root()), str(Path(__file__).resolve().parent.parent)):
-        if p not in sys.path:
-            sys.path.insert(0, p)
 
 
 def _should_retry(exc: Exception) -> bool:
@@ -112,48 +89,21 @@ def pdf_page_to_base64(pdf_path: Path, page_num: int, dpi: int = 150) -> str:
     return base64.b64encode(img_bytes).decode("utf-8")
 
 
-def build_page_markdowns(
-    doctags_path: Path,
-    *,
-    preprocess_fn: Callable[[str], str] | None = None,
-) -> list[str]:
+PAGE_BREAK = "<!-- page-break -->"
+
+
+def load_page_markdowns(md_path: Path) -> list[str]:
     """
-    Convertit chaque page du fichier doctags en markdown indépendant.
+    Charge le markdown paginé produit par stage 09 et retourne une liste,
+    une entrée par page, en splitant sur le séparateur PAGE_BREAK.
 
-    Chaque bloc <doctag>...</doctag> correspond à une page. Les convertir
-    individuellement élimine l'ambiguïté des frontières de page que Docling
-    ne conserve pas dans l'export markdown global.
-
-    :param doctags_path: chemin vers le fichier .doctags multi-pages
-    :param preprocess_fn: fonction de pré-traitement à appliquer au contenu doctags.
-        Défaut : preprocess_doctags depuis docling_markdown_converter_modular.
-        Paramètre injectable pour les tests unitaires (évite la manipulation de sys.path).
+    :param md_path: chemin vers le fichier .md produit par stage 09
     :return: liste de chaînes markdown, une par page
     """
-    _ensure_project_path()
-    from simple_extraction.docling_markdown_converter_modular import preprocess_doctags
-    from utils.markdown_utils import apply_markdown_transforms
-
-    if preprocess_fn is None:
-        preprocess_fn = preprocess_doctags
-
-    content = doctags_path.read_text(encoding="utf-8")
-    content = preprocess_fn(content)
-
-    page_blocks = re.findall(r"<doctag>(.*?)</doctag>", content, re.DOTALL)
-    _log.info("Doctags: %d page(s) détectée(s)", len(page_blocks))
-
-    page_markdowns = []
-    for i, block in enumerate(page_blocks, 1):
-        single = f"<doctag>{block}</doctag>"
-        dt = DocTagsDocument.from_multipage_doctags_and_images(single, None)
-        doc = DoclingDocument.load_from_doctags(dt)
-        md = doc.export_to_markdown()
-        md = apply_markdown_transforms(md)
-        page_markdowns.append(md.strip())
-        _log.debug("Page %d/%d convertie (%d chars)", i, len(page_blocks), len(md))
-
-    return page_markdowns
+    content = md_path.read_text(encoding="utf-8")
+    pages = [p.strip() for p in content.split(PAGE_BREAK) if p.strip()]
+    _log.info("Markdown: %d page(s) détectée(s) dans %s", len(pages), md_path.name)
+    return pages
 
 
 # Traitement des pages
@@ -234,7 +184,7 @@ async def process_page(
 async def run(
     pdf_path: Path,
     output_path: Path,
-    doctags_path: Path,
+    md_path: Path,
     max_workers: int = 1,
     dpi: int = 150,
     vlm_cfg: VlmConfig | None = None,
@@ -242,18 +192,16 @@ async def run(
     """
     Traite le document page par page.
 
-    Chaque appel VLM reçoit uniquement le markdown de SA page (extrait depuis les doctags)
-    + l'image de cette page. Cela évite les duplications aux frontières de page et les
-    hallucinations provenant du contexte global.
+    Chaque appel VLM reçoit uniquement le markdown de SA page (issu du fichier .md
+    produit par stage 09) + l'image de cette page.
 
     :param pdf_path: chemin vers le PDF original
     :param output_path: chemin de sortie pour le markdown vérifié par le VLM
-    :param doctags_path: chemin vers le fichier .doctags source (pour la découpe par page)
+    :param md_path: chemin vers le fichier .md paginé produit par stage 09
     :param max_workers: nombre de requêtes VLM simultanées
     :param dpi: résolution de rendu des pages PDF
     :param vlm_cfg: configuration VLM (injectable pour les tests ; sinon construite depuis l'environnement)
     """
-    _ensure_project_path()
     from utils.vlm_client import build_vlm_config, check_vlm_connectivity
     from prompts.prompts import VLM_PROMPT_STAGE4_CHECK_PAGE_EN
 
@@ -264,29 +212,20 @@ async def run(
         if not await check_vlm_connectivity(client, vlm_cfg):
             raise RuntimeError("VLM inaccessible, arrêt du pipeline.")
         _log.info("PDF      : %s", pdf_path)
-        _log.info("Doctags  : %s", doctags_path)
+        _log.info("Markdown : %s", md_path)
         _log.info("Sortie   : %s", output_path)
         _log.info("Workers  : %d", max_workers)
         _log.info("DPI      : %d", dpi)
 
-        try:
-            page_markdowns = await asyncio.wait_for(
-                asyncio.to_thread(build_page_markdowns, doctags_path),
-                timeout=_DOCLING_TIMEOUT,
-            )
-        except asyncio.TimeoutError as exc:
-            raise RuntimeError(
-                f"Délai de conversion doctags dépassé ({_DOCLING_TIMEOUT} s) — "
-                "vérifiez le fichier .doctags."
-            ) from exc
+        page_markdowns = load_page_markdowns(md_path)
         total_pages = len(page_markdowns)
 
         pdf_page_count = await asyncio.to_thread(_pdf_page_count, pdf_path)
         if pdf_page_count != total_pages:
             raise RuntimeError(
-                f"Incohérence : {total_pages} page(s) dans les doctags mais "
+                f"Incohérence : {total_pages} page(s) dans le markdown mais "
                 f"{pdf_page_count} page(s) dans le PDF ({pdf_path.name}). "
-                "Vérifiez que le PDF et les doctags correspondent au même document."
+                f"Relancez stage 09 pour régénérer {md_path.name} avec les séparateurs <!-- page-break -->."
             )
 
         _log.info("%d page(s) à contrôler.", total_pages)
@@ -358,16 +297,16 @@ def parse_args() -> argparse.Namespace:
         epilog=(
             "Exemples :\n"
             "  uv run python markdown_control_vlm_modular.py \\\n"
-            "      --pdf data/input_files/MonDoc.pdf \\\n"
-            "      --doctags data/output_files/MonDoc/MonDoc_url_vlm.doctags\n\n"
+            "      --input data/input_files/MonDoc.pdf \\\n"
+            "      --markdown data/output_files/MonDoc/MonDoc.md\n\n"
             "  # Chemins résolus automatiquement depuis le stem du PDF :\n"
-            "  uv run python markdown_control_vlm_modular.py --pdf data/input_files/MonDoc.pdf\n\n"
+            "  uv run python markdown_control_vlm_modular.py --input data/input_files/MonDoc.pdf\n\n"
             "  # Via variable d'environnement DOC_NAME :\n"
             "  uv run python markdown_control_vlm_modular.py --dotenv .env.test\n"
         ),
     )
     parser.add_argument(
-        "--pdf", "-p",
+        "--input", "-i",
         type=Path,
         default=None,
         help=(
@@ -376,12 +315,12 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
-        "--doctags", "-d",
+        "--markdown", "-m",
         type=Path,
         default=None,
         help=(
-            "Fichier doctags à contrôler. "
-            "Défaut : data/output_files/<stem>/<stem>_url_vlm.doctags"
+            "Fichier Markdown paginé produit par stage 09. "
+            "Défaut : data/output_files/<stem>/<stem>.md"
         ),
     )
     parser.add_argument(
@@ -398,7 +337,7 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=1,
         metavar="N",
-        help="Nombre de requêtes VLM simultanées (1–10). Défaut : 1.",
+        help="Nombre de requêtes VLM simultanées (1-10). Défaut : 1.",
     )
     parser.add_argument(
         "--dpi",
@@ -437,7 +376,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=None,
         metavar="FICHIER",
-        help="Fichier .env à charger pour résoudre DOC_NAME (ex. : .env.test). Ignoré si --pdf est fourni.",
+        help="Fichier .env à charger pour résoudre DOC_NAME (ex. : .env.test). Ignoré si --input est fourni.",
     )
     return parser.parse_args()
 
@@ -446,37 +385,32 @@ def parse_args() -> argparse.Namespace:
 def resolve_pdf(args: argparse.Namespace) -> Path:
     """
     Résout le chemin du PDF selon la logique suivante :
-    1. --pdf fourni → utilisé directement.
+    1. --input fourni → utilisé directement.
     2. Sinon → lit DOC_NAME depuis l'environnement (le dotenv est déjà chargé dans main()).
 
     :param args: arguments parsés
     :return: chemin absolu vers le PDF
     """
-    if args.pdf:
-        return args.pdf.resolve()
-    doc_name = os.environ.get("DOC_NAME", "").strip()
-    if not doc_name:
-        raise SystemExit(
-            "Erreur : fournir --pdf <chemin>, ou --dotenv <fichier> avec DOC_NAME, "
-            "ou définir la variable DOC_NAME dans l'environnement."
-        )
-    return _project_root() / "data" / "input_files" / f"{doc_name}.pdf"
+    if args.input:
+        return args.input.resolve()
+    doc_name = resolve_doc_name(args, primary_flag="--input")
+    return project_root() / "data" / "input_files" / f"{doc_name}.pdf"
 
 
-def resolve_doctags(args: argparse.Namespace, pdf_path: Path) -> Path:
+def resolve_markdown(args: argparse.Namespace, pdf_path: Path) -> Path:
     """
-    Résout le chemin du fichier doctags d'entrée.
-    Si --doctags est fourni, l'utilise directement.
-    Sinon, construit le chemin par défaut : data/output_files/<stem>/<stem>_url_vlm.doctags
+    Résout le chemin du fichier Markdown paginé produit par stage 09.
+    Si --markdown est fourni, l'utilise directement.
+    Sinon, construit le chemin par défaut : data/output_files/<stem>/<stem>_url_vlm.md
 
     :param args: arguments parsés
     :param pdf_path: chemin vers le PDF résolu
-    :return: chemin absolu vers le fichier doctags
+    :return: chemin absolu vers le fichier markdown source
     """
-    if args.doctags:
-        return args.doctags.resolve()
+    if args.markdown:
+        return args.markdown.resolve()
     stem = pdf_path.stem
-    return _project_root() / "data" / "output_files" / stem / f"{stem}_url_vlm.doctags"
+    return project_root() / "data" / "output_files" / stem / f"{stem}_url_vlm.md"
 
 
 def resolve_output(args: argparse.Namespace, pdf_path: Path) -> Path:
@@ -493,7 +427,7 @@ def resolve_output(args: argparse.Namespace, pdf_path: Path) -> Path:
         return args.output.resolve()
     stem = pdf_path.stem
     suffix = getattr(args, "suffix", "")
-    return _project_root() / "data" / "output_files" / stem / f"{stem}_vlm_check{suffix}.md"
+    return project_root() / "data" / "output_files" / stem / f"{stem}_vlm_check{suffix}.md"
 
 
 # Point d'entrée
@@ -514,21 +448,17 @@ def main() -> None:
         raise SystemExit("Erreur : --dpi doit être compris entre 72 et 600.")
 
     if args.dotenv:
-        dotenv_path = args.dotenv.resolve()
-        if not dotenv_path.exists():
-            raise SystemExit(f"Erreur : fichier .env introuvable — {dotenv_path}")
-        load_dotenv(dotenv_path=dotenv_path)
-        _log.info("Environnement chargé depuis : %s", dotenv_path)
+        load_env(args.dotenv)
 
     pdf_path = resolve_pdf(args)
     if not pdf_path.exists():
         raise SystemExit(f"Erreur : fichier PDF introuvable — {pdf_path}")
 
-    doctags_path = resolve_doctags(args, pdf_path)
-    if not doctags_path.exists():
+    md_path = resolve_markdown(args, pdf_path)
+    if not md_path.exists():
         raise SystemExit(
-            f"Erreur : fichier doctags introuvable — {doctags_path}\n"
-            "Conseil : utilisez --doctags <chemin> pour spécifier le fichier d'entrée."
+            f"Erreur : fichier markdown introuvable — {md_path}\n"
+            "Conseil : utilisez --markdown <chemin> pour spécifier le fichier d'entrée."
         )
 
     output_path = resolve_output(args, pdf_path)
@@ -537,7 +467,7 @@ def main() -> None:
         asyncio.run(run(
             pdf_path=pdf_path,
             output_path=output_path,
-            doctags_path=doctags_path,
+            md_path=md_path,
             max_workers=args.workers,
             dpi=args.dpi,
         ))

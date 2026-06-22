@@ -7,48 +7,38 @@ les liens extraits (URL, mailto) au format markdown [text](url).
 Fonctionne en standalone ou en bout de pipeline stage3.
 
 Usage :
-    uv run python url_tuning_vlm_modular.py --pdf doc.pdf --doctags doc.doctags --jsonl links.jsonl
+    uv run python url_tuning_vlm_modular.py --input doc.pdf --doctags doc.doctags --jsonl links.jsonl
     uv run python url_tuning_vlm_modular.py --dotenv .env.test
-    uv run python url_tuning_vlm_modular.py --pdf data/input_files/MonDoc.pdf
+    uv run python url_tuning_vlm_modular.py --input data/input_files/MonDoc.pdf
 """
 import argparse
 import asyncio
 import base64
 import json
 import logging
-import os
 import re
 import sys
 from pathlib import Path
 
 import fitz  # PyMuPDF
 import httpx
-from dotenv import load_dotenv
-
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(_PROJECT_ROOT))
 
 from prompts.prompts import VLM_PROMPT_CORRECTION_STAGE_3_EN
 from utils.config import load_vlm_config
+from utils.paths import project_root, load_env, resolve_doc_name
 
 _log = logging.getLogger(__name__)
 
-# Initialisé dans main() pour éviter les effets de bord à l'import
-CA_PATH: str = ""
-VLM_URL: str = ""
-VLM_MODEL_NAME: str = ""
-
-
-def _load_vlm_config() -> None:
-    global CA_PATH, VLM_URL, VLM_MODEL_NAME
-    cfg = load_vlm_config()
-    CA_PATH = cfg["CA_PATH"]
-    VLM_URL = cfg["VLM_URL"]
-    VLM_MODEL_NAME = cfg["VLM_MODEL_NAME"]
-
 
 # Logique VLM
-async def call_vlm_async(prompt: str, image_b64: str) -> str:
+async def call_vlm_async(
+    prompt: str,
+    image_b64: str,
+    *,
+    vlm_url: str,
+    vlm_model_name: str,
+    ca_path: str,
+) -> str:
     """
     Docstring for call_vlm_async
     - Appelle le VLM de manière asynchrone en lui envoyant un prompt et une image encodée en base64,
@@ -62,7 +52,7 @@ async def call_vlm_async(prompt: str, image_b64: str) -> str:
     :rtype: str
     """
     payload = {
-        "model": VLM_MODEL_NAME,
+        "model": vlm_model_name,
         "messages": [{
             "role": "user",
             "content": [
@@ -73,8 +63,8 @@ async def call_vlm_async(prompt: str, image_b64: str) -> str:
         "max_tokens": 8192,
         "chat_template_kwargs": {"enable_thinking": False}, # désactive le mode thinking Qwen3.5 (évite content=null)
     }
-    async with httpx.AsyncClient(verify=CA_PATH, timeout=120) as client:
-        resp = await client.post(VLM_URL, json=payload)
+    async with httpx.AsyncClient(verify=ca_path, timeout=120) as client:
+        resp = await client.post(vlm_url, json=payload)
         resp.raise_for_status()
         data = resp.json()
         message = data["choices"][0]["message"]
@@ -85,7 +75,7 @@ async def call_vlm_async(prompt: str, image_b64: str) -> str:
         raise ValueError(f"VLM returned null content. Full message: {message}")
 
 
-async def check_vlm_connectivity() -> bool:
+async def check_vlm_connectivity(*, vlm_url: str, vlm_model_name: str, ca_path: str) -> bool:
     """
     Docstring for check_vlm_connectivity
     - Effectue un test de connectivité au VLM en lui envoyant un prompt simple ("ping") et en vérifiant la réponse.
@@ -96,14 +86,14 @@ async def check_vlm_connectivity() -> bool:
     :rtype: bool
     """
     try:
-        _log.info("Test de connectivité au VLM : %s ...", VLM_URL)
+        _log.info("Test de connectivité au VLM : %s ...", vlm_url)
         payload = {
-            "model": VLM_MODEL_NAME,
+            "model": vlm_model_name,
             "messages": [{"role": "user", "content": [{"type": "text", "text": "ping"}]}],
             "max_tokens": 10,
         }
-        async with httpx.AsyncClient(verify=CA_PATH, timeout=30) as client:
-            resp = await client.post(VLM_URL, json=payload)
+        async with httpx.AsyncClient(verify=ca_path, timeout=30) as client:
+            resp = await client.post(vlm_url, json=payload)
             resp.raise_for_status()
             _log.info("VLM accessible. HTTP %s", resp.status_code)
             return True
@@ -197,6 +187,10 @@ async def process_page(
     page_links: list[dict],
     pdf_path: Path,
     semaphore: asyncio.Semaphore,
+    *,
+    vlm_url: str,
+    vlm_model_name: str,
+    ca_path: str,
 ) -> tuple[int, str]:
     """
     Docstring for process_page
@@ -220,7 +214,10 @@ async def process_page(
         try:
             image_b64 = await asyncio.to_thread(pdf_page_to_base64, pdf_path, page_num)
             prompt = build_prompt(page_tags, page_links)
-            result = await call_vlm_async(prompt, image_b64)
+            result = await call_vlm_async(
+                prompt, image_b64,
+                vlm_url=vlm_url, vlm_model_name=vlm_model_name, ca_path=ca_path,
+            )
             _log.info("Page %d traitée.", page_num)
             return page_num, result
         except Exception as e:
@@ -309,6 +306,10 @@ async def run(
     jsonl_path: Path,
     output_path: Path,
     max_workers: int = 1,
+    *,
+    vlm_url: str,
+    vlm_model_name: str,
+    ca_path: str,
 ) -> None:
     """
     Docstring for run
@@ -329,7 +330,7 @@ async def run(
     :param max_workers: Description
     :type max_workers: int
     """
-    if not await check_vlm_connectivity():
+    if not await check_vlm_connectivity(vlm_url=vlm_url, vlm_model_name=vlm_model_name, ca_path=ca_path):
         raise RuntimeError("VLM inaccessible, arrêt du pipeline.")
 
     _log.info("=" * 60)
@@ -357,6 +358,9 @@ async def run(
             page_links=get_links_for_page(links, p),
             pdf_path=pdf_path,
             semaphore=semaphore,
+            vlm_url=vlm_url,
+            vlm_model_name=vlm_model_name,
+            ca_path=ca_path,
         )
         for p in range(1, n_pages + 1)
         if pages_tags.get(p, "").strip()
@@ -383,17 +387,17 @@ def parse_args() -> argparse.Namespace:
         epilog=(
             "Exemples :\n"
             "  uv run python url_tuning_vlm_modular.py \\\n"
-            "      --pdf data/input_files/MonDoc.pdf \\\n"
+            "      --input data/input_files/MonDoc.pdf \\\n"
             "      --doctags data/output_files/MonDoc/MonDoc.doctags \\\n"
             "      --jsonl data/output_files/MonDoc/hyperlinks_data_MonDoc.jsonl\n\n"
             "  # Chemins résolus automatiquement depuis le stem du PDF :\n"
-            "  uv run python url_tuning_vlm_modular.py --pdf data/input_files/MonDoc.pdf\n\n"
+            "  uv run python url_tuning_vlm_modular.py --input data/input_files/MonDoc.pdf\n\n"
             "  # Via variable d'environnement DOC_NAME :\n"
             "  uv run python url_tuning_vlm_modular.py --dotenv .env.test\n"
         ),
     )
     parser.add_argument(
-        "--pdf", "-p",
+        "--input", "-i",
         type=Path,
         default=None,
         help=(
@@ -407,7 +411,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help=(
             "Fichier doctags d'entrée à enrichir. "
-            "Défaut : data/output_files/<stem>/<stem>.doctags"
+            "Défaut : data/output_files/<stem>/<stem>_reordered_with_tables_pictures.doctags"
         ),
     )
     parser.add_argument(
@@ -440,7 +444,13 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=None,
         metavar="FICHIER",
-        help="Fichier .env à charger pour résoudre DOC_NAME (ex. : .env.test). Ignoré si --pdf est fourni.",
+        help="Fichier .env à charger pour résoudre DOC_NAME (ex. : .env.test). Ignoré si --input est fourni.",
+    )
+    parser.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="Niveau de journalisation. Défaut : INFO.",
     )
     return parser.parse_args()
 
@@ -450,7 +460,7 @@ def resolve_pdf(args: argparse.Namespace) -> Path:
     """
     Docstring for resolve_pdf
     Résout le chemin du PDF selon la logique suivante :
-    1. --pdf fourni → utilisé directement.
+    1. --input fourni → utilisé directement.
     2. Sinon → lit DOC_NAME depuis l'environnement (le dotenv est déjà chargé dans main()).
 
     :param args: Description
@@ -458,15 +468,10 @@ def resolve_pdf(args: argparse.Namespace) -> Path:
     :return: Description
     :rtype: Path
     """
-    if args.pdf:
-        return args.pdf.resolve()
-    doc_name = os.environ.get("DOC_NAME", "").strip()
-    if not doc_name:
-        raise SystemExit(
-            "Erreur : fournir --pdf <chemin>, ou --dotenv <fichier> avec DOC_NAME, "
-            "ou définir la variable DOC_NAME dans l'environnement."
-        )
-    return _PROJECT_ROOT / "data" / "input_files" / f"{doc_name}.pdf"
+    if args.input:
+        return args.input.resolve()
+    doc_name = resolve_doc_name(args, primary_flag="--input")
+    return project_root() / "data" / "input_files" / f"{doc_name}.pdf"
 
 
 def resolve_doctags(args: argparse.Namespace, pdf_path: Path) -> Path:
@@ -486,7 +491,7 @@ def resolve_doctags(args: argparse.Namespace, pdf_path: Path) -> Path:
     if args.doctags:
         return args.doctags.resolve()
     stem = pdf_path.stem
-    return _PROJECT_ROOT / "data" / "output_files" / stem / f"{stem}.doctags"
+    return project_root() / "data" / "output_files" / stem / f"{stem}_reordered_with_tables_pictures.doctags"
 
 
 def resolve_jsonl(args: argparse.Namespace, pdf_path: Path) -> Path:
@@ -506,7 +511,7 @@ def resolve_jsonl(args: argparse.Namespace, pdf_path: Path) -> Path:
     if args.jsonl:
         return args.jsonl.resolve()
     stem = pdf_path.stem
-    return _PROJECT_ROOT / "data" / "output_files" / stem / f"hyperlinks_data_{stem}.jsonl"
+    return project_root() / "data" / "output_files" / stem / f"hyperlinks_data_{stem}.jsonl"
 
 
 def resolve_output(args: argparse.Namespace, pdf_path: Path) -> Path:
@@ -526,29 +531,22 @@ def resolve_output(args: argparse.Namespace, pdf_path: Path) -> Path:
     if args.output:
         return args.output.resolve()
     stem = pdf_path.stem
-    return _PROJECT_ROOT / "data" / "output_files" / stem / f"{stem}_url_vlm.doctags"
+    return project_root() / "data" / "output_files" / stem / f"{stem}_url_vlm.doctags"
 
 
 # Point d'entrée
 def main() -> None:
+    args = parse_args()
     logging.basicConfig(
-        level=logging.INFO,
+        level=getattr(logging, args.log_level),
         format="%(asctime)s [%(levelname)s] %(message)s",
         datefmt="%H:%M:%S",
     )
 
-    args = parse_args()
-
-    # Charger le dotenv avant _load_vlm_config() pour que ses variables soient disponibles
-    if args.dotenv:
-        dotenv_path = args.dotenv.resolve()
-        if not dotenv_path.exists():
-            raise SystemExit(f"Erreur : fichier .env introuvable — {dotenv_path}")
-        load_dotenv(dotenv_path=dotenv_path)
-        _log.info("Environnement chargé depuis : %s", dotenv_path)
-
-    _load_vlm_config()
-
+    cfg = load_vlm_config(dotenv_path=args.dotenv)
+    ca_path: str = cfg["CA_PATH"]
+    vlm_url: str = cfg["VLM_URL"]
+    vlm_model_name: str = cfg["VLM_MODEL_NAME"]
 
     pdf_path = resolve_pdf(args)
     if not pdf_path.exists():
@@ -577,6 +575,9 @@ def main() -> None:
             jsonl_path=jsonl_path,
             output_path=output_path,
             max_workers=args.workers,
+            vlm_url=vlm_url,
+            vlm_model_name=vlm_model_name,
+            ca_path=ca_path,
         ))
     except RuntimeError as e:
         _log.exception("%s", e)

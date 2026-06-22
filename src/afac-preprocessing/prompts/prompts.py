@@ -146,34 +146,12 @@ Task 5:
 Correct OCR errors :
 - typographical apostrophes → '
 - missing or incorrect accents
-- hyphens – — → -
+- hyphens - — → -
 - extra spaces or broken words
 - Extraneous OCR characters (e.g., , ) must be removed when they appear as erroneous OCR text
 - If a checkbox is already represented by a dedicated doctags tag, do not add an additional symbol in the Text
 - When missing information is added, reproduce the layout (lines and line breaks) observed in the PDF.
-- For bold text in the PDF, modify the doctag to match **example** in Markdown format.
-- For underlined text in the PDF, modify the doctag to match __example__ in Markdown format.
-- For strikethrough text in the PDF, modify the doctag to match ~~example~~ in Markdown format.
-- For italicized text in the PDF, modify the doctag to match *example* in Markdown format.
 - Add only text explicitly visible in the PDF (no inferences, no rewording).
-
-Task 6: Color detection:
-For text and icons, etc in color, preserve the visible colors using only the syntax:
-detected_color = Any color in english words (red, blue, green, orange, etc.) or hex code (#RRGGBB) is acceptable as a color specification.
-[[COLOR:detected_color]]myexample[[/COLOR]]  
-
-Examples:
-[[COLOR:detected_colo]]Important[[/COLOR]]
-[[COLOR:detected_color]]Information[[/COLOR]]
-[[COLOR:detected_color]]![[/COLOR]]
-[[COLOR:detected_color]]ⓘ[[/COLOR]]
-
-Never use:
-- <span>
-- <font>
-- Inline CSS
-- Custom HTML tags
-- No color for tag with markdown url in it
 
 OUTPUT:
 - Generate the final, corrected DOCTAGS for this page.
@@ -196,9 +174,27 @@ Do NOT add content that is not in the Markdown. Do NOT restructure or rewrite.
 
 Allowed corrections:
 - OCR errors: apostrophes, accents, hyphens, spaces, extraneous characters
-- Missing formatting: **bold**, *italic*, <u>underline</u>, ~~strikethrough~~
-- Missing colors: <span style="color:...">text</span> or bad color
+- Missing or incorrect text formatting based on what you see in the image:
+  - Bold text → **text**
+  - Italic text → *text*
+  - Underlined text → <u>text</u>
+  - Strikethrough text → ~~text~~
 - Missing symbols/icons (e.g., !, ⓘ, ➤) that are part of the normal document text flow
+
+COLOR DETECTION:
+For any text or icon that has a visible non-black color in the image, wrap it with:
+<span style="color:detected_color">text</span>
+
+Rules:
+- Use simple color names only: red, blue, green, orange, purple, grey, ...
+- Apply to raw text and icons only — never to URLs or hyperlinks
+- If a color is already present and correct, leave it unchanged
+- If a color is wrong, fix it
+- If no color is visible (black/default), do not add a span
+- Bold or italic formatting does NOT imply color — a heavier or darker appearance is weight, not hue
+- Only add a span if the text has a clearly distinct hue (e.g. clearly orange, clearly blue, clearly green, clearly red) that is visibly different from surrounding black text
+- If text is already marked **bold** and appears dark, it is black — do not add a color span
+- When in doubt between black and another color, treat it as black (no span)
 
 ABSOLUTE RULE — NO NEW CONTENT:
 Do NOT add any text, heading, or block that is not already present in the Markdown.

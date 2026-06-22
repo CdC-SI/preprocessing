@@ -6,19 +6,19 @@ rendue en image PNG. Outil de validation uniquement — les images produites ne 
 utilisées par les étapes suivantes du pipeline.
 
 Usage :
-    uv run python opencv_checker_modulaire.py --pdf doc.pdf --doctags doc.doctags [options]
+    uv run python opencv_checker_modulaire.py --input doc.pdf --doctags doc.doctags [options]
     uv run python opencv_checker_modulaire.py --dotenv .env.test
 """
 import argparse
 import logging
-import os
 import re
 import sys
 from pathlib import Path
 import cv2
 import fitz  # PyMuPDF
 import numpy as np
-from dotenv import load_dotenv
+
+from utils.paths import project_root, load_env, resolve_doc_name
 
 _log = logging.getLogger(__name__)
 
@@ -130,12 +130,12 @@ def parse_args() -> argparse.Namespace:
         epilog=(
             "Exemples :\n"
             "  uv run python opencv_checker_modulaire.py "
-            "--pdf data/input_files/MonDoc.pdf --doctags data/output_files/MonDoc/MonDoc.doctags\n"
+            "--input data/input_files/MonDoc.pdf --doctags data/output_files/MonDoc/MonDoc.doctags\n"
             "  uv run python opencv_checker_modulaire.py --dotenv .env.test --dpi 150\n"
         ),
     )
     parser.add_argument(
-        "--pdf", "-p",
+        "--input", "-i",
         type=Path,
         default=None,
         help=(
@@ -173,51 +173,30 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=None,
         metavar="FICHIER",
-        help="Fichier .env à charger pour résoudre DOC_NAME (ex. : .env.test). Ignoré si --pdf est fourni.",
+        help="Fichier .env à charger pour résoudre DOC_NAME (ex. : .env.test). Ignoré si --input est fourni.",
     )
     return parser.parse_args()
 
 
 # Résolution des chemins
-def _project_root() -> Path:
-    return Path(__file__).resolve().parent.parent.parent
-
-
-def _resolve_doc_name(args: argparse.Namespace) -> str:
-    """Charge le .env si demandé puis lit DOC_NAME."""
-    if args.dotenv:
-        dotenv_path = args.dotenv.resolve()
-        if not dotenv_path.exists():
-            raise SystemExit(f"Erreur : fichier .env introuvable — {dotenv_path}")
-        load_dotenv(dotenv_path=dotenv_path)
-        _log.info("Environnement chargé depuis : %s", dotenv_path)
-    doc_name = os.environ.get("DOC_NAME", "").strip()
-    if not doc_name:
-        raise SystemExit(
-            "Erreur : fournir --pdf <chemin>, ou --dotenv <fichier> avec DOC_NAME, "
-            "ou définir la variable DOC_NAME dans l'environnement."
-        )
-    return doc_name
-
-
 def resolve_pdf(args: argparse.Namespace) -> Path:
-    if args.pdf:
-        return args.pdf.resolve()
-    doc_name = _resolve_doc_name(args)
-    return _project_root() / "data" / "input_files" / f"{doc_name}.pdf"
+    if args.input:
+        return args.input.resolve()
+    doc_name = resolve_doc_name(args, primary_flag="--input")
+    return project_root() / "data" / "input_files" / f"{doc_name}.pdf"
 
 
 def resolve_doctags(args: argparse.Namespace, pdf_path: Path) -> Path:
     if args.doctags:
         return args.doctags.resolve()
     stem = pdf_path.stem
-    return _project_root() / "data" / "output_files" / stem / f"{stem}.doctags"
+    return project_root() / "data" / "output_files" / stem / f"{stem}.doctags"
 
 
 def resolve_output(args: argparse.Namespace, pdf_path: Path) -> Path:
     if args.output_dir:
         return args.output_dir.resolve()
-    return _project_root() / "data" / "output_files" / pdf_path.stem / "opencv_validation"
+    return project_root() / "data" / "output_files" / pdf_path.stem / "opencv_validation"
 
 
 # Point d'entrée
@@ -272,8 +251,8 @@ def main() -> None:
         n_ok, n_pages, output_dir,
     )
     if n_err:
-        _log.warning("%d page(s) en erreur.", n_err)
-    sys.exit(1 if n_err > 0 else 0)
+        _log.warning("%d page(s) en erreur — outil de validation uniquement, pipeline non interrompu.", n_err)
+    sys.exit(0)
 
 
 if __name__ == "__main__":

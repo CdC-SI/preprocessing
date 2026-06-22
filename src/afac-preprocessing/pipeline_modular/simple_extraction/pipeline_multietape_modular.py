@@ -10,14 +10,13 @@ un seul appel DocumentConverter.convert() produit tous les formats demandés.
 import argparse
 import json
 import logging
-import os
 import sys
 import time
 from pathlib import Path
 
-from dotenv import load_dotenv
-
 import pandas as pd
+
+from utils.paths import project_root, resolve_doc_name
 from docling.datamodel.accelerator_options import AcceleratorDevice, AcceleratorOptions
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.pipeline_options import (
@@ -261,17 +260,6 @@ def parse_args() -> argparse.Namespace:
 
 
 # Résolution des chemins
-def _project_root() -> Path:
-    """
-    Docstring for _project_root
-    Root du projet, utilisé pour résoudre les chemins d'entrée et de sortie relatifs.
-
-    :return: Description
-    :rtype: Path
-    """
-    return Path(__file__).resolve().parent.parent.parent  # Correspond à preprocessing/src/afac-preprocessing
-
-
 def resolve_input(args: argparse.Namespace) -> Path:
     """
     Docstring for resolve_input
@@ -285,26 +273,15 @@ def resolve_input(args: argparse.Namespace) -> Path:
     """
     if args.input:
         return args.input.resolve()
-    if args.dotenv:
-        dotenv_path = args.dotenv.resolve()
-        if not dotenv_path.exists():
-            raise SystemExit(f"Erreur : fichier .env introuvable — {dotenv_path}")
-        load_dotenv(dotenv_path=dotenv_path)
-        _log.info("Environnement chargé depuis : %s", dotenv_path)
-    doc_name = os.environ.get("DOC_NAME", "").strip()
-    if not doc_name:
-        raise SystemExit(
-            "Erreur : fournir --input <chemin>, --dotenv <fichier> avec DOC_NAME, "
-            "ou définir la variable DOC_NAME dans l'environnement."
-        )
-    return _project_root() / "data" / "input_files" / f"{doc_name}.pdf"
+    doc_name = resolve_doc_name(args, primary_flag="--input")
+    return project_root() / "data" / "input_files" / f"{doc_name}.pdf"
 
 
 def resolve_output(args: argparse.Namespace, input_path: Path) -> Path:
     """
     Docstring for resolve_output
-    
-    
+
+
     :param args: Description
     :type args: argparse.Namespace
     :param input_path: Description
@@ -314,7 +291,7 @@ def resolve_output(args: argparse.Namespace, input_path: Path) -> Path:
     """
     if args.output_dir:
         return args.output_dir.resolve()
-    return _project_root() / "data" / "output_files" / input_path.stem
+    return project_root() / "data" / "output_files" / input_path.stem
 
 
 # Point d'entrée

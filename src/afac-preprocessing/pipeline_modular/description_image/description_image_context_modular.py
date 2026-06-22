@@ -13,17 +13,9 @@ from urllib.parse import urlparse, urlunparse
 import fitz  # PyMuPDF
 import requests
 
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-
-try:
-    from prompts.prompts import WIKI_PROMPT_TEMPLATE
-    from utils.config import load_vlm_config
-except ModuleNotFoundError:
-    # Fallback dev local : le projet n'est pas installé ni PYTHONPATH configuré.
-    # En Tekton, définir PYTHONPATH=<project_root> dans le TaskRun pour éviter ce bloc.
-    sys.path.insert(0, str(_PROJECT_ROOT))
-    from prompts.prompts import WIKI_PROMPT_TEMPLATE
-    from utils.config import load_vlm_config
+from prompts.prompts import WIKI_PROMPT_TEMPLATE
+from utils.config import load_vlm_config
+from utils.paths import project_root
 
 _log = logging.getLogger(__name__)
 
@@ -608,7 +600,7 @@ def parse_args() -> argparse.Namespace:
             "Exemples :\n"
             "  uv run python description_image_context_modulaire.py \\\n"
             "      --doctags data/output_files/MonDoc/MonDoc_reordered_with_tables.doctags \\\n"
-            "      --pdf     data/input_files/MonDoc.pdf \\\n"
+            "      --input   data/input_files/MonDoc.pdf \\\n"
             "      --image-description\n"
             "  uv run python description_image_context_modulaire.py --dotenv .env.test\n"
             "  uv run python description_image_context_modulaire.py --dotenv .env.test --no-image-description\n"
@@ -623,7 +615,7 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
-        "--pdf", "-p",
+        "--input", "-i",
         type=Path, default=None,
         help="Fichier PDF source pour le crop des images. Si absent, résout data/input_files/<DOC_NAME>.pdf.",
     )
@@ -730,7 +722,7 @@ def _load_doc_name(args: argparse.Namespace) -> str:
 def resolve_doctags(args: argparse.Namespace) -> Path:
     """
     Docstring for resolve_doctags
-    
+
     :param args: Description
     :type args: argparse.Namespace
     :return: Description
@@ -739,13 +731,13 @@ def resolve_doctags(args: argparse.Namespace) -> Path:
     if args.doctags:
         return args.doctags.resolve()
     doc_name = _load_doc_name(args)
-    return _PROJECT_ROOT / "data" / "output_files" / doc_name / f"{doc_name}_reordered_with_tables.doctags"
+    return project_root() / "data" / "output_files" / doc_name / f"{doc_name}_reordered_with_tables.doctags"
 
 
 def resolve_pdf(args: argparse.Namespace, doctags_path: Path) -> Path:
     """
     Docstring for resolve_pdf
-    
+
     :param args: Description
     :type args: argparse.Namespace
     :param doctags_path: Description
@@ -753,17 +745,17 @@ def resolve_pdf(args: argparse.Namespace, doctags_path: Path) -> Path:
     :return: Description
     :rtype: Path
     """
-    if args.pdf:
-        return args.pdf.resolve()
+    if args.input:
+        return args.input.resolve()
     env_name = os.environ.get("DOC_NAME", "").strip()
     doc_name = env_name or doctags_path.stem.split("_")[0]
-    return _PROJECT_ROOT / "data" / "input_files" / f"{doc_name}.pdf"
+    return project_root() / "data" / "input_files" / f"{doc_name}.pdf"
 
 
-def resolve_doc_name(args: argparse.Namespace, doctags_path: Path) -> str:
+def _resolve_image_doc_name(args: argparse.Namespace, doctags_path: Path) -> str:
     """
-    Docstring for resolve_doc_name
-    
+    Docstring for _resolve_image_doc_name
+
     :param args: Description
     :type args: argparse.Namespace
     :param doctags_path: Description
@@ -865,7 +857,7 @@ def main() -> None:
     if not pdf_path.exists():
         raise SystemExit(f"Erreur : fichier PDF introuvable — {pdf_path}")
 
-    doc_name = resolve_doc_name(args, doctags_path)
+    doc_name = _resolve_image_doc_name(args, doctags_path)
     output_path = resolve_output(args, doctags_path)
     markdown_path = resolve_markdown(args, doctags_path, doc_name)
     images_dir = resolve_images_dir(args, doctags_path)

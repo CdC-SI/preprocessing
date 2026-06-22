@@ -8,17 +8,17 @@ Produit un fichier JSONL — une ligne par lien trouvé.
 Se lance indépendamment ou après pipeline_multietape_modulaire.py.
 
 Usage :
-    uv run python url_extaction_modular.py --pdf data/input_files/MonDoc.pdf
+    uv run python url_extaction_modular.py --input data/input_files/MonDoc.pdf
     uv run python url_extaction_modular.py --dotenv .env.test
 """
 import argparse
 import logging
-import os
 import sys
 from pathlib import Path
 import fitz  # PyMuPDF
 import jsonlines
-from dotenv import load_dotenv
+
+from utils.paths import project_root, resolve_doc_name
 
 _log = logging.getLogger(__name__)
 
@@ -135,15 +135,15 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Exemples :\n"
-            "  uv run python url_extaction_modular.py --pdf data/input_files/MonDoc.pdf\n"
+            "  uv run python url_extaction_modular.py --input data/input_files/MonDoc.pdf\n"
             "  uv run python url_extaction_modular.py "
-            "--pdf data/input_files/MonDoc.pdf "
+            "--input data/input_files/MonDoc.pdf "
             "--output data/output_files/MonDoc/hyperlinks_data_MonDoc.jsonl\n"
             "  uv run python url_extaction_modular.py --dotenv .env.test\n"
         ),
     )
     parser.add_argument(
-        "--pdf", "-p",
+        "--input", "-i",
         type=Path,
         default=None,
         help=(
@@ -165,22 +165,12 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=None,
         metavar="FICHIER",
-        help="Fichier .env à charger pour résoudre DOC_NAME (ex. : .env.test). Ignoré si --pdf est fourni.",
+        help="Fichier .env à charger pour résoudre DOC_NAME (ex. : .env.test). Ignoré si --input est fourni.",
     )
     return parser.parse_args()
 
 
 # Résolution des chemins
-def _project_root() -> Path:
-    """
-    Docstring for _project_root
-    Va jusqu'au répertoire racine du projet (deux niveaux au-dessus de ce fichier).
-    :return: Description
-    :rtype: Path
-    """
-    return Path(__file__).resolve().parent.parent.parent
-
-
 def resolve_pdf(args: argparse.Namespace) -> Path:
     """
     Docstring for resolve_pdf
@@ -195,21 +185,10 @@ def resolve_pdf(args: argparse.Namespace) -> Path:
     :return: Description
     :rtype: Path
     """
-    if args.pdf:
-        return args.pdf.resolve()
-    if args.dotenv:
-        dotenv_path = args.dotenv.resolve()
-        if not dotenv_path.exists():
-            raise SystemExit(f"Erreur : fichier .env introuvable — {dotenv_path}")
-        load_dotenv(dotenv_path=dotenv_path)
-        _log.info("Environnement chargé depuis : %s", dotenv_path)
-    doc_name = os.environ.get("DOC_NAME", "").strip()
-    if not doc_name:
-        raise SystemExit(
-            "Erreur : fournir --pdf <chemin>, ou --dotenv <fichier> avec DOC_NAME, "
-            "ou définir la variable DOC_NAME dans l'environnement."
-        )
-    return _project_root() / "data" / "input_files" / f"{doc_name}.pdf"
+    if args.input:
+        return args.input.resolve()
+    doc_name = resolve_doc_name(args, primary_flag="--input")
+    return project_root() / "data" / "input_files" / f"{doc_name}.pdf"
 
 
 def resolve_output(args: argparse.Namespace, pdf_path: Path) -> Path:
@@ -229,7 +208,7 @@ def resolve_output(args: argparse.Namespace, pdf_path: Path) -> Path:
     if args.output:
         return args.output.resolve()
     stem = pdf_path.stem
-    return _project_root() / "data" / "output_files" / stem / f"hyperlinks_data_{stem}.jsonl"
+    return project_root() / "data" / "output_files" / stem / f"hyperlinks_data_{stem}.jsonl"
 
 
 # Point d'entrée

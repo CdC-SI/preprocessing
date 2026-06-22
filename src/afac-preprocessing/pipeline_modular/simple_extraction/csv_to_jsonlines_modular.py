@@ -10,13 +10,13 @@ Usage :
 """
 import argparse
 import logging
-import os
 import sys
 from pathlib import Path
 
 import jsonlines
 import pandas as pd
-from dotenv import load_dotenv
+
+from utils.paths import project_root, resolve_doc_name
 
 _log = logging.getLogger(__name__)
 
@@ -165,20 +165,10 @@ def parse_args() -> argparse.Namespace:
 
 
 # Résolution des chemins
-def _project_root() -> Path:
-    """
-    Docstring for _project_root
-    
-    :return: Description
-    :rtype: Path
-    """
-    return Path(__file__).resolve().parent.parent.parent
-
-
 def resolve_input_dir(args: argparse.Namespace) -> Path:
     """
     Docstring for resolve_input_dir
-    
+
     :param args: Description
     :type args: argparse.Namespace
     :return: Description
@@ -186,19 +176,8 @@ def resolve_input_dir(args: argparse.Namespace) -> Path:
     """
     if args.input_dir:
         return args.input_dir.resolve()
-    if args.dotenv:
-        dotenv_path = args.dotenv.resolve()
-        if not dotenv_path.exists():
-            raise SystemExit(f"Erreur : fichier .env introuvable — {dotenv_path}")
-        load_dotenv(dotenv_path=dotenv_path)
-        _log.info("Environnement chargé depuis : %s", dotenv_path)
-    doc_name = os.environ.get("DOC_NAME", "").strip()
-    if not doc_name:
-        raise SystemExit(
-            "Erreur : fournir --input-dir <dossier>, ou --dotenv <fichier> avec DOC_NAME, "
-            "ou définir la variable DOC_NAME dans l'environnement."
-        )
-    return _project_root() / "data" / "output_files" / doc_name / "tables"
+    doc_name = resolve_doc_name(args, primary_flag="--input-dir")
+    return project_root() / "data" / "output_files" / doc_name / "tables"
 
 
 def resolve_output_dir(args: argparse.Namespace, input_dir: Path) -> Path:

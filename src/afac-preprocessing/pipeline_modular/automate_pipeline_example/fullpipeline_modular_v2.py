@@ -1,10 +1,27 @@
-"""Full pipeline — runs the 10 modular steps in sequence.
+"""Full pipeline — runs all modular steps in sequence (extraction + metadata).
 
 Usage:
     uv run python fullpipeline_modular_v2.py --dotenv .env.test
+    uv run python fullpipeline_modular_v2.py --dotenv .env.test --from-step 8
+    uv run python fullpipeline_modular_v2.py --dotenv .env.test --from-step 11 --to-step 12
+    uv run python fullpipeline_modular_v2.py --dotenv .env.test --skip-steps 3,6
 
 Each step receives the resolved --dotenv path so DOC_NAME is picked up
 consistently from the same .env file throughout the run.
+
+Steps:
+  01  pipeline_multietape_modular.py        # doctags via Docling
+  02  reordered_doctags_modular.py          # réordonnement des balises
+  03  opencv_checker_modular.py             # contrôle qualité images (validation only)
+  04  csv_to_jsonlines_modular.py           # CSV → JSONL
+  05  load_jsonline_doctags_modular.py      # chargement doctags enrichi
+  06  description_image_context_modular.py  # descriptions images VLM  (slow)
+  07  url_extaction_modular.py              # extraction URL
+  08  url_tuning_vlm_modular.py             # tuning URL via VLM
+  09  docling_markdown_converter_modular.py # conversion markdown
+  10  markdown_control_vlm_modular.py       # contrôle markdown VLM
+  11  metadata_generation_modular.py        # metadata + embedding CSV
+  12  hyq_embedding_doc_modular.py          # embeddings des questions hyq
 """
 
 import argparse
@@ -14,27 +31,38 @@ from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent        # automate_pipeline_example/
 _PIPELINE_ROOT = _HERE.parent                  # pipeline_modular/
-_SIMPLE = _PIPELINE_ROOT / "simple_extraction"
+_SIMPLE  = _PIPELINE_ROOT / "simple_extraction"
 _DESCIMG = _PIPELINE_ROOT / "description_image"
+_META    = _PIPELINE_ROOT / "metadata"
 
 STEPS: list[Path] = [
-    _SIMPLE  / "pipeline_multietape_modular.py",
-    _SIMPLE  / "reordered_doctags_modular.py",
-    _SIMPLE  / "opencv_checker_modular.py",
-    _SIMPLE  / "csv_to_jsonlines_modular.py",
-    _SIMPLE  / "load_jsonline_doctags_modular.py",
-    _DESCIMG / "description_image_context_modular.py",
-    _SIMPLE  / "url_extaction_modular.py",            # typo in filename kept intentionally
-    _SIMPLE  / "url_tuning_vlm_modular.py",
-    _SIMPLE  / "docling_markdown_converter_modular.py",
-    _SIMPLE  / "markdown_control_vlm_modular.py",
+    _SIMPLE  / "pipeline_multietape_modular.py",         # 01
+    _SIMPLE  / "reordered_doctags_modular.py",           # 02
+    _SIMPLE  / "opencv_checker_modular.py",              # 03
+    _SIMPLE  / "csv_to_jsonlines_modular.py",            # 04
+    _SIMPLE  / "load_jsonline_doctags_modular.py",       # 05
+    _DESCIMG / "description_image_context_modular.py",   # 06
+    _SIMPLE  / "url_extaction_modular.py",               # 07
+    _SIMPLE  / "url_tuning_vlm_modular.py",              # 08
+    _SIMPLE  / "docling_markdown_converter_modular.py",  # 09
+    _SIMPLE  / "markdown_control_vlm_modular.py",        # 10
+    _META    / "metadata_generation_modular.py",         # 11
+    _META    / "hyq_embedding_doc_modular.py",           # 12
 ]
+
+_N = len(STEPS)
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Full modular pipeline (steps 1-10, metadata excluded).",
-        epilog="Example:\n  uv run python fullpipeline_modular_v2.py --dotenv .env.test",
+        description=f"Full modular pipeline ({_N} steps : extraction + metadata).",
+        epilog=(
+            "Examples:\n"
+            "  uv run python fullpipeline_modular_v2.py --dotenv .env.test\n"
+            "  uv run python fullpipeline_modular_v2.py --dotenv .env.test --from-step 8\n"
+            "  uv run python fullpipeline_modular_v2.py --dotenv .env.test --from-step 11 --to-step 12\n"
+            "  uv run python fullpipeline_modular_v2.py --dotenv .env.test --skip-steps 3,6\n"
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
@@ -43,12 +71,33 @@ def parse_args() -> argparse.Namespace:
         default=Path(".env.test"),
         help="Path to the .env file passed to every step (default: .env.test).",
     )
+    parser.add_argument(
+        "--from-step",
+        type=int,
+        default=1,
+        metavar="N",
+        help=f"First step to run, inclusive (1–{_N}, default: 1).",
+    )
+    parser.add_argument(
+        "--to-step",
+        type=int,
+        default=_N,
+        metavar="N",
+        help=f"Last step to run, inclusive (1–{_N}, default: {_N}).",
+    )
+    parser.add_argument(
+        "--skip-steps",
+        type=str,
+        default="",
+        metavar="N[,N...]",
+        help="Comma-separated step numbers to skip, e.g. --skip-steps 3,6.",
+    )
     return parser.parse_args()
 
 
 def _run_step(step: int, script: Path, dotenv: Path) -> None:
     print(f"\n{'=' * 60}")
-    print(f"  Step {step:02d}/{len(STEPS):02d} — {script.name}")
+    print(f"  Step {step:02d}/{_N:02d} — {script.name}")
     print(f"{'=' * 60}")
     result = subprocess.run(
         [sys.executable, str(script), "--dotenv", str(dotenv)],
@@ -68,9 +117,23 @@ def main() -> None:
     if not dotenv.exists():
         raise SystemExit(f"[ERROR] .env file not found: {dotenv}")
 
-    print(f"Pipeline starting — dotenv: {dotenv}")
+    skip: set[int] = {int(s) for s in args.skip_steps.split(",") if s.strip()}
+    from_step = max(1, args.from_step)
+    to_step = min(_N, args.to_step)
 
-    for i, script in enumerate(STEPS, start=1):
+    selected = [
+        (i, script)
+        for i, script in enumerate(STEPS, start=1)
+        if from_step <= i <= to_step and i not in skip
+    ]
+
+    if not selected:
+        raise SystemExit("[ERROR] No steps selected — check --from-step, --to-step, --skip-steps.")
+
+    skip_display = f"  skip: {sorted(skip)}" if skip else ""
+    print(f"Pipeline starting — steps {from_step}→{to_step}{skip_display} — dotenv: {dotenv}")
+
+    for i, script in selected:
         _run_step(i, script, dotenv)
 
     print(f"\n{'=' * 60}")
