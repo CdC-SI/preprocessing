@@ -283,7 +283,7 @@ def assemble_doctags(pages: dict[int, str]) -> str:
     :rtype: str
     """
     def _strip_doctag_tags(s: str) -> str:
-        s = re.sub(r'</?doctag[s]?>', '', s, flags=re.IGNORECASE)
+        s = re.sub(r'</?doctags?>', '', s, flags=re.IGNORECASE)
         return s.strip()
 
     parts = []
