@@ -1,6 +1,6 @@
 # Stage 5 — Génération des métadonnées
 
-Ce stage collecte, enrichit et stocke les métadonnées structurées de chaque document traité par le pipeline. Il s'exécute après les stages 1 à 4 et produit une ligne CSV par document avec trois colonnes : **CONTENT**, **METADATA** et **EMBEDDING**.
+Ce stage collecte, enrichit et stocke les métadonnées structurées de chaque document traité par le pipeline. Il s'exécute après les stages 1 à 11 et produit une ligne CSV par document avec trois colonnes : **CONTENT**, **METADATA** et **EMBEDDING**.
 
 ---
 
@@ -53,14 +53,14 @@ Ces champs sont déduits de la position du document dans `folder_source/`, le do
 ### Référence au contenu
 | Champ | Comment il est obtenu |
 |---|---|
-| `content` | Nom du fichier markdown final produit au Stage 4 (`<nom_doc>_vlm_check.md`). |
-| `chunk_count` | Nombre de fichiers markdown trouvés pour ce document dans le Stage 4. |
+| `content` | Nom du fichier markdown final produit au Stage 11 (`<nom_doc>_final.md`). |
+| `chunk_count` | Nombre de fichiers markdown trouvés pour ce document dans le Stage 11. |
 
 ---
 
 ## Champs enrichis par le VLM (Stage 5)
 
-Ces trois champs sont générés en envoyant le contenu markdown du Stage 4 à un modèle de langage (VLM) :
+Ces trois champs sont générés en envoyant le contenu markdown du Stage 11 (`_final.md`) à un modèle de langage (VLM) :
 
 | Champ | Ce qu'il contient |
 |---|---|
@@ -72,7 +72,7 @@ Ces trois champs sont générés en envoyant le contenu markdown du Stage 4 à u
 
 ## Embedding (Stage 5)
 
-Le contenu markdown complet du Stage 4 est envoyé à un modèle d'embedding. Le vecteur produit est :
+Le contenu markdown complet du Stage 11 (`_final.md`) est envoyé à un modèle d'embedding. Le vecteur produit est :
 - Sauvegardé dans `embedding.json` dans le dossier de sortie du Stage 5.
 - Écrit sous forme de flottants séparés par des virgules dans la colonne **EMBEDDING** du CSV final.
 
@@ -88,7 +88,7 @@ Chaque document produit une ligne ajoutée (ou remplacée) dans un fichier CSV :
 CONTENT | METADATA | EMBEDDING
 ```
 
-- **CONTENT** : le texte markdown complet du document (sortie Stage 4).
+- **CONTENT** : le texte markdown complet du document (sortie Stage 11, `_final.md`).
 - **METADATA** : tous les champs ci-dessus, sérialisés en JSON.
 - **EMBEDDING** : le vecteur d'embedding sous forme de flottants séparés par des virgules.
 

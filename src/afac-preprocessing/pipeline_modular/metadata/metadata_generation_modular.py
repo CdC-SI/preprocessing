@@ -295,13 +295,13 @@ def get_stage4_info(stage4_dir: Path, doc_name: str) -> tuple[str, int]:
     :rtype: tuple[str, int]
     """
     if not stage4_dir.exists():
-        return f"{doc_name}_vlm_check.md", 0
+        return f"{doc_name}_final.md", 0
 
-    single = stage4_dir / doc_name / f"{doc_name}_vlm_check.md"
+    single = stage4_dir / doc_name / f"{doc_name}_final.md"
     if single.exists():
         return single.name, 1
 
-    return f"{doc_name}_vlm_check.md", 0
+    return f"{doc_name}_final.md", 0
 
 
 def get_stage4_content(stage4_dir: Path, doc_name: str) -> str:
@@ -315,7 +315,7 @@ def get_stage4_content(stage4_dir: Path, doc_name: str) -> str:
     :return: Contenu markdown
     :rtype: str
     """
-    single = stage4_dir / doc_name / f"{doc_name}_vlm_check.md"
+    single = stage4_dir / doc_name / f"{doc_name}_final.md"
     if single.exists():
         return single.read_text(encoding="utf-8")
     return ""

@@ -29,11 +29,12 @@ flowchart TD
         S08["8. url_tuning_vlm \n Tuning / validation URL \n via VLM"]
         S09["9. docling_markdown_converter \n Conversion markdown finale"]
         S10["10. markdown_control_vlm \n Contrôle qualité markdown \n via VLM"]
+        S11["11. Injection de la description des images"]
     end
 
     subgraph METADATA["Etape 3 - Génération Metadata"]
-        S11["11· metadata_generation \n Résumé · Intent · HyQ \n + embedding contenu \n → _final.csv (CONTENT|METADATA|EMBEDDING)"]
-        S12["12· hyq_embedding_doc \n Embedding par question HyQ \n → hyq_<doc>/question_N.csv"]
+        S12["12· metadata_generation \n Résumé · Intent · HyQ \n + embedding contenu \n → _final.csv (CONTENT|METADATA|EMBEDDING)"]
+        S13["13· hyq_embedding_doc \n Embedding par question HyQ \n → hyq_<doc>/question_N.csv"]
     end
 
     OUT["Sortie finale \n CSV indexable (RAG)"]
@@ -47,17 +48,19 @@ flowchart TD
     S05 -->|"doctags enrichis"| S06
     S06 -->|"descriptions images"| S07
     S06 <-->|"Fallback librairie fitz si pas extraite dans docling"|S06bis
+    S06 --> S11
     S01 -->|"Envoie les images base64 pour la description"| S06
     S01 -->|"PDF original"| S07
     S07 -->|"hyperlinks.jsonl"| S08
     S08 -->|"URLs validées"| S09
     S05 -->|"doctags + images"| S09
     S09 -->|"markdown brut"| S10
-    S10 -->|"_vlm_check.md"| S11
-    S01 -->|".json (pages, tables, mimetype)"| S11
-    S07 -->|"hyperlinks.jsonl \n (outgoing/incoming)"| S11
-    S06 -->|"used_images/"| S11
-    S11 -->|"hyq.json"| S12
-    S11 --> OUT
+    S10 -->|"_vlm_check.md"| S12
+    S11 --> S12
+    S01 -->|".json (pages, tables, mimetype)"| S12
+    S07 -->|"hyperlinks.jsonl \n (outgoing/incoming)"| S12
+    S06 -->|"used_images/"| S12
+    S12 -->|"hyq.json"| S13
     S12 --> OUT
+    S13 --> OUT
 ```

@@ -511,7 +511,10 @@ def describe_all_pictures(
 def replace_picture_tags(content: str, results: dict[int, VLMResult]) -> str:
     """
     Docstring for replace_picture_tags
-    Remplace les balises <picture> par les descriptions VLM dans le contenu doctags.
+    Remplace les balises <picture> par des marqueurs [[[IMAGE_DESC:N]]] dans le contenu doctags.
+    Les descriptions réelles sont injectées après le contrôle VLM (stage 4) par
+    inject_image_descriptions_modular.py, garantissant qu'elles ne peuvent pas être
+    supprimées ou altérées par les étapes VLM intermédiaires.
 
     :param content: Description
     :type content: str
@@ -530,24 +533,23 @@ def replace_picture_tags(content: str, results: dict[int, VLMResult]) -> str:
             _log.error("raw_tag introuvable : %s", r["raw_tag"])
             continue
 
-        desc = r["description"]
-        raw_tag = re.escape(r["raw_tag"])
-        desc_inline = desc.replace("\n", " ").strip()
+        placeholder = f"[[[IMAGE_DESC:{idx}]]]"
+        raw_tag_escaped = re.escape(r["raw_tag"])
 
-        pattern_in_item = re.compile(r"<list_item>\s*" + raw_tag + r"\s*</list_item>", re.DOTALL)
+        pattern_in_item = re.compile(r"<list_item>\s*" + raw_tag_escaped + r"\s*</list_item>", re.DOTALL)
         if pattern_in_item.search(content):
-            content = pattern_in_item.sub(f"<list_item>{desc_inline}</list_item>", content, count=1)
-            _log.info("[%d] <picture> dans <list_item> → texte inline", idx)
-        elif re.search(r"<list_item[^>]*>.*?</list_item>\s*" + raw_tag, content, re.DOTALL):
-            content = content.replace(r["raw_tag"], f"<list_item>{desc_inline}</list_item>", 1)
-            _log.info("[%d] <picture> entre list_items → <list_item> texte inline", idx)
+            content = pattern_in_item.sub(f"<list_item>{placeholder}</list_item>", content, count=1)
+            _log.info("[%d] <picture> dans <list_item> → placeholder inline", idx)
+        elif re.search(r"<list_item[^>]*>.*?</list_item>\s*" + raw_tag_escaped, content, re.DOTALL):
+            content = content.replace(r["raw_tag"], f"<list_item>{placeholder}</list_item>", 1)
+            _log.info("[%d] <picture> entre list_items → <list_item> placeholder", idx)
         else:
-            content = content.replace(r["raw_tag"], f"<text>\n{desc}\n</text>", 1)
-            _log.info("[%d] <picture> standalone → <text>", idx)
+            content = content.replace(r["raw_tag"], f"<text>{placeholder}</text>", 1)
+            _log.info("[%d] <picture> standalone → <text> placeholder", idx)
 
         replaced += 1
 
-    _log.info("%d/%d balise(s) <picture> remplacée(s)", replaced, len(results))
+    _log.info("%d/%d balise(s) <picture> remplacée(s) par placeholder", replaced, len(results))
     return content
 
 

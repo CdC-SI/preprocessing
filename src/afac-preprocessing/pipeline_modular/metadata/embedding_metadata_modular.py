@@ -43,7 +43,7 @@ def _read_stage4(stage4_dir: Path, doc_name: str) -> str:
     :return: Contenu markdown du document
     :rtype: str
     """
-    single = stage4_dir / doc_name / f"{doc_name}_vlm_check.md"
+    single = stage4_dir / doc_name / f"{doc_name}_final.md"
     if single.exists():
         return single.read_text(encoding="utf-8")
     return ""

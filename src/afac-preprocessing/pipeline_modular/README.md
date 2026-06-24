@@ -1,6 +1,6 @@
 # Pipeline Modular — Référence CLI
 
-Pipeline de prétraitement PDF en 12 étapes : extraction Docling, enrichissement VLM, génération de métadonnées et embeddings.
+Pipeline de prétraitement PDF en 13 étapes : extraction Docling, enrichissement VLM, génération de métadonnées et embeddings.
 
 ## Vue d'ensemble des étapes
 
@@ -11,13 +11,14 @@ Pipeline de prétraitement PDF en 12 étapes : extraction Docling, enrichissemen
 | 03 | `opencv_checker_modular.py` | Validation visuelle *(optionnel)* | PDF + `.doctags` | PNG par page |
 | 04 | `csv_to_jsonlines_modular.py` | Conversion tables CSV → JSONL | `tables/*.csv` | `tables/*.jsonl` |
 | 05 | `load_jsonline_doctags_modular.py` | Injection tables dans doctags | `_reordered.doctags` + JSONL | `_reordered_with_tables.doctags` |
-| 06 | `description_image_context_modular.py` | Descriptions images via VLM *(lent)* | `_reordered_with_tables.doctags` + PDF | `_reordered_with_tables_pictures.doctags` |
+| 06 | `description_image_context_modular.py` | Descriptions images via VLM *(lent)* — émet des marqueurs `[[[IMAGE_DESC:N]]]` | `_reordered_with_tables.doctags` + PDF | `_reordered_with_tables_pictures.doctags` + `_image_descriptions.md` |
 | 07 | `url_extaction_modular.py` | Extraction liens hypertextes | PDF | `hyperlinks_data_<doc>.jsonl` |
 | 08 | `url_tuning_vlm_modular.py` | Intégration liens via VLM + corrections OCR | `_reordered_with_tables_pictures.doctags` + JSONL | `_url_vlm.doctags` |
 | 09 | `docling_markdown_converter_modular.py` | Conversion doctags → Markdown paginé | `_url_vlm.doctags` | `_url_vlm.md` *(avec `<!-- page-break -->`)* |
 | 10 | `markdown_control_vlm_modular.py` | Contrôle qualité, formatage et couleurs via VLM | `_url_vlm.md` + PDF | `_vlm_check.md` |
-| 11 | `metadata_generation_modular.py` | Génération métadonnées + CSV final | Sorties stages 1–4 | `metadata/<doc>_final.csv` |
-| 12 | `hyq_embedding_doc_modular.py` | Embeddings questions hyq | `metadata/hyq.json` | `metadata/hyq_<doc>/question_N.csv` |
+| 11 | `inject_image_descriptions_modular.py` | Injection des descriptions d'images dans le Markdown | `_vlm_check.md` + `_image_descriptions.md` | `_final.md` |
+| 12 | `metadata_generation_modular.py` | Génération métadonnées + CSV final | Sorties stages 1–11 | `metadata/<doc>_final.csv` |
+| 13 | `hyq_embedding_doc_modular.py` | Embeddings questions hyq | `metadata/hyq.json` | `metadata/hyq_<doc>/question_N.csv` |
 
 **Sortie par document :**
 ```
@@ -29,6 +30,7 @@ data/output_files/<doc_name>/
 ├── <doc>_url_vlm.doctags                        ← step 08
 ├── <doc>_url_vlm.md                             ← step 09
 ├── <doc>_vlm_check.md                           ← step 10
+├── <doc>_final.md                               ← step 11
 ├── hyperlinks_data_<doc>.jsonl                  ← step 07
 ├── <doc>_image_descriptions.md                  ← step 06
 ├── opencv_validation/                           ← step 03
@@ -49,7 +51,7 @@ data/output_files/<doc_name>/
 
 # fullpipeline_modular_v2.py — Orchestrateur du pipeline complet
 
-Lance les 12 étapes en séquence. Chaque étape reçoit le `--dotenv` résolu pour que `DOC_NAME` soit cohérent sur toute la durée du run.
+Lance les 13 étapes en séquence. Chaque étape reçoit le `--dotenv` résolu pour que `DOC_NAME` soit cohérent sur toute la durée du run.
 
 ## Commandes types
 
@@ -60,10 +62,10 @@ uv run python pipeline_modular/automate_pipeline_example/fullpipeline_modular_v2
 # Reprendre après un échec à l'étape 8
 uv run python pipeline_modular/automate_pipeline_example/fullpipeline_modular_v2.py --dotenv .env.test --from-step 8
 
-# Seulement les métadonnées (étapes 11–12)
-uv run python pipeline_modular/automate_pipeline_example/fullpipeline_modular_v2.py --dotenv .env.test --from-step 11
+# Seulement les métadonnées (étapes 12–13)
+uv run python pipeline_modular/automate_pipeline_example/fullpipeline_modular_v2.py --dotenv .env.test --from-step 12
 
-# Extraction seulement, sans métadonnées
+# Extraction seulement, sans injection ni métadonnées
 uv run python pipeline_modular/automate_pipeline_example/fullpipeline_modular_v2.py --dotenv .env.test --to-step 10
 
 # Ignorer opencv (étape 3) et descriptions images (étape 6, lente)
@@ -75,8 +77,8 @@ uv run python pipeline_modular/automate_pipeline_example/fullpipeline_modular_v2
 | Paramètre | Défaut | Description |
 |-----------|--------|-------------|
 | `--dotenv` | `.env.test` | Fichier `.env` transmis à chaque étape. |
-| `--from-step` | `1` | Première étape à exécuter (1–12, inclus). |
-| `--to-step` | `12` | Dernière étape à exécuter (1–12, inclus). |
+| `--from-step` | `1` | Première étape à exécuter (1–13, inclus). |
+| `--to-step` | `13` | Dernière étape à exécuter (1–13, inclus). |
 | `--skip-steps` | *(aucun)* | Étapes à ignorer, séparées par virgule. Ex. `--skip-steps 3,6`. |
 
 **Comportement en cas d'échec :** si une étape retourne un code ≠ 0, le pipeline s'arrête immédiatement et affiche `[FAILED] <script> exited with code N`. Les étapes suivantes ne sont pas exécutées.
@@ -293,7 +295,7 @@ uv run python pipeline_modular/simple_extraction/load_jsonline_doctags_modular.p
 
 # Script description_image_context_modular.py — Description des images via VLM
 
-Parse les balises `<picture>` d'un `.doctags`, récupère l'image correspondante (depuis `used_images/` si pré-extraite par l'étape 01, sinon crop fitz), construit un prompt contextualisé (N éléments avant/après) et appelle le VLM pour générer une description. Remplace chaque `<picture>` par la description produite.
+Parse les balises `<picture>` d'un `.doctags`, récupère l'image correspondante (depuis `used_images/` si pré-extraite par l'étape 01, sinon crop fitz), construit un prompt contextualisé (N éléments avant/après) et appelle le VLM pour générer une description. Remplace chaque `<picture>` par un marqueur `[[[IMAGE_DESC:N]]]` dans le doctags et exporte les descriptions dans `_image_descriptions.md`. L'injection dans le Markdown final est effectuée par l'étape 11.
 
 **Source des images — résolution automatique :**
 1. `--preextracted-images-dir` explicite
@@ -567,11 +569,50 @@ uv run python pipeline_modular/simple_extraction/markdown_control_vlm_modular.py
 
 ---
 
-# Script metadata_generation_modular.py — Génération des métadonnées (étape 11)
+# Script inject_image_descriptions_modular.py — Injection des descriptions (étape 11)
+
+Remplace les marqueurs `[[[IMAGE_DESC:N]]]` laissés par l'étape 06 dans `_vlm_check.md` avec les descriptions VLM issues de `_image_descriptions.md`. S'exécute **après** le contrôle qualité VLM (étape 10), garantissant que les descriptions ne peuvent pas être supprimées par les étapes VLM précédentes.
+
+Si `--no-image-description` a été utilisé à l'étape 06 (aucun marqueur, aucune description), le fichier est copié tel quel de `_vlm_check.md` vers `_final.md`.
+
+## Commandes types
+
+```bash
+uv run python pipeline_modular/simple_extraction/inject_image_descriptions_modular.py --dotenv .env.test
+
+uv run python pipeline_modular/simple_extraction/inject_image_descriptions_modular.py \
+  --markdown      data/output_files/MonDoc/MonDoc_vlm_check.md \
+  --descriptions  data/output_files/MonDoc/MonDoc_image_descriptions.md \
+  --output        data/output_files/MonDoc/MonDoc_final.md
+```
+
+## Paramètres
+
+| Paramètre | Alias | Défaut | Description |
+|-----------|-------|--------|-------------|
+| `--input` | `-i` | *(voir note)* | PDF source — utilisé uniquement pour résoudre le stem du document. |
+| `--markdown` | `-m` | `<stem>_vlm_check.md` | Markdown produit par l'étape 10. |
+| `--descriptions` | `-d` | `<stem>_image_descriptions.md` | Fichier de descriptions produit par l'étape 06. |
+| `--output` | `-o` | `<stem>_final.md` | Markdown final avec descriptions injectées. |
+| `--dotenv` | | *(aucun)* | Fichier `.env` pour résoudre `DOC_NAME`. |
+| `--log-level` | | `INFO` | Niveau de log. |
+
+*Note : `--input` absent → résout `DOC_NAME` depuis `--dotenv` ou l'environnement.*
+
+| Situation | Comportement |
+|-----------|-------------|
+| Marqueurs présents + descriptions disponibles | Injection et écriture de `_final.md` |
+| Aucun marqueur + aucune description (descriptions désactivées) | Copie `_vlm_check.md` → `_final.md`, `exit 0` |
+| Descriptions disponibles mais aucun marqueur | Warning + copie telle quelle (vérifier l'étape 06) |
+| Marqueurs présents mais aucune description | Warning + marqueurs conservés dans `_final.md` |
+
+---
+
+# Script metadata_generation_modular.py — Génération des métadonnées (étape 12)
 
 Orchestre la génération complète des métadonnées pour un document : appelle `enhancement_metadata_modular.py` (résumé, intents, hyq) et `embedding_metadata_modular.py` (vecteur d'embedding), assemble le bloc de métadonnées structurées et écrit le CSV final.
 
-**Lit depuis :** stages 1–4 dans `data/output_files/<doc_name>/`  
+**Lit depuis :** stages 1–11 dans `data/output_files/<doc_name>/`  
 **Écrit dans :** `data/output_files/<doc_name>/metadata/`
 
 ## Commandes types
@@ -610,7 +651,7 @@ data/output_files/<doc_name>/metadata/
 
 # Script enhancement_metadata_modular.py — Enrichissement VLM (résumé, intents, hyq)
 
-Génère trois enrichissements via VLM à partir du Markdown stage 4 : résumé court, liste d'intents (3 appels fusionnés) et questions hypothétiques. Appelé automatiquement par `metadata_generation_modular.py`, mais peut aussi s'exécuter seul.
+Génère trois enrichissements via VLM à partir du Markdown final (`_final.md`) produit par l'étape 11 : résumé court, liste d'intents (3 appels fusionnés) et questions hypothétiques. Appelé automatiquement par `metadata_generation_modular.py`, mais peut aussi s'exécuter seul.
 
 ## Commandes types
 
@@ -627,7 +668,7 @@ uv run python pipeline_modular/metadata/enhancement_metadata_modular.py \
 |-----------|-------|--------|-------------|
 | `--doc-name` | | *(voir note)* | Nom du document sans extension. |
 | `--dotenv` | | *(aucun)* | Fichier `.env` (`VLM_URL`, `VLM_CA_PEM`, `VLM_MODEL_NAME`, `DOC_NAME`). |
-| `--stage4` | | `data/output_files/` | Dossier racine stage 4 — lit `<stage4>/<doc>/<doc>_vlm_check.md`. |
+| `--stage4` | | `data/output_files/` | Dossier racine stage 4 — lit `<stage4>/<doc>/<doc>_final.md`. |
 | `--stage5` | | `data/output_files/` | Dossier racine stage 5 — écrit dans `<stage5>/<doc>/metadata/`. |
 | `--log-level` | | `INFO` | Niveau de log. |
 
@@ -637,7 +678,7 @@ uv run python pipeline_modular/metadata/enhancement_metadata_modular.py \
 
 # Script embedding_metadata_modular.py — Génération de l'embedding document
 
-Génère le vecteur d'embedding du Markdown stage 4 via un modèle d'embedding. Appelé automatiquement par `metadata_generation_modular.py`, mais peut aussi s'exécuter seul.
+Génère le vecteur d'embedding du Markdown final (`_final.md`) via un modèle d'embedding. Appelé automatiquement par `metadata_generation_modular.py`, mais peut aussi s'exécuter seul.
 
 ## Commandes types
 
@@ -654,7 +695,7 @@ uv run python pipeline_modular/metadata/embedding_metadata_modular.py \
 |-----------|-------|--------|-------------|
 | `--doc-name` | | *(voir note)* | Nom du document sans extension. |
 | `--dotenv` | | *(aucun)* | Fichier `.env` (`EMBEDDING_URL`, `VLM_CA_PEM`, `EMBEDDING_MODEL_NAME`, `DOC_NAME`). |
-| `--stage4` | | `data/output_files/` | Dossier racine stage 4 — lit `<stage4>/<doc>/<doc>_vlm_check.md`. |
+| `--stage4` | | `data/output_files/` | Dossier racine stage 4 — lit `<stage4>/<doc>/<doc>_final.md`. |
 | `--stage5` | | `data/output_files/` | Dossier racine stage 5 — écrit `<stage5>/<doc>/metadata/embedding.json`. |
 | `--log-level` | | `INFO` | Niveau de log. |
 
@@ -662,7 +703,7 @@ uv run python pipeline_modular/metadata/embedding_metadata_modular.py \
 
 ---
 
-# Script hyq_embedding_doc_modular.py — Embeddings des questions hypothétiques (étape 12)
+# Script hyq_embedding_doc_modular.py — Embeddings des questions hypothétiques (étape 13)
 
 Lit `hyq.json` produit par l'étape 11, génère l'embedding de chaque question et écrit un CSV dédié par question.
 

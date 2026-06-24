@@ -10,18 +10,19 @@ Each step receives the resolved --dotenv path so DOC_NAME is picked up
 consistently from the same .env file throughout the run.
 
 Steps:
-  01  pipeline_multietape_modular.py        # doctags via Docling
-  02  reordered_doctags_modular.py          # réordonnement des balises
-  03  opencv_checker_modular.py             # contrôle qualité images (validation only)
-  04  csv_to_jsonlines_modular.py           # CSV → JSONL
-  05  load_jsonline_doctags_modular.py      # chargement doctags enrichi
-  06  description_image_context_modular.py  # descriptions images VLM  (slow)
-  07  url_extaction_modular.py              # extraction URL
-  08  url_tuning_vlm_modular.py             # tuning URL via VLM
-  09  docling_markdown_converter_modular.py # conversion markdown
-  10  markdown_control_vlm_modular.py       # contrôle markdown VLM
-  11  metadata_generation_modular.py        # metadata + embedding CSV
-  12  hyq_embedding_doc_modular.py          # embeddings des questions hyq
+  01  pipeline_multietape_modular.py           # doctags via Docling
+  02  reordered_doctags_modular.py             # réordonnement des balises
+  03  opencv_checker_modular.py                # contrôle qualité images (validation only)
+  04  csv_to_jsonlines_modular.py              # CSV → JSONL
+  05  load_jsonline_doctags_modular.py         # chargement doctags enrichi
+  06  description_image_context_modular.py     # descriptions images VLM  (slow)
+  07  url_extaction_modular.py                 # extraction URL
+  08  url_tuning_vlm_modular.py                # tuning URL via VLM
+  09  docling_markdown_converter_modular.py    # conversion markdown
+  10  markdown_control_vlm_modular.py          # contrôle markdown VLM
+  11  inject_image_descriptions_modular.py     # injection descriptions images → _final.md
+  12  metadata_generation_modular.py           # metadata + embedding CSV
+  13  hyq_embedding_doc_modular.py             # embeddings des questions hyq
 """
 
 import argparse
@@ -36,18 +37,19 @@ _DESCIMG = _PIPELINE_ROOT / "description_image"
 _META    = _PIPELINE_ROOT / "metadata"
 
 STEPS: list[Path] = [
-    _SIMPLE  / "pipeline_multietape_modular.py",         # 01
-    _SIMPLE  / "reordered_doctags_modular.py",           # 02
-    _SIMPLE  / "opencv_checker_modular.py",              # 03
-    _SIMPLE  / "csv_to_jsonlines_modular.py",            # 04
-    _SIMPLE  / "load_jsonline_doctags_modular.py",       # 05
-    _DESCIMG / "description_image_context_modular.py",   # 06
-    _SIMPLE  / "url_extaction_modular.py",               # 07
-    _SIMPLE  / "url_tuning_vlm_modular.py",              # 08
-    _SIMPLE  / "docling_markdown_converter_modular.py",  # 09
-    _SIMPLE  / "markdown_control_vlm_modular.py",        # 10
-    _META    / "metadata_generation_modular.py",         # 11
-    _META    / "hyq_embedding_doc_modular.py",           # 12
+    _SIMPLE  / "pipeline_multietape_modular.py",            # 01
+    _SIMPLE  / "reordered_doctags_modular.py",              # 02
+    _SIMPLE  / "opencv_checker_modular.py",                 # 03
+    _SIMPLE  / "csv_to_jsonlines_modular.py",               # 04
+    _SIMPLE  / "load_jsonline_doctags_modular.py",          # 05
+    _DESCIMG / "description_image_context_modular.py",      # 06
+    _SIMPLE  / "url_extaction_modular.py",                  # 07
+    _SIMPLE  / "url_tuning_vlm_modular.py",                 # 08
+    _SIMPLE  / "docling_markdown_converter_modular.py",     # 09
+    _SIMPLE  / "markdown_control_vlm_modular.py",           # 10
+    _SIMPLE  / "inject_image_descriptions_modular.py",      # 11
+    _META    / "metadata_generation_modular.py",            # 12
+    _META    / "hyq_embedding_doc_modular.py",              # 13
 ]
 
 _N = len(STEPS)
