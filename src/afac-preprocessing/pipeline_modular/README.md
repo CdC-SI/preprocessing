@@ -36,7 +36,7 @@ data/output_files/<doc_name>/
 ├── opencv_validation/                           ← step 03
 ├── tables/                                      ← steps 01, 04, 05
 ├── used_images/                                 ← step 01 (--extract-images) ou step 06 (fitz)
-└── metadata/                                    ← steps 11, 12
+└── metadata/                                    ← steps 12, 13
     ├── resume.md
     ├── intent.json
     ├── hyq.json

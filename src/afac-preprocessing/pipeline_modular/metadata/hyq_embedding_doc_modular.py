@@ -11,7 +11,7 @@ génère l'embedding de chaque question et écrit un CSV dédié par question :
 Chaque CSV contient une ligne (+ en-tête) :
     CONTENT  : la question hyq
     METADATA : JSON avec le titre du document source, ex. {"title": "monDoc.pdf"}
-    EMBEDDING: le vecteur d'embedding de la question, ex. "0.4, 0.8, 1.5"
+    EMBEDDING: le vecteur d'embedding de la question, ex. "0.48, 0.84, 1.59, -2.71"
 
 Usage:
     uv run python hyq_embedding_doc_modular.py --dotenv .env.test

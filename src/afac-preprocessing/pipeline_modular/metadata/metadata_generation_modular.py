@@ -504,41 +504,48 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
-    doc_name = resolve_doc_name(args, primary_flag="--dotenv")
-    dotenv_path = args.dotenv
+    try:
+        doc_name = resolve_doc_name(args, primary_flag="--dotenv")
+        dotenv_path = args.dotenv
 
-    # --doc-path définit la position dans la hiérarchie folder_source.
-    # Si absent, on utilise DOC_NAME.pdf (structure plate, pas de sous-dossier).
-    relative_doc_path = args.doc_path or f"{doc_name}.pdf"
-    output_path = args.output or (args.stage5 / doc_name / "metadata" / f"{doc_name}_final.csv")
+        # --doc-path définit la position dans la hiérarchie folder_source.
+        # Si absent, on utilise DOC_NAME.pdf (structure plate, pas de sous-dossier).
+        relative_doc_path = args.doc_path or f"{doc_name}.pdf"
+        output_path = args.output or (args.stage5 / doc_name / "metadata" / f"{doc_name}_final.csv")
 
-    # Stage 5 – VLM enrichment (resume, intent, hyq)
-    enrichment = run_enhancement(doc_name, args.stage4, args.stage5, dotenv_path=dotenv_path)
+        # Stage 5 – VLM enrichment (resume, intent, hyq)
+        enrichment = run_enhancement(doc_name, args.stage4, args.stage5, dotenv_path=dotenv_path)
 
-    # Stage 5 – embedding du contenu markdown (retourne aussi le nom du modèle)
-    embedding_str, embedding_model_name = run_embedding(
-        doc_name, args.stage4, args.stage5, dotenv_path=dotenv_path
-    )
+        # Stage 5 – embedding du contenu markdown (retourne aussi le nom du modèle)
+        embedding_str, embedding_model_name = run_embedding(
+            doc_name, args.stage4, args.stage5, dotenv_path=dotenv_path
+        )
 
-    # Construction des metadata structurées
-    metadata = build_metadata(
-        relative_doc_path,
-        folder_source=args.folder_source,
-        stage1_dir=args.stage1,
-        stage2_dir=args.stage2,
-        stage3_dir=args.stage3,
-        stage4_dir=args.stage4,
-        embedding_model_name=embedding_model_name,
-    )
-    metadata["resume"] = enrichment["resume"]
-    metadata["intent"] = ", ".join(enrichment["intent"])
-    metadata["hyq"] = ", ".join(enrichment["hyq"])
+        # Construction des metadata structurées
+        metadata = build_metadata(
+            relative_doc_path,
+            folder_source=args.folder_source,
+            stage1_dir=args.stage1,
+            stage2_dir=args.stage2,
+            stage3_dir=args.stage3,
+            stage4_dir=args.stage4,
+            embedding_model_name=embedding_model_name,
+        )
+        metadata["resume"] = enrichment["resume"]
+        metadata["intent"] = ", ".join(enrichment["intent"])
+        metadata["hyq"] = ", ".join(enrichment["hyq"])
 
-    content = get_stage4_content(args.stage4, doc_name)
-    write_csv_row(output_path, metadata, content, embedding_str)
+        content = get_stage4_content(args.stage4, doc_name)
+        write_csv_row(output_path, metadata, content, embedding_str)
 
-    print(json.dumps(metadata, ensure_ascii=False, indent=2))
-    print(f"\n→ Ligne ajoutée dans : {output_path}")
+        print(json.dumps(metadata, ensure_ascii=False, indent=2))
+        print(f"\n→ Ligne ajoutée dans : {output_path}")
+
+    except Exception as e:
+        print(f"Erreur : {e}", file=sys.stderr)
+        sys.exit(1)
+
+    sys.exit(0)
 
 
 if __name__ == "__main__":
