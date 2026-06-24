@@ -6,7 +6,7 @@ Pipeline de prétraitement PDF en 12 étapes : extraction Docling, enrichissemen
 
 | # | Script | Rôle | Entrée | Sortie |
 |---|--------|------|--------|--------|
-| 01 | `pipeline_multietape_modular.py` | Extraction Docling | PDF | `.doctags` `.json` `.md` `.txt` |
+| 01 | `pipeline_multietape_modular.py` | Extraction Docling + export images PNG *(optionnel)* | PDF | `.doctags` `.json` `.md` `.txt` · `used_images/` |
 | 02 | `reordered_doctags_modular.py` | Réordonnancement des blocs | `.doctags` | `_reordered.doctags` |
 | 03 | `opencv_checker_modular.py` | Validation visuelle *(optionnel)* | PDF + `.doctags` | PNG par page |
 | 04 | `csv_to_jsonlines_modular.py` | Conversion tables CSV → JSONL | `tables/*.csv` | `tables/*.jsonl` |
@@ -33,7 +33,7 @@ data/output_files/<doc_name>/
 ├── <doc>_image_descriptions.md                  ← step 06
 ├── opencv_validation/                           ← step 03
 ├── tables/                                      ← steps 01, 04, 05
-├── used_images/                                 ← step 06
+├── used_images/                                 ← step 01 (--extract-images) ou step 06 (fitz)
 └── metadata/                                    ← steps 11, 12
     ├── resume.md
     ├── intent.json
@@ -89,24 +89,38 @@ uv run python pipeline_modular/automate_pipeline_example/fullpipeline_modular_v2
 
 Script unifié qui remplace `pipeline_multietape.py` (stage 1) et `export_table_docling.py` (stage 2). Une seule conversion Docling produit tous les formats demandés.
 
-## Commande complète
+Avec `--extract-images` (ou `ENABLE_IMAGE_EXTRACTION=true` dans le `.env`), Docling extrait aussi les images en PNG dans `used_images/`. Ces images sont utilisées par `description_image_context_modular.py` à l'étape 06, évitant un re-crop fitz.
+
+## Commandes types
 
 ```bash
+# Extraction texte + images PNG via Docling (recommandé avant étape 06)
 uv run python pipeline_modular/simple_extraction/pipeline_multietape_modular.py \
-  --input     data/input_files/MonDoc.pdf \
-  --output-dir ./data/output_files/MonDoc \
-  --formats   json md txt doctags \
-  --lang      fr en \
-  --threads   4 \
-  --device    cuda \
-  --no-tables \
-  --dotenv    .env.test
-```
+  --dotenv .env.test --extract-images
 
-## Workflow .env.test
-```bash
+# Commande complète avec tous les paramètres
+uv run python pipeline_modular/simple_extraction/pipeline_multietape_modular.py \
+  --input      data/input_files/MonDoc.pdf \
+  --output-dir ./data/output_files/MonDoc \
+  --formats    json md txt doctags \
+  --lang       fr en \
+  --threads    4 \
+  --device     cuda \
+  --no-tables \
+  --extract-images \
+  --images-scale 4.17 \
+  --dotenv     .env.test
+
+# Extraction texte seule (sans images)
 uv run python pipeline_modular/simple_extraction/pipeline_multietape_modular.py --dotenv .env.test
 ```
+
+## Variables d'environnement (.env.test)
+
+| Variable | Défaut | Description |
+|----------|--------|-------------|
+| `DOC_NAME` | *(obligatoire)* | Nom du document sans `.pdf`. |
+| `ENABLE_IMAGE_EXTRACTION` | `false` | `true` pour activer l'export PNG Docling sans passer `--extract-images`. |
 
 ## Paramètres
 
@@ -120,6 +134,9 @@ uv run python pipeline_modular/simple_extraction/pipeline_multietape_modular.py 
 | `--device` | | `cuda` | Accélérateur : `cuda` ou `cpu`. |
 | `--no-ocr` | | désactivé | Désactive EasyOCR. Utile pour les PDFs natifs. |
 | `--no-tables` | | désactivé | Désactive la détection de tableaux. |
+| `--extract-images` | | `false` | Active l'export PNG des images Docling. Prioritaire sur `ENABLE_IMAGE_EXTRACTION`. |
+| `--images-scale` | | `2.0` *(≈ 144 DPI)* | Facteur d'échelle Docling (base 72 DPI). Ex. `2.08`≈150 DPI, `4.17`≈300 DPI. |
+| `--images-dir` | | `used_images/` dans le dossier de sortie | Dossier de destination des PNG exportés. |
 | `--dotenv` | | *(aucun)* | Fichier `.env` à charger. Ignoré si `--input` est fourni. |
 
 *Note : `--input` absent → résout `data/input_files/<DOC_NAME>.pdf` depuis la variable `DOC_NAME`.*
@@ -134,6 +151,7 @@ uv run python pipeline_modular/simple_extraction/pipeline_multietape_modular.py 
 | `doctags` | `<doc>.doctags` — format DocTags Docling |
 | `csv` | `tables/<doc>-table-N.csv` par tableau |
 | `html` | `tables/<doc>-table-N.html` par tableau |
+| PNG | `used_images/pic{N}_page{P}.png` *(si `--extract-images`)* |
 
 ---
 
@@ -275,27 +293,38 @@ uv run python pipeline_modular/simple_extraction/load_jsonline_doctags_modular.p
 
 # Script description_image_context_modular.py — Description des images via VLM
 
-Parse les balises `<picture>` d'un `.doctags`, crop les zones correspondantes depuis le PDF, construit un prompt contextualisé (N éléments avant/après) et appelle le VLM pour générer une description. Remplace chaque `<picture>` par la description produite.
+Parse les balises `<picture>` d'un `.doctags`, récupère l'image correspondante (depuis `used_images/` si pré-extraite par l'étape 01, sinon crop fitz), construit un prompt contextualisé (N éléments avant/après) et appelle le VLM pour générer une description. Remplace chaque `<picture>` par la description produite.
 
-## Variables d'environnement requises
+**Source des images — résolution automatique :**
+1. `--preextracted-images-dir` explicite
+2. `used_images/` détecté automatiquement dans le dossier du `.doctags` (fichiers `pic*.png` présents — produits par `pipeline_multietape_modular.py --extract-images`)
+3. Sinon : crop fitz depuis le PDF source (comportement historique)
+
+## Variables d'environnement (.env.test)
 
 | Variable | Obligatoire | Description |
 |----------|-------------|-------------|
-| `VLM_URL` | Oui (si `--image-description`) | Endpoint API VLM. |
-| `VLM_MODEL_NAME` | Oui (si `--image-description`) | Nom du modèle. |
+| `VLM_URL` | Oui (si description active) | Endpoint API VLM. |
+| `VLM_MODEL_NAME` | Oui (si description active) | Nom du modèle. |
 | `VLM_CA_PEM` | Non | Certificat CA custom. Fallback `certifi` si absent. |
 | `DOC_NAME` | Si `--doctags`/`--pdf` absents | Résolution auto des chemins. |
+| `ENABLE_IMAGE_DESCRIPTION` | Non | `true` pour activer le VLM sans passer `--image-description` (utilisé par l'orchestrateur). |
 
 ## Commandes types
 
 ```bash
-# Avec descriptions VLM
+# Avec descriptions VLM (images pré-extraites auto-détectées dans used_images/)
 uv run python pipeline_modular/description_image/description_image_context_modular.py \
   --dotenv .env.test --image-description
 
 # Sans descriptions (supprime les balises <picture>)
 uv run python pipeline_modular/description_image/description_image_context_modular.py \
   --dotenv .env.test --no-image-description
+
+# Dossier d'images pré-extraites explicite
+uv run python pipeline_modular/description_image/description_image_context_modular.py \
+  --dotenv .env.test --image-description \
+  --preextracted-images-dir data/output_files/MonDoc/used_images
 
 # Chemins explicites + tuning
 uv run python pipeline_modular/description_image/description_image_context_modular.py \
@@ -311,14 +340,15 @@ uv run python pipeline_modular/description_image/description_image_context_modul
 | Paramètre | Alias | Défaut | Description |
 |-----------|-------|--------|-------------|
 | `--doctags` | `-d` | *(voir note)* | Fichier `.doctags` source. |
-| `--pdf` | `-p` | *(voir note)* | PDF source pour le crop des images. |
+| `--pdf` | `-p` | *(voir note)* | PDF source (utilisé en fallback fitz si images non pré-extraites). |
 | `--output` | `-o` | `<stem>_pictures.doctags` | Fichier `.doctags` enrichi. |
 | `--markdown` | `-m` | `<doc>_image_descriptions.md` | Rapport Markdown des descriptions. |
-| `--images-dir` | | `used_images/` | Dossier de sortie pour les PNG cropés. |
+| `--images-dir` | | `used_images/` | Dossier de sortie pour les PNG fitz (si pas de pré-extraction). |
+| `--preextracted-images-dir` | | *(auto-détecté)* | Dossier des PNG pré-extraits par l'étape 01. Si absent, vérifie `used_images/` automatiquement. |
 | `--image-description / --no-image-description` | | `False` | Active/désactive le VLM. |
 | `--workers` | `-w` | `1` | Threads VLM parallèles. |
 | `--timeout` | | `120` | Timeout par appel VLM (secondes). |
-| `--dpi` | | `150` | Résolution DPI pour le crop. |
+| `--dpi` | | `150` | Résolution DPI pour le crop fitz (fallback uniquement). |
 | `--n-before` | | `5` | Éléments textuels avant l'image dans le contexte. |
 | `--n-after` | | `5` | Éléments textuels après l'image dans le contexte. |
 | `--language` | | `french` | Langue de la réponse VLM. |
@@ -330,9 +360,37 @@ uv run python pipeline_modular/description_image/description_image_context_modul
 | Situation | Comportement |
 |-----------|-------------|
 | Aucune balise `<picture>` | Passthrough — doctags copié, `exit 0` |
-| `--no-image-description` | Balises `<picture>` supprimées, PNG exportés, `exit 0` |
+| `--no-image-description` | Balises `<picture>` supprimées, `exit 0` |
+| Images pré-extraites présentes dans `used_images/` | Chargées depuis le disque, crop fitz ignoré |
+| PNG manquant dans le dossier pré-extrait | Fallback automatique sur crop fitz pour cette image |
 | VLM non joignable | Arrêt immédiat, `exit 1` |
 | Échec VLM sur une image | Balise `<picture>` conservée, warning, traitement continue |
+
+---
+
+# Script compare_image_extraction.py — Comparaison Docling vs fitz *(outil de test)*
+
+Script autonome dans `docling_image_png/` pour comparer visuellement les deux méthodes d'extraction d'images côte à côte. Ne fait pas partie du pipeline principal.
+
+Produit dans `data/output_files/<doc>/image_comparison/` :
+- `docling_images/` — PNG extraits via Docling (`pil_image`, `generate_picture_images=True`)
+- `fitz_images/` — PNG croppés via PyMuPDF depuis les coordonnées doctags
+
+```bash
+# DPI comparables (≈ 150 DPI dans les deux cas)
+uv run python pipeline_modular/docling_image_png/compare_image_extraction.py --dotenv .env.test
+
+# Haute résolution
+uv run python pipeline_modular/docling_image_png/compare_image_extraction.py \
+  --dotenv .env.test --images-scale 4.17 --dpi 300
+```
+
+| Paramètre | Défaut | Description |
+|-----------|--------|-------------|
+| `--images-scale` | `2.08` *(≈ 150 DPI)* | Facteur d'échelle Docling (base 72 DPI). |
+| `--dpi` | `150` | DPI pour le crop fitz. |
+| `--input` | *(DOC_NAME)* | PDF source. |
+| `--output-dir` | `image_comparison/` | Dossier de sortie. |
 
 ---
 

@@ -10,6 +10,7 @@ un seul appel DocumentConverter.convert() produit tous les formats demandés.
 import argparse
 import json
 import logging
+import os
 import sys
 import time
 from pathlib import Path
@@ -45,6 +46,8 @@ def build_converter(
     tables: bool,
     threads: int,
     device: AcceleratorDevice,
+    extract_images: bool = False,
+    images_scale: float = 2.0,
 ) -> DocumentConverter:
     """
     Docstring for build_converter
@@ -60,6 +63,10 @@ def build_converter(
     :type threads: int
     :param device: Description
     :type device: AcceleratorDevice
+    :param extract_images: Active generate_picture_images pour exporter les PNGs via Docling.
+    :type extract_images: bool
+    :param images_scale: Facteur d'échelle pour les images Docling (base 72 DPI). Ex: 2.08 ≈ 150 DPI.
+    :type images_scale: float
     :return: Description
     :rtype: DocumentConverter
     """
@@ -71,9 +78,31 @@ def build_converter(
     if ocr:
         opts.ocr_options = EasyOcrOptions(lang=lang)
     opts.accelerator_options = AcceleratorOptions(num_threads=threads, device=device)
+    if extract_images:
+        opts.generate_picture_images = True
+        opts.images_scale = images_scale
     return DocumentConverter(
         format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=opts)}
     )
+
+
+def export_docling_images(conv_result, output_dir: Path) -> int:
+    """Sauvegarde les images extraites par Docling (pil_image) en PNG nommés pic{i:03d}_page{page}.png."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    saved = 0
+    for i, pic in enumerate(conv_result.document.pictures, start=1):
+        img = getattr(pic, "image", None)
+        pil = getattr(img, "pil_image", None) if img else None
+        if pil is None:
+            _log.warning("[docling] Image %d : pil_image absent (generate_picture_images activé ?)", i)
+            continue
+        page = pic.prov[0].page_no if pic.prov else 0
+        path = output_dir / f"pic{i:03d}_page{page}.png"
+        pil.save(str(path))
+        _log.info("[docling] Exporté : %s", path.name)
+        saved += 1
+    _log.info("%d image(s) exportée(s) via Docling → %s", saved, output_dir)
+    return saved
 
 
 # Export formats texte, ancienne fonction pipeline_multietape.py (stage 1)
@@ -110,6 +139,8 @@ def export_text_formats(conv_result: ConversionResult, output_dir: Path, formats
         path = output_dir / f"{stem}.doctags"
         path.write_text(doc.export_to_doctags(), encoding="utf-8")
         _log.info("DocTags exporté : %s", path)
+    
+    
 
 
 # Export tables, ancienne fonction export_table_docling.py (stage 2)
@@ -256,6 +287,26 @@ def parse_args() -> argparse.Namespace:
             "(ex. : .env.test, .env). Ignoré si --input est fourni."
         ),
     )
+    parser.add_argument(
+        "--extract-images",
+        action="store_true",
+        default=False,
+        help="Active generate_picture_images pour exporter les PNGs Docling (utilisés par description_image_context_modular.py). Défaut : désactivé.",
+    )
+    parser.add_argument(
+        "--images-scale",
+        type=float,
+        default=2.08, # environ 150 DPI (base 72 DPI) https://docling-project.github.io/docling/reference/pipeline_options/#docling.datamodel.pipeline_options.KserveV2OcrOptions.model_name
+        metavar="F",
+        help="Facteur d'échelle Docling pour les images (base 72 DPI). Ex: 2.08≈150dpi, 4.17≈300dpi. Défaut : 2.08.",
+    )
+    parser.add_argument(
+        "--images-dir",
+        type=Path,
+        default=None,
+        metavar="DOSSIER",
+        help="Dossier de sortie pour les PNGs Docling. Défaut : used_images/ dans le dossier de sortie.",
+    )
     return parser.parse_args()
 
 
@@ -305,7 +356,7 @@ def main() -> None:
 
     args = parse_args()
 
-    input_path = resolve_input(args)
+    input_path = resolve_input(args)  # charge le dotenv si --dotenv fourni
     if not input_path.exists():
         raise SystemExit(f"Erreur : fichier PDF introuvable — {input_path}")
 
@@ -316,12 +367,17 @@ def main() -> None:
     do_table_structure = not args.no_tables
     do_table_export = not args.no_tables
 
+    # --extract-images ou ENABLE_IMAGE_EXTRACTION=true dans le .env
+    extract_images = args.extract_images or os.environ.get("ENABLE_IMAGE_EXTRACTION", "false").strip().lower() == "true"
+
     converter = build_converter(
         ocr=not args.no_ocr,
         lang=args.lang,
         tables=do_table_structure,
         threads=args.threads,
         device=DEVICE_MAP[args.device],
+        extract_images=extract_images,
+        images_scale=args.images_scale,
     )
 
     _log.info("Conversion de : %s", input_path)
@@ -334,6 +390,10 @@ def main() -> None:
 
     if do_table_export:
         export_tables(conv_result, output_dir, TABLE_FORMATS)
+
+    if extract_images:
+        images_dir = args.images_dir.resolve() if args.images_dir else output_dir / "used_images"
+        export_docling_images(conv_result, images_dir)
 
     _log.info("Résultats dans : %s", output_dir)
     sys.exit(0)  # Exit code explicite pour Tekton

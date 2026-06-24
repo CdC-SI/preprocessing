@@ -227,6 +227,15 @@ def _clip_rect(page: fitz.Page, pic: PictureTag, norm: int) -> fitz.Rect:
     )
 
 
+def load_preextracted_b64(images_dir: Path, index: int, page: int) -> str | None:
+    """Charge une image pré-extraite par Docling depuis le disque (pic{i:03d}_page{page+1}.png)."""
+    path = images_dir / f"pic{index:03d}_page{page + 1}.png"
+    if not path.exists():
+        _log.warning("Image pré-extraite introuvable : %s", path)
+        return None
+    return base64.b64encode(path.read_bytes()).decode("utf-8")
+
+
 def crop_to_b64(pdf_doc: fitz.Document, pic: PictureTag, norm: int = NORM, dpi: int = DPI_DEFAULT) -> str:
     """
     Docstring for crop_to_b64
@@ -344,7 +353,7 @@ def export_picture_images(
     :type dpi: int
     """
     _log.info("Export des PNG dans : %s", output_dir)
-
+# tester avec docling pour skip la normalisation de fitz pymyPDF
     with fitz.open(str(pdf_path)) as doc:
         for i, pic in enumerate(pictures, start=1):
             page = doc[pic["page"]]
@@ -418,10 +427,11 @@ def describe_all_pictures(
     n_workers: int = 1,
     dpi: int = DPI_DEFAULT,
     norm: int = NORM,
+    preextracted_images_dir: Path | None = None,
 ) -> dict[int, VLMResult]:
     """
     Docstring for describe_all_pictures
-    Crop chaque image, construit le prompt contextualisé, envoie au VLM via workers.
+    Crop chaque image (ou charge depuis preextracted_images_dir), construit le prompt contextualisé, envoie au VLM.
     Retourne un dict indexé (1-based) : {index: VLMResult}.
 
     :param pdf_path: Description
@@ -440,6 +450,8 @@ def describe_all_pictures(
     :type n_after: int
     :param n_workers: Description
     :type n_workers: int
+    :param preextracted_images_dir: Dossier contenant les PNGs pré-extraits par Docling (pic{i:03d}_page{p}.png).
+    :type preextracted_images_dir: Path | None
     :return: Description
     :rtype: dict[int, VLMResult]
     """
@@ -454,7 +466,11 @@ def describe_all_pictures(
     ]
     for w in workers:
         w.start()
-    _log.info("Mise en queue de %d image(s) — %d worker(s)", total, n_workers)
+
+    if preextracted_images_dir:
+        _log.info("Mise en queue de %d image(s) — source : %s — %d worker(s)", total, preextracted_images_dir, n_workers)
+    else:
+        _log.info("Mise en queue de %d image(s) — source : fitz crop — %d worker(s)", total, n_workers)
 
     with fitz.open(str(pdf_path)) as pdf_doc:
         for i, pic in enumerate(pictures, start=1):
@@ -464,7 +480,13 @@ def describe_all_pictures(
                 context_after=ctx_after,
                 language=language,
             )
-            image_b64 = crop_to_b64(pdf_doc, pic, norm=norm, dpi=dpi)
+            if preextracted_images_dir:
+                image_b64 = load_preextracted_b64(preextracted_images_dir, i, pic["page"])
+                if image_b64 is None:
+                    _log.warning("[%d/%d] Image pré-extraite manquante — fallback fitz crop", i, total)
+                    image_b64 = crop_to_b64(pdf_doc, pic, norm=norm, dpi=dpi)
+            else:
+                image_b64 = crop_to_b64(pdf_doc, pic, norm=norm, dpi=dpi)
             task_q.put(ImageTask(
                 index=i, total=total,
                 page=pic["page"],
@@ -689,6 +711,15 @@ def parse_args() -> argparse.Namespace:
         help="Fichier .env à charger (VLM_URL, VLM_CA_PEM, VLM_MODEL_NAME, DOC_NAME). Toujours chargé pour la config VLM ; si absent, les variables sont lues depuis l'environnement.",
     )
     parser.add_argument(
+        "--preextracted-images-dir",
+        type=Path, default=None, metavar="DOSSIER",
+        help=(
+            "Dossier contenant les PNGs pré-extraits par pipeline_multietape_modular.py --extract-images "
+            "(nommés pic{i:03d}_page{p}.png). Si fourni, remplace le crop fitz. "
+            "Défaut : None (fitz utilisé)."
+        ),
+    )
+    parser.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -831,15 +862,19 @@ def main() -> None:
         datefmt="%H:%M:%S",
     )
 
-    image_desc_enabled = args.image_description
-
     # Config VLM — chargée depuis load_vlm_config (dotenv + CA certifi)
+    # Le dotenv est chargé ICI, donc ENABLE_IMAGE_DESCRIPTION est lisible après.
     try:
         config = load_vlm_config(dotenv_path=args.dotenv)
     except RuntimeError as exc:
-        if image_desc_enabled:
+        # dotenv chargé mais VLM_URL absent — vérifier si la description est requise
+        needs_vlm = args.image_description or os.environ.get("ENABLE_IMAGE_DESCRIPTION", "false").strip().lower() == "true"
+        if needs_vlm:
             raise SystemExit(str(exc)) from exc
         config = {"VLM_URL": "", "CA_PATH": "", "VLM_MODEL_NAME": ""}
+
+    # --image-description ou ENABLE_IMAGE_DESCRIPTION=true dans le .env (chargé ci-dessus)
+    image_desc_enabled = args.image_description or os.environ.get("ENABLE_IMAGE_DESCRIPTION", "false").strip().lower() == "true"
 
     vlm_cfg = VLMConfig(
         url=config["VLM_URL"],
@@ -888,10 +923,25 @@ def main() -> None:
         markdown_path.write_text("", encoding="utf-8")
         sys.exit(0)
 
-    # Étape 2 — Export PNG (dossier créé uniquement si des images sont présentes)
-    _log.info("ÉTAPE 2 — Export des images PNG (coordonnées doctags)")
-    images_dir.mkdir(parents=True, exist_ok=True)
-    export_picture_images(pdf_path, pictures, doc_name, images_dir, dpi=args.dpi, norm=args.norm)
+    # Étape 2 — Export PNG fitz (ignoré si des images pré-extraites sont disponibles)
+    # Résolution de preextracted_dir :
+    #   1. --preextracted-images-dir explicite
+    #   2. used_images/ dans le dossier doctags si le dossier existe (généré par pipeline_multietape --extract-images)
+    #   3. None → crop fitz
+    if args.preextracted_images_dir:
+        preextracted_dir = args.preextracted_images_dir.resolve()
+    elif images_dir.exists() and any(images_dir.glob("pic*.png")):
+        preextracted_dir = images_dir
+        _log.info("Images pré-extraites détectées automatiquement : %s", preextracted_dir)
+    else:
+        preextracted_dir = None
+
+    if preextracted_dir:
+        _log.info("ÉTAPE 2 — Images pré-extraites : %s (crop fitz ignoré)", preextracted_dir)
+    else:
+        _log.info("ÉTAPE 2 — Export des images PNG (coordonnées doctags via fitz)")
+        images_dir.mkdir(parents=True, exist_ok=True)
+        export_picture_images(pdf_path, pictures, doc_name, images_dir, dpi=args.dpi, norm=args.norm)
 
     # Étape 3 — Description VLM (ou suppression si désactivée)
     _log.info("ÉTAPE 3 — Description des images avec contexte textuel")
@@ -920,6 +970,7 @@ def main() -> None:
             n_after=args.n_after,
             dpi=args.dpi,
             norm=args.norm,
+            preextracted_images_dir=preextracted_dir,
         )
     except Exception:
         _log.exception("Erreur lors de la description des images de '%s'", doc_name)

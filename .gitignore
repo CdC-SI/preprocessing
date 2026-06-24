@@ -19,3 +19,4 @@ src/afac-preprocessing/stage5_metadata/__pycache__
 graphify-out
 src/afac-preprocessing/trash
 resultat_claude_audit.md
+src/afac-preprocessing/pipeline_modular/docling_image_png

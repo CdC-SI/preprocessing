@@ -15,7 +15,7 @@ flowchart TD
     PDF["PDF Source AFAC \n (data/input_files/)"]
 
     subgraph BASE["Etape 1 - Extraction Docling"]
-        S01["1. pipeline_multietape \n OCR + export (doctags / json / md / txt) \n + tables (csv / html)"]
+        S01["1. pipeline_multietape \n OCR + export (doctags / json / md / txt) \n + tables (csv / html) + images"]
         S02["2. reordered_doctags \n Réordonnancement des blocs \n par coordonnées y0/x0"]
         S03["3. opencv_checker \n Contrôle qualité images \n (validation uniquement)"]
         S04["4. csv_to_jsonlines \n CSV tables → JSONL"]
@@ -24,6 +24,7 @@ flowchart TD
 
     subgraph VLM_TUNING["Etape 2 - Enrichissement VLM"]
         S06["6. description_image_context \n Descriptions images via VLM"]
+        S06bis["used_images fitz (PyMuPDF)"]
         S07["7. url_extraction \n Extraction hyperliens \n PyMuPDF → JSONL"]
         S08["8. url_tuning_vlm \n Tuning / validation URL \n via VLM"]
         S09["9. docling_markdown_converter \n Conversion markdown finale"]
@@ -38,13 +39,15 @@ flowchart TD
     OUT["Sortie finale \n CSV indexable (RAG)"]
 
     PDF --> S01
-    S01 -.->|".doctags + .json \n .md + .txt + tables"| S02
+    S01 -.->|".doctags + .json \n .md + .txt + tables + images"| S02
     S02 -->|"doctags réordonnés"| S03
     S03 -.->|"rapport qualité \n (aucune transformation)"| S04
     S02 -->|"doctags réordonnés"| S04
     S04 -->|"tables.jsonl"| S05
     S05 -->|"doctags enrichis"| S06
     S06 -->|"descriptions images"| S07
+    S06 <-->|"Fallback librairie fitz si pas extraite dans docling"|S06bis
+    S01 -->|"Envoie les images base64 pour la description"| S06
     S01 -->|"PDF original"| S07
     S07 -->|"hyperlinks.jsonl"| S08
     S08 -->|"URLs validées"| S09

@@ -388,7 +388,7 @@ def build_metadata(
     page_count = get_page_count(doc_json)
 
     return {
-        "id": str(uuid.uuid4()), # peut etre mettre uuid5 pour sha-1
+        "uuid": str(uuid.uuid5(uuid.NAMESPACE_DNS, str(relative_doc_path))), # "uuid": str(uuid.uuid4()),  # random
         "user_uuid": "",
         "source": hierarchy["source"],
         "title": doc_name_extension,
