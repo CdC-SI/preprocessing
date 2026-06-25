@@ -25,7 +25,7 @@ import httpx
 
 from prompts.prompts import VLM_PROMPT_CORRECTION_STAGE_3_EN
 from utils.config import load_vlm_config
-from utils.paths import project_root, load_env, resolve_doc_name
+from utils.paths import project_root, load_env, resolve_doc_name, resolve_input_pdf
 
 _log = logging.getLogger(__name__)
 
@@ -471,7 +471,7 @@ def resolve_pdf(args: argparse.Namespace) -> Path:
     if args.input:
         return args.input.resolve()
     doc_name = resolve_doc_name(args, primary_flag="--input")
-    return project_root() / "data" / "input_files" / f"{doc_name}.pdf"
+    return resolve_input_pdf(doc_name)
 
 
 def resolve_doctags(args: argparse.Namespace, pdf_path: Path) -> Path:

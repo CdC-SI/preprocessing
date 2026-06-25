@@ -26,12 +26,14 @@ Steps:
 """
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent        # automate_pipeline_example/
 _PIPELINE_ROOT = _HERE.parent                  # pipeline_modular/
+_PROJECT_ROOT = _PIPELINE_ROOT.parent          # afac-preprocessing/
 _SIMPLE  = _PIPELINE_ROOT / "simple_extraction"
 _DESCIMG = _PIPELINE_ROOT / "description_image"
 _META    = _PIPELINE_ROOT / "metadata"
@@ -72,6 +74,17 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=Path(".env.test"),
         help="Path to the .env file passed to every step (default: .env.test).",
+    )
+    parser.add_argument(
+        "--input", "-i",
+        type=Path,
+        default=None,
+        metavar="PDF",
+        help=(
+            "Path to the input PDF. Overrides DOC_NAME and DOC_PATH from the .env file. "
+            "Sets DOC_NAME to the file stem and DOC_PATH to the path relative to "
+            "data/input_files/ (or the absolute path if outside that directory)."
+        ),
     )
     parser.add_argument(
         "--from-step",
@@ -118,6 +131,17 @@ def main() -> None:
     dotenv = args.dotenv.resolve()
     if not dotenv.exists():
         raise SystemExit(f"[ERROR] .env file not found: {dotenv}")
+
+    if args.input:
+        input_path = args.input.resolve()
+        if not input_path.exists():
+            raise SystemExit(f"[ERROR] Input PDF not found: {input_path}")
+        os.environ["DOC_NAME"] = input_path.stem
+        input_files_root = (_PROJECT_ROOT / "data" / "input_files").resolve()
+        try:
+            os.environ["DOC_PATH"] = str(input_path.relative_to(input_files_root))
+        except ValueError:
+            os.environ["DOC_PATH"] = str(input_path)
 
     skip: set[int] = {int(s) for s in args.skip_steps.split(",") if s.strip()}
     from_step = max(1, args.from_step)

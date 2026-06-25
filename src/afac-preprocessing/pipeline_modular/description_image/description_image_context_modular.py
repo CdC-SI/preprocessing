@@ -15,7 +15,7 @@ import requests
 
 from prompts.prompts import WIKI_PROMPT_TEMPLATE
 from utils.config import load_vlm_config
-from utils.paths import project_root
+from utils.paths import project_root, resolve_input_pdf
 
 _log = logging.getLogger(__name__)
 
@@ -782,7 +782,7 @@ def resolve_pdf(args: argparse.Namespace, doctags_path: Path) -> Path:
         return args.input.resolve()
     env_name = os.environ.get("DOC_NAME", "").strip()
     doc_name = env_name or doctags_path.stem.split("_")[0]
-    return project_root() / "data" / "input_files" / f"{doc_name}.pdf"
+    return resolve_input_pdf(doc_name)
 
 
 def _resolve_image_doc_name(args: argparse.Namespace, doctags_path: Path) -> str:

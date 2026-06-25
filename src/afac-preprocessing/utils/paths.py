@@ -39,6 +39,19 @@ def load_env(dotenv_path: Path) -> None:
     _log.info("Environnement chargé depuis : %s", resolved)
 
 
+def resolve_input_pdf(doc_name: str) -> Path:
+    """Return the absolute path to the input PDF.
+
+    Checks DOC_PATH first (relative path inside input_files/, e.g.
+    ``Taxation/Annulation et retaxation.pdf``).  Falls back to the flat
+    ``<DOC_NAME>.pdf`` layout when DOC_PATH is absent.
+    """
+    doc_path = os.environ.get("DOC_PATH", "").strip()
+    if doc_path:
+        return project_root() / "data" / "input_files" / doc_path
+    return project_root() / "data" / "input_files" / f"{doc_name}.pdf"
+
+
 def resolve_doc_name(
     args: argparse.Namespace,
     *,

@@ -70,17 +70,20 @@ src/afac-preprocessing/metadata/folder_source/<Thème>/<fichier>.pdf
 ## Lancer le pipeline
 
 ```bash
-# Activer l'environnement uv si besoin
-source .globalvenvmatt/bin/activate   # ancien venv, ou utiliser directement uv run
+# Pipeline complet sur un PDF (y compris dans un sous-dossier de data/input_files/)
+uv run python pipeline_modular/automate_pipeline_example/fullpipeline_modular_v2.py \
+  --dotenv .env.test --input "data/input_files/Adhésion/Demande prématurée.pdf"
 
-# Exemple stage 1
-uv run python stage1_multi_steps_detection/pipeline_multietape.py
+# Pipeline complet sur TOUS les PDFs de data/input_files/ (sous-dossiers inclus)
+uv run python pipeline_modular/automate_pipeline_example/batch_pipeline_all_pdfs.py \
+  --dotenv .env.test
 
-# Générations multiples (stage 3 → 4, comparaison VLM)
-uv run python utils/multi_gen_test.py
+# Aperçu des PDFs qui seraient traités (sans exécution)
+uv run python pipeline_modular/automate_pipeline_example/batch_pipeline_all_pdfs.py \
+  --dotenv .env.test --dry-run
 ```
 
-Consulter `manifests/runtime.yaml` pour la liste complète des scripts par stage, leurs entrées/sorties et paramètres.
+Consulter `pipeline_modular/README.md` pour la référence complète des paramètres et de chaque étape.
 
 ---
 

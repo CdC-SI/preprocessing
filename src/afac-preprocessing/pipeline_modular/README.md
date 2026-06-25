@@ -77,13 +77,50 @@ uv run python pipeline_modular/automate_pipeline_example/fullpipeline_modular_v2
 | Paramètre | Défaut | Description |
 |-----------|--------|-------------|
 | `--dotenv` | `.env.test` | Fichier `.env` transmis à chaque étape. |
+| `--input` | *(depuis .env)* | Chemin vers le PDF à traiter. Surcharge `DOC_NAME` et `DOC_PATH` du `.env`. Accepte les sous-dossiers de `data/input_files/`. |
 | `--from-step` | `1` | Première étape à exécuter (1–13, inclus). |
 | `--to-step` | `13` | Dernière étape à exécuter (1–13, inclus). |
 | `--skip-steps` | *(aucun)* | Étapes à ignorer, séparées par virgule. Ex. `--skip-steps 3,6`. |
 
 **Comportement en cas d'échec :** si une étape retourne un code ≠ 0, le pipeline s'arrête immédiatement et affiche `[FAILED] <script> exited with code N`. Les étapes suivantes ne sont pas exécutées.
 
+**Note sur `--input` :** si absent, `DOC_NAME` et `DOC_PATH` doivent être renseignés dans le fichier `.env`. Avec `--input`, le pipeline calcule automatiquement le chemin relatif depuis `data/input_files/`, ce qui permet de pointer directement un PDF dans un sous-dossier (ex. `--input data/input_files/Adhésion/Demande prématurée.pdf`).
+
 **Note sur `--skip-steps` :** ignorer une étape ne supprime pas la dépendance sur ses fichiers de sortie. Si l'étape 1 est ignorée mais que `<doc>.doctags` n'existe pas, l'étape 2 échouera avec un message d'erreur explicite (fichier introuvable).
+
+---
+
+# batch_pipeline_all_pdfs.py — Traitement automatique de tous les PDFs
+
+Parcourt récursivement `data/input_files/` et lance `fullpipeline_modular_v2.py` sur chaque PDF trouvé, y compris dans les sous-dossiers. Les PDFs sont traités **séquentiellement**. En cas d'échec sur un document, le batch continue sur les suivants et liste tous les échecs en fin d'exécution.
+
+## Commandes types
+
+```bash
+# Traiter tous les PDFs
+uv run python pipeline_modular/automate_pipeline_example/batch_pipeline_all_pdfs.py --dotenv .env.test
+
+# Aperçu des PDFs qui seraient traités (sans exécution)
+uv run python pipeline_modular/automate_pipeline_example/batch_pipeline_all_pdfs.py --dotenv .env.test --dry-run
+
+# Reprendre à partir de l'étape 8 pour tous les PDFs
+uv run python pipeline_modular/automate_pipeline_example/batch_pipeline_all_pdfs.py --dotenv .env.test --from-step 8
+
+# Ignorer opencv et descriptions images (étapes lentes)
+uv run python pipeline_modular/automate_pipeline_example/batch_pipeline_all_pdfs.py --dotenv .env.test --skip-steps 3,6
+```
+
+## Paramètres
+
+| Paramètre | Défaut | Description |
+|-----------|--------|-------------|
+| `--dotenv` | `.env.test` | Fichier `.env` transmis à chaque étape de chaque document. |
+| `--dry-run` | *(désactivé)* | Affiche la liste des PDFs détectés sans lancer le pipeline. |
+| `--from-step` | `1` | Forwarded à `fullpipeline_modular_v2.py` — première étape à exécuter. |
+| `--to-step` | `13` | Forwarded à `fullpipeline_modular_v2.py` — dernière étape à exécuter. |
+| `--skip-steps` | *(aucun)* | Forwarded à `fullpipeline_modular_v2.py` — étapes à ignorer. |
+
+**Résilience :** un échec sur un PDF n'interrompt pas le batch. Le script retourne `exit 1` uniquement si au moins un PDF a échoué, avec la liste des documents concernés.
 
 ---
 

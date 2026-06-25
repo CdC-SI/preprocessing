@@ -1,5 +1,5 @@
 import numpy as np
-from sklearn.metrics import precision_score, recall_score, ndcg_score, label_ranking_average_precision_score
+from sklearn.metrics import precision_score, recall_score, ndcg_score
 import requests
 from pathlib import Path
 import sys
