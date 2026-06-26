@@ -117,7 +117,7 @@ def export_text_formats(conv_result: ConversionResult, output_dir: Path, formats
     :param formats: Description
     :type formats: frozenset[str]
     """
-    stem = conv_result.input.file.stem
+    stem = conv_result.input.file.stem.strip()
     doc = conv_result.document
 
     if "json" in formats:
@@ -155,7 +155,7 @@ def export_tables(conv_result: ConversionResult, output_dir: Path, formats: froz
     :param formats: Description
     :type formats: frozenset[str]
     """
-    stem = conv_result.input.file.stem
+    stem = conv_result.input.file.stem.strip()
     doc = conv_result.document
     tables = doc.tables
 
@@ -342,7 +342,7 @@ def resolve_output(args: argparse.Namespace, input_path: Path) -> Path:
     """
     if args.output_dir:
         return args.output_dir.resolve()
-    return project_root() / "data" / "output_files" / input_path.stem
+    return project_root() / "data" / "output_files" / input_path.stem.strip()
 
 
 # Point d'entrée

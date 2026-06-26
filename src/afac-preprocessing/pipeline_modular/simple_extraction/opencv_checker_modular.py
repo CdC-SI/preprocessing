@@ -189,14 +189,14 @@ def resolve_pdf(args: argparse.Namespace) -> Path:
 def resolve_doctags(args: argparse.Namespace, pdf_path: Path) -> Path:
     if args.doctags:
         return args.doctags.resolve()
-    stem = pdf_path.stem
+    stem = pdf_path.stem.strip()
     return project_root() / "data" / "output_files" / stem / f"{stem}.doctags"
 
 
 def resolve_output(args: argparse.Namespace, pdf_path: Path) -> Path:
     if args.output_dir:
         return args.output_dir.resolve()
-    return project_root() / "data" / "output_files" / pdf_path.stem / "opencv_validation"
+    return project_root() / "data" / "output_files" / pdf_path.stem.strip() / "opencv_validation"
 
 
 # Point d'entrée

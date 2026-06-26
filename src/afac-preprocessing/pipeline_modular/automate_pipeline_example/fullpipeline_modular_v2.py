@@ -136,7 +136,7 @@ def main() -> None:
         input_path = args.input.resolve()
         if not input_path.exists():
             raise SystemExit(f"[ERROR] Input PDF not found: {input_path}")
-        os.environ["DOC_NAME"] = input_path.stem
+        os.environ["DOC_NAME"] = input_path.stem.strip()
         input_files_root = (_PROJECT_ROOT / "data" / "input_files").resolve()
         try:
             os.environ["DOC_PATH"] = str(input_path.relative_to(input_files_root))

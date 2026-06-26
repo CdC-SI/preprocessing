@@ -63,16 +63,33 @@ async def call_vlm_async(
         "max_tokens": 8192,
         "chat_template_kwargs": {"enable_thinking": False}, # désactive le mode thinking Qwen3.5 (évite content=null)
     }
-    async with httpx.AsyncClient(verify=ca_path, timeout=120) as client:
-        resp = await client.post(vlm_url, json=payload)
-        resp.raise_for_status()
-        data = resp.json()
-        message = data["choices"][0]["message"]
-        content = message.get("content")
-        if content is not None:
-            return content.strip()
-        _log.warning("content=null, full message: %s", message)
-        raise ValueError(f"VLM returned null content. Full message: {message}")
+    _RETRYABLE = {429, 500, 502, 503, 504}
+    for attempt in range(1, 4):
+        async with httpx.AsyncClient(verify=ca_path, timeout=120) as client:
+            try:
+                resp = await client.post(vlm_url, json=payload)
+                resp.raise_for_status()
+                data = resp.json()
+                message = data["choices"][0]["message"]
+                content = message.get("content")
+                if content is not None:
+                    return content.strip()
+                _log.warning("content=null, full message: %s", message)
+                raise ValueError(f"VLM returned null content. Full message: {message}")
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code not in _RETRYABLE or attempt == 3:
+                    raise
+                wait = 15 * attempt
+                _log.warning("HTTP %d (tentative %d/3) — retry dans %ds…",
+                             exc.response.status_code, attempt, wait)
+                await asyncio.sleep(wait)
+            except (httpx.TimeoutException, httpx.ConnectError) as exc:
+                if attempt == 3:
+                    raise
+                wait = 15 * attempt
+                _log.warning("%s (tentative %d/3) — retry dans %ds…",
+                             type(exc).__name__, attempt, wait)
+                await asyncio.sleep(wait)
 
 
 async def check_vlm_connectivity(*, vlm_url: str, vlm_model_name: str, ca_path: str) -> bool:
@@ -490,7 +507,7 @@ def resolve_doctags(args: argparse.Namespace, pdf_path: Path) -> Path:
     """
     if args.doctags:
         return args.doctags.resolve()
-    stem = pdf_path.stem
+    stem = pdf_path.stem.strip()
     return project_root() / "data" / "output_files" / stem / f"{stem}_reordered_with_tables_pictures.doctags"
 
 
@@ -510,7 +527,7 @@ def resolve_jsonl(args: argparse.Namespace, pdf_path: Path) -> Path:
     """
     if args.jsonl:
         return args.jsonl.resolve()
-    stem = pdf_path.stem
+    stem = pdf_path.stem.strip()
     return project_root() / "data" / "output_files" / stem / f"hyperlinks_data_{stem}.jsonl"
 
 
@@ -530,7 +547,7 @@ def resolve_output(args: argparse.Namespace, pdf_path: Path) -> Path:
     """
     if args.output:
         return args.output.resolve()
-    stem = pdf_path.stem
+    stem = pdf_path.stem.strip()
     return project_root() / "data" / "output_files" / stem / f"{stem}_url_vlm.doctags"
 
 

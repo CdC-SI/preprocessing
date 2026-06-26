@@ -57,6 +57,17 @@ _RETRY_DELAYS: tuple[int, ...] = (1, 2)  # seconds between attempts (len == _MAX
 _DOCLING_TIMEOUT = 300  # max seconds for Docling doctags → markdown conversion before aborting
 
 
+def _strip_code_fences(text: str) -> str:
+    """Strip opening/closing code fences that Qwen sometimes wraps around its output.
+
+    Handles ```json, ```markdown, ``` (bare), etc.
+    """
+    text = text.strip()
+    text = re.sub(r"^```[a-zA-Z]*\s*\n", "", text)
+    text = re.sub(r"\n```\s*$", "", text)
+    return text.strip()
+
+
 def _should_retry(exc: Exception) -> bool:
     """Retourne True si l'erreur est transitoire et justifie un réessai."""
     if isinstance(exc, httpx.TimeoutException):
@@ -158,7 +169,7 @@ async def process_page(
             try:
                 result = await call_vlm_async(client, vlm_cfg, image_b64, prompt)
                 _log.info("Page %d/%d traitée.", page_num, total_pages)
-                return page_num, result
+                return page_num, _strip_code_fences(result)
             except (httpx.HTTPStatusError, httpx.TimeoutException) as e:
                 if not _should_retry(e):
                     # 4xx client error: inutile de réessayer
@@ -409,7 +420,7 @@ def resolve_markdown(args: argparse.Namespace, pdf_path: Path) -> Path:
     """
     if args.markdown:
         return args.markdown.resolve()
-    stem = pdf_path.stem
+    stem = pdf_path.stem.strip()
     return project_root() / "data" / "output_files" / stem / f"{stem}_url_vlm.md"
 
 
@@ -425,7 +436,7 @@ def resolve_output(args: argparse.Namespace, pdf_path: Path) -> Path:
     """
     if args.output:
         return args.output.resolve()
-    stem = pdf_path.stem
+    stem = pdf_path.stem.strip()
     suffix = getattr(args, "suffix", "")
     return project_root() / "data" / "output_files" / stem / f"{stem}_vlm_check{suffix}.md"
 

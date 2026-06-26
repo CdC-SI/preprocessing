@@ -240,7 +240,7 @@ def parse_args() -> argparse.Namespace:
 
 def _resolve_stem(args: argparse.Namespace) -> str:
     if args.input:
-        return args.input.resolve().stem
+        return args.input.resolve().stem.strip()
     return resolve_doc_name(args, primary_flag="--input")
 
 

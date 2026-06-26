@@ -207,7 +207,7 @@ def resolve_output(args: argparse.Namespace, pdf_path: Path) -> Path:
     """
     if args.output:
         return args.output.resolve()
-    stem = pdf_path.stem
+    stem = pdf_path.stem.strip()
     return project_root() / "data" / "output_files" / stem / f"hyperlinks_data_{stem}.jsonl"
 
 

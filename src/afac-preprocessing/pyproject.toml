@@ -22,6 +22,8 @@ dependencies = [
     # Stage 5 — métadonnées, embeddings (client OpenAI-compatible)
     "openai==2.26.0",
     "pydantic==2.13.4",
+    # Retrieval evaluation — similarité cosinus, recall@k
+    "scikit-learn==1.6.1",
     # graph_url — graphe d'URLs
     "networkx==3.6.1",
     "matplotlib==3.10.0",

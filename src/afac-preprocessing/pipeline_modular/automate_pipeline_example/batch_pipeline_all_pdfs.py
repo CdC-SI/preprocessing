@@ -2,11 +2,12 @@
 
 Usage:
     uv run python batch_pipeline_all_pdfs.py --dotenv .env.test
+    uv run python batch_pipeline_all_pdfs.py --dotenv .env.test --input-dir data/input_files/afac/Adhésion
     uv run python batch_pipeline_all_pdfs.py --dotenv .env.test --from-step 8
     uv run python batch_pipeline_all_pdfs.py --dotenv .env.test --skip-steps 3,6
     uv run python batch_pipeline_all_pdfs.py --dotenv .env.test --dry-run
 
-All flags except --dry-run are forwarded as-is to fullpipeline_modular_v2.py.
+All flags except --dry-run and --input-dir are forwarded as-is to fullpipeline_modular_v2.py.
 """
 
 import argparse
@@ -61,6 +62,16 @@ def parse_args() -> argparse.Namespace:
         help="Comma-separated steps to skip (forwarded to fullpipeline_modular_v2.py).",
     )
     parser.add_argument(
+        "--input-dir",
+        type=Path,
+        default=None,
+        metavar="DIR",
+        help=(
+            "Scan only this directory for PDFs instead of data/input_files/. "
+            "Accepts absolute or relative path (e.g. data/input_files/afac/Adhésion)."
+        ),
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Print the PDFs that would be processed without running the pipeline.",
@@ -87,14 +98,15 @@ def main() -> None:
     if not dotenv.exists():
         raise SystemExit(f"[ERROR] .env file not found: {dotenv}")
 
-    if not _INPUT_ROOT.exists():
-        raise SystemExit(f"[ERROR] Input directory not found: {_INPUT_ROOT}")
+    scan_root = args.input_dir.resolve() if args.input_dir else _INPUT_ROOT
+    if not scan_root.exists():
+        raise SystemExit(f"[ERROR] Input directory not found: {scan_root}")
 
-    pdfs = sorted(_INPUT_ROOT.rglob("*.pdf"))
+    pdfs = sorted(scan_root.rglob("*.pdf"))
     if not pdfs:
         raise SystemExit(f"[ERROR] No PDF files found under {_INPUT_ROOT}")
 
-    print(f"Found {len(pdfs)} PDF(s) under {_INPUT_ROOT.relative_to(_PROJECT_ROOT)}/\n")
+    print(f"Found {len(pdfs)} PDF(s) under {scan_root}/\n")
     for pdf in pdfs:
         print(f"  {pdf.relative_to(_INPUT_ROOT)}")
 

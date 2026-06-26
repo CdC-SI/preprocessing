@@ -239,7 +239,14 @@ def reorder_doctags(input_path: Path, output_path: Path) -> None:
     pages = split_pages(parse_blocks(content))
     result_pages = [render_blocks(sort_page(page)) for page in pages]
 
-    final = "<doctag>\n" + "\n".join(result_pages) + "\n</doctag>\n"
+    # sort_page moves <page_break> (no coords) to the front of each page's render
+    # because Docling places it as a trailing end-of-page marker. The last page has
+    # no trailing <page_break> by design, so without this fix it merges with page N-1.
+    # Strip any leading page_break from each rendered page and join explicitly instead.
+    cleaned = [re.sub(r"^\s*<page_break\s*/?>\s*\n?", "", p) for p in result_pages]
+    body = "\n<page_break>\n".join(cleaned)
+
+    final = "<doctag>\n" + body + "\n</doctag>\n"
     output_path.write_text(final, encoding="utf-8")
     _log.info("Doctags réordonné (%d page(s)) : %s", len(pages), output_path)
 
