@@ -20,3 +20,4 @@ graphify-out
 src/afac-preprocessing/trash
 resultat_claude_audit.md
 src/afac-preprocessing/pipeline_modular/docling_image_png
+table_control_vlm_modular.py
