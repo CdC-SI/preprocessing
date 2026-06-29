@@ -417,17 +417,29 @@ Examples:
 Never remove or rewrite them.
 
 TABLES:
-Tables are represented as JSON lines.
-Example:
-{{"Version":"1.0","Date","Description":"Creation","Name"}}
-{{"Version":"1.1","Date":"01.01.2025","Description":"Update","Name":"GT AM"}}
+Tables are represented as JSON lines in the Markdown.
+Each line is one row: {{"column_name": "cell_value", ...}}
 
-Rules:
-Preserve JSON-line structure.
-Do not convert to Markdown tables.
+STEP 1 — Diagnose the table using the image:
+Compare the JSON lines against the table visible in the PDF image.
+
+STEP 2 — Correct following these rules:
+
+Case A — Keys look like real column headers (descriptive words, abbreviations):
+Correct OCR errors in values and keys only.
+Example fix: key "consulat" → "N° consulat" if the image shows "N° consulat".
+
+Case B — Keys look like data values (country names, city names, raw numbers):
+The header row was lost during extraction. The first data row was incorrectly used as column names.
+1. Read the exact column names from the image (same language, same accents, same symbols).
+2. Re-key every JSON object using the correct column names.
+3. Check whether the row whose values match the current keys is missing from the data — if so, add it back.
+
+FORBIDDEN in all cases:
+Do not convert JSON lines to a Markdown table (| col | col |).
 Do not reorder columns.
-Do not merge rows.
-Do not change table representation.
+Do not remove data rows.
+Do not add rows not visible in the image.
 
 URLS:
 Do not modify:

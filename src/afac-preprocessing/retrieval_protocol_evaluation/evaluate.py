@@ -1,11 +1,12 @@
 """
-CLI — Evaluate Recall@k for HyQ questions against all document embeddings.
-
-Usage (single question, for testing):
-    python evaluate.py --doc-name "Adhésion traitement" --question-idx 1
+CLI — Evaluate Recall@k, Precision@k, nDCG@k and MRR@k for HyQ questions
+against all document embeddings.
 
 Usage (all questions of a document):
     python evaluate.py --doc-name "Adhésion traitement"
+
+Usage (single question, for testing):
+    python evaluate.py --doc-name "Adhésion traitement" --question-idx 1
 
 Usage (custom k values and output):
     python evaluate.py --doc-name "Adhésion traitement" --top-ks 1,3,5,10 --output-dir ./results
@@ -20,15 +21,15 @@ import numpy as np
 from config import DEFAULT_STAGE5, DEFAULT_OUTPUT_DIR, TOP_KS
 from loaders import load_hyq_questions, load_all_doc_embeddings
 from similarity import compute_similarity_matrix, rank_docs
-from metrics import evaluate_question
-from report import save_results_csv, plot_recall_curves
+from metrics import evaluate_all_metrics
+from report import save_results_csv, plot_all_charts
 
 _log = logging.getLogger(__name__)
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Evaluate Recall@k for HyQ questions vs document embeddings.",
+        description="Evaluate retrieval metrics for HyQ questions vs document embeddings.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
@@ -93,7 +94,12 @@ def main() -> None:
         ranked_doc_names = [doc_names[j] for j in ranked_indices]
         source_doc_name = question.source_doc_title.removesuffix(".pdf")
 
-        recall_scores = evaluate_question(ranked_doc_names, source_doc_name, top_ks)
+        scores = evaluate_all_metrics(
+            sim_scores=sim_matrix[i],
+            doc_names=doc_names,
+            source_doc_name=source_doc_name,
+            top_ks=top_ks,
+        )
 
         row: dict = {
             "doc_name": args.doc_name,
@@ -103,25 +109,30 @@ def main() -> None:
             "top1_doc": ranked_doc_names[0] if ranked_doc_names else "",
             "top1_score": float(sim_matrix[i][ranked_indices[0]]),
         }
-        for k, score in recall_scores.items():
-            row[f"recall@{k}"] = score
+        for k in top_ks:
+            row[f"recall@{k}"]    = scores["recall"][k]
+            row[f"precision@{k}"] = scores["precision"][k]
+            row[f"ndcg@{k}"]      = scores["ndcg"][k]
+            row[f"mrr@{k}"]       = scores["mrr"][k]
         results.append(row)
 
         _log.info(
-            "Q%02d | recall@1=%d recall@5=%d | source='%s' | top1='%s' (%.4f)",
+            "Q%02d | R@1=%d P@1=%.3f nDCG@5=%.3f MRR@5=%.3f | source='%s' | top1='%s' (%.4f)",
             question.question_idx,
-            recall_scores.get(1, 0),
-            recall_scores.get(5, 0),
+            scores["recall"][1],
+            scores["precision"][1],
+            scores["ndcg"].get(5, 0),
+            scores["mrr"].get(5, 0),
             source_doc_name,
             ranked_doc_names[0] if ranked_doc_names else "?",
             float(sim_matrix[i][ranked_indices[0]]),
         )
 
-    output_path = args.output_dir / args.doc_name / "recall_at_k_results.csv"
+    output_path = args.output_dir / args.doc_name / "evaluation_results.csv"
     save_results_csv(results, output_path)
 
     if len(results) > 1:
-        plot_recall_curves(output_path, args.output_dir / args.doc_name, top_ks)
+        plot_all_charts(output_path, args.output_dir / args.doc_name, top_ks)
 
     _log.info("Done. %d question(s) evaluated.", len(results))
     sys.exit(0)

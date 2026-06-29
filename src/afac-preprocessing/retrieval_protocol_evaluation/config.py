@@ -6,6 +6,7 @@ DEFAULT_STAGE5 = PROJECT_ROOT / "data" / "output_files"
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "data" / "evaluation_results"
 
 TOP_KS: list[int] = [1, 3, 5, 10, 20]
+CANONICAL_K: int = 5
 
 DOC_FOLDER_SUFFIX = ""
 HYQ_FOLDER_PREFIX = "hyq_"

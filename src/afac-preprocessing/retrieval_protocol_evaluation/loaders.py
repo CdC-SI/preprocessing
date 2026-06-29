@@ -84,3 +84,13 @@ def load_all_doc_embeddings(stage5_dir: Path) -> list[DocRecord]:
 
     _log.info("Loaded %d document embedding(s) from %s", len(records), stage5_dir)
     return records
+
+
+def load_doc_resumes(stage5_dir: Path) -> dict[str, str]:
+    """Return {doc_name: resume_text} for all docs that have a resume.md."""
+    resumes: dict[str, str] = {}
+    for resume_path in sorted(stage5_dir.glob("*/metadata/resume.md")):
+        doc_name = resume_path.parent.parent.name
+        resumes[doc_name] = resume_path.read_text(encoding="utf-8").strip()
+    _log.info("Loaded %d document resume(s) from %s", len(resumes), stage5_dir)
+    return resumes
