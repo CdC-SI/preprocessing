@@ -10,22 +10,20 @@ Output (stage5/<doc_name>/):
 
 Usage:
     uv run python embedding_metadata_modular.py --dotenv .env.test --doc-name "MonDoc"
-    uv run python embedding_metadata_modular.py --doc-name "MonDoc" --stage4 ./data/output_files/stage4_test --stage5 ./data/output_files/stage5_test
+    uv run python embedding_metadata_modular.py --doc-name "MonDoc" --stage4 ./data/output_files_preprocessing/stage4_test --stage5 ./data/output_files_preprocessing/stage5_test
 """
 import argparse
 import json
 import logging
 import sys
 from pathlib import Path
-from urllib.parse import urlparse, urlunparse
 
-import httpx
 from openai import OpenAI
 
-from utils.config import load_vlm_config
 from utils.paths import project_root, resolve_doc_name
+from utils.vlm_client import build_embedding_client, build_vlm_config, embedding_to_string, get_embedding
 
-DEFAULT_OUTPUT_FILES = project_root() / "data" / "output_files"
+DEFAULT_OUTPUT_FILES = project_root() / "data" / "output_files_preprocessing"
 DEFAULT_STAGE4 = DEFAULT_OUTPUT_FILES
 DEFAULT_STAGE5 = DEFAULT_OUTPUT_FILES
 
@@ -36,6 +34,10 @@ def _read_stage4(stage4_dir: Path, doc_name: str) -> str:
     """
     Lit le markdown du stage 4 pour un document donné.
 
+    Préfère <doc>_final_embed.md (tables Markdown remplacées par du JSONL, produit par
+    markdown_tables_to_jsonl_modular.py --embed-output) s'il existe, sinon <doc>_final.md.
+    Rétrocompatible : les documents sans _final_embed.md (v1/v2/baseline) sont inchangés.
+
     :param stage4_dir: Dossier stage4
     :type stage4_dir: Path
     :param doc_name: Nom du document sans extension
@@ -43,15 +45,19 @@ def _read_stage4(stage4_dir: Path, doc_name: str) -> str:
     :return: Contenu markdown du document
     :rtype: str
     """
-    single = stage4_dir / doc_name / f"{doc_name}_final.md"
-    if single.exists():
-        return single.read_text(encoding="utf-8")
+    for suffix in ("_final_embed.md", "_final.md"):
+        candidate = stage4_dir / doc_name / f"{doc_name}{suffix}"
+        if candidate.exists():
+            return candidate.read_text(encoding="utf-8")
     return ""
 
 
 def generate_embedding(text: str, client: OpenAI, embedding_model_name: str) -> list[float]:
     """
     Envoie le texte au modèle d'embedding et retourne le vecteur brut.
+
+    Délègue à utils.vlm_client.get_embedding (cache-first) — conservé sous ce nom car
+    single_retrieval_nopreprocessing/single_docling_baseline.py l'importe directement.
 
     :param text: Contenu markdown du document (stage 4)
     :type text: str
@@ -62,24 +68,7 @@ def generate_embedding(text: str, client: OpenAI, embedding_model_name: str) -> 
     :return: Vecteur d'embedding
     :rtype: list[float]
     """
-    response = client.embeddings.create(
-        input=text,
-        model=embedding_model_name,
-    )
-    return response.data[0].embedding
-
-
-def embedding_to_string(embedding: list[float]) -> str:
-    """
-    Convertit un vecteur d'embedding en chaîne.
-    Ex: [0.4, 0.8, 1.5] -> "0.4, 0.8, 1.5"
-
-    :param embedding: Vecteur d'embedding
-    :type embedding: list[float]
-    :return: Représentation string du vecteur sans crochets
-    :rtype: str
-    """
-    return str(embedding).replace("[", "").replace("]", "")
+    return get_embedding(client, embedding_model_name, text)
 
 
 def write_stage5_embedding(stage5_dir: Path, doc_name: str, embedding: list[float]) -> Path:
@@ -125,16 +114,9 @@ def run_embedding(
     :return: Tuple (vecteur string CSV, nom du modèle embedding)
     :rtype: tuple[str, str]
     """
-    config = load_vlm_config(dotenv_path=dotenv_path)
-    ca_path = config["CA_PATH"]
-    embedding_model_name = config["EMBEDDING_MODEL_NAME"]
-    parsed = urlparse(config["EMBEDDING_URL"])
-    base_url = urlunparse((parsed.scheme, parsed.netloc, "/v1", "", "", ""))
-    client = OpenAI(
-        base_url=base_url,
-        api_key="no-key",
-        http_client=httpx.Client(verify=ca_path),
-    )
+    vlm_cfg = build_vlm_config(dotenv_path=dotenv_path)
+    embedding_model_name = vlm_cfg.embedding_model_name
+    client = build_embedding_client(vlm_cfg)
 
     markdown_content = _read_stage4(stage4_dir, doc_name)
     if not markdown_content:

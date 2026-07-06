@@ -11,6 +11,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -87,17 +88,30 @@ def build_converter(
 
 
 def export_docling_images(conv_result, output_dir: Path) -> int:
-    """Sauvegarde les images extraites par Docling (pil_image) en PNG nommés pic{i:03d}_page{page}.png."""
+    """Sauvegarde les images extraites par Docling (pil_image) en PNG, nommées par leurs
+    coordonnées doctags (x0,y0,x1,y1) via pic.get_location_tokens(doc) — identiques à celles
+    du <picture> tag correspondant dans l'export doctags. Nommer par coordonnées plutôt que
+    par index de position évite un désalignement si reordered_doctags_modular.py change
+    ensuite l'ordre relatif des images sur une page (son rôle même) : un matching par index
+    de position dans le doctags réordonné ne pointerait alors plus vers le bon fichier."""
     output_dir.mkdir(parents=True, exist_ok=True)
+    doc = conv_result.document
     saved = 0
-    for i, pic in enumerate(conv_result.document.pictures, start=1):
+    for i, pic in enumerate(doc.pictures, start=1):
         img = getattr(pic, "image", None)
         pil = getattr(img, "pil_image", None) if img else None
         if pil is None:
             _log.warning("[docling] Image %d : pil_image absent (generate_picture_images activé ?)", i)
             continue
-        page = pic.prov[0].page_no if pic.prov else 0
-        path = output_dir / f"pic{i:03d}_page{page}.png"
+        if not pic.prov:
+            _log.warning("[docling] Image %d : provenance absente — export ignoré", i)
+            continue
+        page = pic.prov[0].page_no
+        # get_location_tokens() concatène 4 <loc_*> par entrée de prov — un élément qui
+        # franchit un saut de page en a plusieurs. On ne garde que les 4 premiers (prov[0],
+        # cohérent avec `page` ci-dessus) pour rester robuste aux images multi-provenance.
+        x0, y0, x1, y1 = re.findall(r"<loc_(\d+)>", pic.get_location_tokens(doc))[:4]
+        path = output_dir / f"pic_page{page}_x{x0}_y{y0}_x{x1}_y{y1}.png"
         pil.save(str(path))
         _log.info("[docling] Exporté : %s", path.name)
         saved += 1
@@ -146,8 +160,13 @@ def export_text_formats(conv_result: ConversionResult, output_dir: Path, formats
 # Export tables, ancienne fonction export_table_docling.py (stage 2)
 def export_tables(conv_result: ConversionResult, output_dir: Path, formats: frozenset[str]) -> None:
     """
-    Docstring for export_tables
-    Extrait et exporte les tables détectées dans le document Docling vers les formats demandés (csv, html).
+    Extrait et exporte les tables détectées dans le document Docling vers les formats demandés
+    (csv, html). Nommées <stem>-table-{i:02d}_page{page}_x{x0}_y{y0}_x{x1}_y{y1} — les
+    coordonnées (via table.get_location_tokens(doc), identiques à celles du <otsl> tag
+    correspondant dans le doctags) permettent à load_jsonline_doctags_modular.py de matcher
+    chaque JSONL au bon <otsl> même si reordered_doctags_modular.py a changé l'ordre relatif
+    des tables sur une page. L'index {i:02d} n'est là que pour la lisibilité humaine du
+    dossier — jamais utilisé pour le matching en aval.
 
     :param conv_result: Description
     :param output_dir: Description
@@ -167,14 +186,23 @@ def export_tables(conv_result: ConversionResult, output_dir: Path, formats: froz
     tables_dir.mkdir(parents=True, exist_ok=True)
 
     for i, table in enumerate(tables, start=1):
+        if not table.prov:
+            _log.warning("Table %d : provenance absente — export ignoré", i)
+            continue
+        page = table.prov[0].page_no
+        # cf. export_docling_images() : ne garder que les 4 premiers <loc_*> (prov[0]) pour
+        # rester robuste aux tables dont les prov multiples (saut de page) en produisent plus.
+        x0, y0, x1, y1 = re.findall(r"<loc_(\d+)>", table.get_location_tokens(doc))[:4]
+        base_name = f"{stem}-table-{i:02d}_page{page}_x{x0}_y{y0}_x{x1}_y{y1}"
+
         if "csv" in formats:
             df: pd.DataFrame = table.export_to_dataframe(doc=doc)
-            path = tables_dir / f"{stem}-table-{i}.csv"
+            path = tables_dir / f"{base_name}.csv"
             df.to_csv(path, index=False)
             _log.info("Table %d CSV : %s", i, path)
 
         if "html" in formats:
-            path = tables_dir / f"{stem}-table-{i}.html"
+            path = tables_dir / f"{base_name}.html"
             path.write_text(table.export_to_html(doc=doc), encoding="utf-8")
             _log.info("Table %d HTML : %s", i, path)
 
@@ -229,7 +257,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help=(
             "Dossier de sortie. "
-            "Défaut : data/output_files/<nom_du_doc>/ (relatif à la racine du projet)."
+            "Défaut : data/output_files_preprocessing/<nom_du_doc>/ (relatif à la racine du projet)."
         ),
     )
     parser.add_argument(
@@ -342,7 +370,7 @@ def resolve_output(args: argparse.Namespace, input_path: Path) -> Path:
     """
     if args.output_dir:
         return args.output_dir.resolve()
-    return project_root() / "data" / "output_files" / input_path.stem.strip()
+    return project_root() / "data" / "output_files_preprocessing" / input_path.stem.strip()
 
 
 # Point d'entrée

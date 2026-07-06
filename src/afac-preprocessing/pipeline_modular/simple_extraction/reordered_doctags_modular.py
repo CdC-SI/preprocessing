@@ -8,7 +8,7 @@ page par page, avant les étapes VLM aval.
 Se lance après pipeline_multietape_modulaire.py (qui produit le .doctags source).
 
 Usage :
-    uv run python reordered_doctags.py --input data/output_files/MonDoc/MonDoc.doctags
+    uv run python reordered_doctags.py --input data/output_files_preprocessing/MonDoc/MonDoc.doctags
     uv run python reordered_doctags.py --dotenv .env.test
 """
 import argparse
@@ -23,6 +23,8 @@ from utils.paths import project_root, resolve_doc_name
 _log = logging.getLogger(__name__)
 
 TAG_UL_CLOSE = "</unordered_list>"
+TAG_PAGE_FOOTER = "<page_footer>"
+TAG_PAGE_BREAK = "<page_break>"
 _NO_X0 = 10**9  # valeur arbitraire x0 pour les blocs sans coordonnée horizontale = placés en dernier
 
 
@@ -149,25 +151,75 @@ def parse_blocks(content: str) -> list[Block]:
 
 def split_pages(blocks: list[Block]) -> list[list[Block]]:
     """
-    Docstring for split_pages
-    Sépare une liste de blocs en pages d'après les balises <page_footer> et <page_break>.
+    Sépare une liste de blocs en pages. <page_footer> fait foi quand il est présent (au
+    moins une fois dans le document) : seule frontière fiable, <page_break> est alors
+    ignoré (ni conservé dans une page, ni utilisé comme déclencheur de coupure).
+
+    Docling insère parfois un <page_break> autonome mal placé (artefact d'extraction,
+    observé au milieu du contenu d'une page physique plutôt qu'à sa frontière réelle). Le
+    traiter comme déclencheur de coupure produirait alors une page supplémentaire
+    fantôme : la page physique concernée serait scindée en deux morceaux, et en aval
+    url_tuning_vlm_modular.py (qui boucle sur range(1, n_pages+1) où n_pages vient du
+    compte réel de pages du PDF) ne traiterait jamais le morceau en trop — contenu de
+    page silencieusement perdu, et une autre page dupliquée sous deux numéros. D'où le
+    choix de ne compter que sur <page_footer> quand il existe.
+
+    Mais certains documents Docling n'émettent aucun <page_footer> (aucune page n'en a),
+    auquel cas <page_break> est l'unique frontière disponible : l'ignorer purement et
+    simplement ferait fusionner tout le document en une seule page (observé sur "Liste
+    des représentations suisses à l'étranger" — 7 pages PDF, 6 <page_break>, 0
+    <page_footer> ; sans ce repli, split_pages() renvoyait une seule page contenant tout
+    le doctags). D'où le repli sur <page_break> comme déclencheur uniquement si le
+    document ne contient aucun <page_footer>.
+
+    Limite connue : la décision (footer vs break) est prise une seule fois pour tout le
+    document. Un document où SEULEMENT CERTAINES pages ont un <page_footer> (footer
+    manquant sur une page scannée/pivotée, par ex.) reste mal géré : has_footer=True
+    fusionnerait alors la page sans footer avec la suivante. Pas de correctif général ici
+    faute de vérité terrain fiable à ce stade (le nombre réel de pages du PDF n'est pas
+    passé à cette fonction) — on se contente de logger un avertissement quand des
+    <page_break> autonomes sont écartés alors qu'un <page_footer> existe ailleurs dans le
+    document, signal qu'une page a peut-être perdu son footer. Le contrôle downstream
+    (comparaison du nombre de pages réassemblées au nombre de pages du PDF, cf.
+    markdown_control_vlm_modular.py) reste le filet de sécurité qui détecte un vrai
+    décalage.
 
     :param blocks: Description
     :type blocks: list[Block]
     :return: Description
     :rtype: list[list[Block]]
     """
+    has_footer = any(TAG_PAGE_FOOTER in b.raw for b in blocks)
+
     pages: list[list[Block]] = []
     current: list[Block] = []
+    discarded_breaks = 0
 
     for block in blocks:
+        is_standalone_break = TAG_PAGE_BREAK in block.raw and TAG_PAGE_FOOTER not in block.raw
+        if is_standalone_break:
+            if not has_footer and current:
+                pages.append(current)
+                current = []
+            elif has_footer:
+                discarded_breaks += 1
+            continue  # jamais conservé : marqueur pur, jamais rajouté dans une page
+
         current.append(block)
-        if "<page_footer>" in block.raw or "<page_break>" in block.raw:
+        if has_footer and TAG_PAGE_FOOTER in block.raw:
             pages.append(current)
             current = []
 
     if current:
         pages.append(current)
+
+    if has_footer and discarded_breaks:
+        _log.warning(
+            "%d <page_break> autonome(s) écarté(s) alors que le document contient des "
+            "<page_footer> — vérifier qu'aucune page n'a perdu son footer (cf. limite "
+            "connue de split_pages()).",
+            discarded_breaks,
+        )
 
     return pages
 
@@ -239,10 +291,9 @@ def reorder_doctags(input_path: Path, output_path: Path) -> None:
     pages = split_pages(parse_blocks(content))
     result_pages = [render_blocks(sort_page(page)) for page in pages]
 
-    # sort_page moves <page_break> (no coords) to the front of each page's render
-    # because Docling places it as a trailing end-of-page marker. The last page has
-    # no trailing <page_break> by design, so without this fix it merges with page N-1.
-    # Strip any leading page_break from each rendered page and join explicitly instead.
+    # split_pages() already drops every standalone <page_break> marker (see its docstring),
+    # so no rendered page should ever start with one — this strip is a defensive no-op kept
+    # in case a future Docling doctags variant reintroduces a leading marker some other way.
     cleaned = [re.sub(r"^\s*<page_break\s*/?>\s*\n?", "", p) for p in result_pages]
     body = "\n<page_break>\n".join(cleaned)
 
@@ -262,10 +313,10 @@ def parse_args() -> argparse.Namespace:
         epilog=(
             "Exemples :\n"
             "  uv run python reordered_doctags.py "
-            "--input data/output_files/MonDoc/MonDoc.doctags\n"
+            "--input data/output_files_preprocessing/MonDoc/MonDoc.doctags\n"
             "  uv run python reordered_doctags.py "
-            "--input data/output_files/MonDoc/MonDoc.doctags "
-            "--output data/output_files/MonDoc/MonDoc_reordered.doctags\n"
+            "--input data/output_files_preprocessing/MonDoc/MonDoc.doctags "
+            "--output data/output_files_preprocessing/MonDoc/MonDoc_reordered.doctags\n"
             "  uv run python reordered_doctags.py --dotenv .env.test\n"
         ),
     )
@@ -275,7 +326,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help=(
             "Chemin vers le fichier .doctags source. "
-            "Si absent, résout data/output_files/<DOC_NAME>/<DOC_NAME>.doctags depuis l'environnement."
+            "Si absent, résout data/output_files_preprocessing/<DOC_NAME>/<DOC_NAME>.doctags depuis l'environnement."
         ),
     )
     parser.add_argument(
@@ -310,7 +361,7 @@ def resolve_input(args: argparse.Namespace) -> Path:
     if args.input:
         return args.input.resolve()
     doc_name = resolve_doc_name(args, primary_flag="--input")
-    return project_root() / "data" / "output_files" / doc_name / f"{doc_name}.doctags"
+    return project_root() / "data" / "output_files_preprocessing" / doc_name / f"{doc_name}.doctags"
 
 
 def resolve_output(args: argparse.Namespace, input_path: Path) -> Path:

@@ -10,8 +10,8 @@ Se lance après :
 
 Usage :
     uv run python load_jsonline_doctags_modulaire.py \\
-        --doctags  data/output_files/MonDoc/MonDoc_reordered.doctags \\
-        --tables-dir data/output_files/MonDoc/tables
+        --doctags  data/output_files_preprocessing/MonDoc/MonDoc_reordered.doctags \\
+        --tables-dir data/output_files_preprocessing/MonDoc/tables
     uv run python load_jsonline_doctags_modulaire.py --dotenv .env.test
 """
 import argparse
@@ -43,12 +43,56 @@ def jsonl_rows_to_block(rows: list[dict]) -> str:
     return "\n".join(json.dumps(row, ensure_ascii=False) for row in rows)
 
 
+_TABLE_COORDS_RE = re.compile(r"_page(\d+)_x(\d+)_y(\d+)_x(\d+)_y(\d+)")
+
+TableCoords = tuple[int, int, int, int, int]  # (page, x0, y0, x1, y1)
+
+
+def _parse_table_coords(filename: str) -> TableCoords | None:
+    """Extrait (page, x0, y0, x1, y1) d'un nom de fichier produit par
+    pipeline_multietape_modular.export_tables() (page 1-indexée, coordonnées doctags 0-500).
+    Retourne None pour un fichier antérieur à ce correctif (pas de coordonnées dans le nom) —
+    déclenche le repli sur le matching par ordre de fichier dans replace_otsl_with_jsonl.
+    """
+    m = _TABLE_COORDS_RE.search(filename)
+    if not m:
+        return None
+    x0, y0, x1, y1 = (int(g) for g in m.groups()[1:])
+    return (int(m.group(1)), x0, y0, x1, y1)
+
+
+def _find_otsl_blocks(content: str) -> list[tuple[re.Match, TableCoords]]:
+    """Localise chaque bloc <otsl>…</otsl> avec ses coordonnées (page, x0, y0, x1, y1).
+
+    Page déduite du nombre de <page_footer> rencontrés avant le bloc (1-indexée, même
+    convention que pipeline_multietape_modular.export_tables — table.prov[0].page_no).
+    Coordonnées lues directement dans le tag d'ouverture <otsl><loc_x0><loc_y0><loc_x1><loc_y1>.
+    """
+    footer_offsets = [m.start() for m in re.finditer(r"<page_footer>", content)]
+    otsl_pattern = re.compile(
+        r"<otsl><loc_(\d+)><loc_(\d+)><loc_(\d+)><loc_(\d+)>.*?</otsl>", re.DOTALL
+    )
+
+    blocks: list[tuple[re.Match, TableCoords]] = []
+    for m in otsl_pattern.finditer(content):
+        page = 1 + sum(1 for fo in footer_offsets if fo < m.start())
+        x0, y0, x1, y1 = (int(g) for g in m.groups())
+        blocks.append((m, (page, x0, y0, x1, y1)))
+    return blocks
+
+
 def replace_otsl_with_jsonl(
     doctags_path: Path,
     tables_dir: Path,
     output_path: Path,
 ) -> int:
-    """Remplace les balises <otsl>…</otsl> par le contenu JSONL des tables correspondantes.
+    """Remplace les balises <otsl>…</otsl> par le contenu JSONL de la table correspondante,
+    matchée par coordonnées (page, x0, y0, x1, y1) — jamais par ordre de fichier — pour rester
+    correct même si reordered_doctags_modular.py a changé l'ordre relatif des tables sur une
+    page (son rôle même). Retombe sur l'ordre de fichier historique (bogué si l'ordre a
+    changé, ou si un document compte 10+ tables — tri alphabétique de "table-10" avant
+    "table-2") uniquement si les JSONL présents datent d'avant ce correctif et ne portent pas
+    de coordonnées dans leur nom.
 
     Retourne le nombre de remplacements effectués.
     Si aucun JSONL ou aucune balise <otsl> n'est trouvé, copie le fichier source à l'identique
@@ -64,57 +108,78 @@ def replace_otsl_with_jsonl(
         return 0
 
     _log.info("%d fichier(s) JSONL trouvé(s) dans : %s", len(jsonl_files), tables_dir)
-    all_tables: list[tuple[str, list[dict]]] = []
+    tables_in_order: list[tuple[str, list[dict]]] = []
+    tables_by_coords: dict[TableCoords, tuple[str, list[dict]]] = {}
     for jsonl_path in jsonl_files:
         rows = load_jsonl_rows(jsonl_path)
-        if rows:
-            all_tables.append((jsonl_path.name, rows))
-            _log.info("  • %s : %d ligne(s)", jsonl_path.name, len(rows))
+        if not rows:
+            continue
+        tables_in_order.append((jsonl_path.name, rows))
+        coords = _parse_table_coords(jsonl_path.name)
+        if coords:
+            tables_by_coords[coords] = (jsonl_path.name, rows)
+        _log.info("  • %s : %d ligne(s)", jsonl_path.name, len(rows))
 
-    if not all_tables:
+    if not tables_in_order:
         _log.warning("Tous les fichiers JSONL sont vides — fichier copié sans modification.")
         output_path.write_text(content, encoding="utf-8")
         return 0
 
     # Localiser les balises <otsl>
-    otsl_pattern = re.compile(r"<otsl>.*?</otsl>", re.DOTALL)
-    matches = list(otsl_pattern.finditer(content))
-
-    if not matches:
+    otsl_blocks = _find_otsl_blocks(content)
+    if not otsl_blocks:
         _log.warning("Aucune balise <otsl> dans %s — fichier copié sans modification.", doctags_path.name)
         output_path.write_text(content, encoding="utf-8")
         return 0
 
-    if len(matches) != len(all_tables):
+    use_coords = len(tables_by_coords) == len(tables_in_order)
+    if not use_coords:
         _log.warning(
-            "%d balise(s) <otsl> vs %d table(s) JSONL — remplacement jusqu'à épuisement.",
-            len(matches), len(all_tables),
+            "JSONL sans coordonnées détecté(s) (généré avant ce correctif) — repli sur le "
+            "matching par ordre de fichier, potentiellement incorrect si l'ordre des tables "
+            "a changé. Ré-exécuter les étapes 1/2/4 pour régénérer des JSONL avec coordonnées."
         )
 
-    # Remplacement dans l'ordre d'apparition
-    result = content
-    offset = 0
+    if len(otsl_blocks) != len(tables_in_order):
+        _log.warning(
+            "%d bloc(s) <otsl> vs %d table(s) JSONL — remplacement au mieux.",
+            len(otsl_blocks), len(tables_in_order),
+        )
+
+    # Remplacement par découpage/jointure (pas de mutation de chaîne en place — les positions
+    # des matches restent valides puisqu'on ne réécrit jamais `content`)
+    result_parts: list[str] = []
+    cursor = 0
     n_replaced = 0
 
-    for i, match in enumerate(matches):
-        if i >= len(all_tables):
-            _log.warning("Pas de table JSONL pour la balise <otsl> n°%d — ignorée.", i + 1)
-            break
+    for idx, (match, coords) in enumerate(otsl_blocks):
+        table = tables_by_coords.get(coords) if use_coords else None
+        if table is None:
+            if idx < len(tables_in_order):
+                table = tables_in_order[idx]
+            else:
+                _log.warning(
+                    "Pas de table JSONL pour le bloc <otsl> n°%d (page=%d) — ignoré.",
+                    idx + 1, coords[0],
+                )
+                continue
 
-        jsonl_name, rows = all_tables[i]
+        jsonl_name, rows = table
         jsonl_block = jsonl_rows_to_block(rows)
         new_tag = f"<text>\n{jsonl_block}\n</text>"
 
-        start = match.start() + offset
-        end = match.end() + offset
-        result = result[:start] + new_tag + result[end:]
-        offset += len(new_tag) - (match.end() - match.start())
+        result_parts.append(content[cursor:match.start()])
+        result_parts.append(new_tag)
+        cursor = match.end()
         n_replaced += 1
 
         _log.info(
-            "  Table %d/%d remplacée — %s (%d ligne(s), %d chars)",
-            i + 1, len(matches), jsonl_name, len(rows), len(jsonl_block),
+            "  Bloc <otsl> %d/%d (page=%d) remplacé — %s (%d ligne(s), %d chars)",
+            idx + 1, len(otsl_blocks), coords[0], jsonl_name, len(rows), len(jsonl_block),
         )
+
+    result_parts.append(content[cursor:])
+    result = "".join(result_parts)
 
     output_path.write_text(result, encoding="utf-8")
     _log.info("Doctags enrichi sauvegardé : %s", output_path)
@@ -132,8 +197,8 @@ def parse_args() -> argparse.Namespace:
         epilog=(
             "Exemples :\n"
             "  uv run python load_jsonline_doctags_modulaire.py \\\n"
-            "      --doctags  data/output_files/MonDoc/MonDoc_reordered.doctags \\\n"
-            "      --tables-dir data/output_files/MonDoc/tables\n"
+            "      --doctags  data/output_files_preprocessing/MonDoc/MonDoc_reordered.doctags \\\n"
+            "      --tables-dir data/output_files_preprocessing/MonDoc/tables\n"
             "  uv run python load_jsonline_doctags_modulaire.py --dotenv .env.test\n"
         ),
     )
@@ -143,7 +208,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help=(
             "Fichier .doctags source (produit par reordered_doctags.py). "
-            "Si absent, résout data/output_files/<DOC_NAME>/<DOC_NAME>_reordered.doctags."
+            "Si absent, résout data/output_files_preprocessing/<DOC_NAME>/<DOC_NAME>_reordered.doctags."
         ),
     )
     parser.add_argument(
@@ -152,7 +217,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help=(
             "Dossier contenant les fichiers .jsonl (produits par csv_to_jsonlines_modulaire.py). "
-            "Si absent, résout data/output_files/<DOC_NAME>/tables."
+            "Si absent, résout data/output_files_preprocessing/<DOC_NAME>/tables."
         ),
     )
     parser.add_argument(
@@ -178,7 +243,7 @@ def resolve_doctags(args: argparse.Namespace) -> Path:
     if args.doctags:
         return args.doctags.resolve()
     doc_name = resolve_doc_name(args, primary_flag="--doctags")
-    return project_root() / "data" / "output_files" / doc_name / f"{doc_name}_reordered.doctags"
+    return project_root() / "data" / "output_files_preprocessing" / doc_name / f"{doc_name}_reordered.doctags"
 
 
 def resolve_tables_dir(args: argparse.Namespace, doctags_path: Path) -> Path:

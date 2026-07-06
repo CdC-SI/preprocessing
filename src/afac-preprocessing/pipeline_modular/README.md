@@ -22,7 +22,7 @@ Pipeline de prétraitement PDF en 13 étapes : extraction Docling, enrichissemen
 
 **Sortie par document :**
 ```
-data/output_files/<doc_name>/
+data/output_files_preprocessing/<doc_name>/
 ├── <doc>.doctags / .json / .md / .txt           ← step 01
 ├── <doc>_reordered.doctags                      ← step 02
 ├── <doc>_reordered_with_tables.doctags          ← step 05
@@ -140,7 +140,7 @@ uv run python pipeline_modular/simple_extraction/pipeline_multietape_modular.py 
 # Commande complète avec tous les paramètres
 uv run python pipeline_modular/simple_extraction/pipeline_multietape_modular.py \
   --input      data/input_files/MonDoc.pdf \
-  --output-dir ./data/output_files/MonDoc \
+  --output-dir ./data/output_files_preprocessing/MonDoc \
   --formats    json md txt doctags \
   --lang       fr en \
   --threads    4 \
@@ -166,7 +166,7 @@ uv run python pipeline_modular/simple_extraction/pipeline_multietape_modular.py 
 | Paramètre | Alias | Défaut | Description |
 |-----------|-------|--------|-------------|
 | `--input` | `-i` | *(voir note)* | Chemin vers le PDF à traiter. |
-| `--output-dir` | `-o` | `data/output_files/<nom_doc>/` | Dossier de sortie. Créé automatiquement. |
+| `--output-dir` | `-o` | `data/output_files_preprocessing/<nom_doc>/` | Dossier de sortie. Créé automatiquement. |
 | `--formats` | `-f` | tous | Formats parmi `json md txt doctags`. |
 | `--lang` | `-l` | `fr` | Code(s) de langue EasyOCR. Ex. `fr en ar`. |
 | `--threads` | `-t` | `4` | Threads CPU alloués à Docling. |
@@ -206,7 +206,7 @@ uv run python pipeline_modular/simple_extraction/reordered_doctags_modular.py --
 
 # Chemin explicite
 uv run python pipeline_modular/simple_extraction/reordered_doctags_modular.py \
-  --input data/output_files/MonDoc/MonDoc.doctags
+  --input data/output_files_preprocessing/MonDoc/MonDoc.doctags
 ```
 
 ## Paramètres
@@ -217,7 +217,7 @@ uv run python pipeline_modular/simple_extraction/reordered_doctags_modular.py \
 | `--output` | `-o` | `<même dossier>/<stem>_reordered.doctags` | Fichier de sortie. |
 | `--dotenv` | | *(aucun)* | Fichier `.env` pour résoudre `DOC_NAME`. Ignoré si `--input` est fourni. |
 
-*Note : `--input` absent → résout `data/output_files/<DOC_NAME>/<DOC_NAME>.doctags`.*
+*Note : `--input` absent → résout `data/output_files_preprocessing/<DOC_NAME>/<DOC_NAME>.doctags`.*
 
 ## Logique de tri
 
@@ -243,8 +243,8 @@ uv run python pipeline_modular/simple_extraction/opencv_checker_modular.py --dot
 # Chemins explicites
 uv run python pipeline_modular/simple_extraction/opencv_checker_modular.py \
   --input    data/input_files/MonDoc.pdf \
-  --doctags  data/output_files/MonDoc/MonDoc.doctags \
-  --output-dir data/output_files/MonDoc/opencv_validation
+  --doctags  data/output_files_preprocessing/MonDoc/MonDoc.doctags \
+  --output-dir data/output_files_preprocessing/MonDoc/opencv_validation
 
 # DPI réduit pour validation rapide
 uv run python pipeline_modular/simple_extraction/opencv_checker_modular.py \
@@ -256,8 +256,8 @@ uv run python pipeline_modular/simple_extraction/opencv_checker_modular.py \
 | Paramètre | Alias | Défaut | Description |
 |-----------|-------|--------|-------------|
 | `--input` | `-i` | *(voir note)* | Chemin vers le PDF source. |
-| `--doctags` | `-d` | `data/output_files/<stem>/<stem>.doctags` | Fichier `.doctags`. |
-| `--output-dir` | `-o` | `data/output_files/<stem>/opencv_validation/` | Dossier de sortie PNG. |
+| `--doctags` | `-d` | `data/output_files_preprocessing/<stem>/<stem>.doctags` | Fichier `.doctags`. |
+| `--output-dir` | `-o` | `data/output_files_preprocessing/<stem>/opencv_validation/` | Dossier de sortie PNG. |
 | `--dpi` | | `300` | Résolution de rendu. |
 | `--dotenv` | | *(aucun)* | Fichier `.env` pour résoudre `DOC_NAME`. Ignoré si `--input` est fourni. |
 
@@ -281,7 +281,7 @@ Convertit les fichiers CSV extraits par `pipeline_multietape_modular.py` en JSON
 uv run python pipeline_modular/simple_extraction/csv_to_jsonlines_modular.py --dotenv .env.test
 
 uv run python pipeline_modular/simple_extraction/csv_to_jsonlines_modular.py \
-  --input-dir data/output_files/MonDoc/tables
+  --input-dir data/output_files_preprocessing/MonDoc/tables
 ```
 
 ## Paramètres
@@ -292,7 +292,7 @@ uv run python pipeline_modular/simple_extraction/csv_to_jsonlines_modular.py \
 | `--output-dir` | `-o` | même dossier que `--input-dir` | Dossier de sortie pour les `.jsonl`. |
 | `--dotenv` | | *(aucun)* | Fichier `.env` pour résoudre `DOC_NAME`. Ignoré si `--input-dir` est fourni. |
 
-*Note : `--input-dir` absent → résout `data/output_files/<DOC_NAME>/tables/`.*
+*Note : `--input-dir` absent → résout `data/output_files_preprocessing/<DOC_NAME>/tables/`.*
 
 **Détection automatique du header :** Docling peut produire des colonnes numériques (0, 1, 2…) quand le vrai header est dans la première ligne de données. Le script détecte ce cas et repositionne le header automatiquement.
 
@@ -308,8 +308,8 @@ Remplace chaque balise `<otsl>…</otsl>` d'un fichier `.doctags` par un bloc `<
 uv run python pipeline_modular/simple_extraction/load_jsonline_doctags_modular.py --dotenv .env.test
 
 uv run python pipeline_modular/simple_extraction/load_jsonline_doctags_modular.py \
-  --doctags    data/output_files/MonDoc/MonDoc_reordered.doctags \
-  --tables-dir data/output_files/MonDoc/tables
+  --doctags    data/output_files_preprocessing/MonDoc/MonDoc_reordered.doctags \
+  --tables-dir data/output_files_preprocessing/MonDoc/tables
 ```
 
 ## Paramètres
@@ -321,7 +321,7 @@ uv run python pipeline_modular/simple_extraction/load_jsonline_doctags_modular.p
 | `--output` | `-o` | `<même dossier>/<stem>_with_tables.doctags` | Fichier `.doctags` enrichi en sortie. |
 | `--dotenv` | | *(aucun)* | Fichier `.env` pour résoudre `DOC_NAME`. Ignoré si `--doctags` est fourni. |
 
-*Note : `--doctags` absent → résout `data/output_files/<DOC_NAME>/<DOC_NAME>_reordered.doctags`.*
+*Note : `--doctags` absent → résout `data/output_files_preprocessing/<DOC_NAME>/<DOC_NAME>_reordered.doctags`.*
 
 | Situation | Comportement |
 |-----------|-------------|
@@ -363,13 +363,13 @@ uv run python pipeline_modular/description_image/description_image_context_modul
 # Dossier d'images pré-extraites explicite
 uv run python pipeline_modular/description_image/description_image_context_modular.py \
   --dotenv .env.test --image-description \
-  --preextracted-images-dir data/output_files/MonDoc/used_images
+  --preextracted-images-dir data/output_files_preprocessing/MonDoc/used_images
 
 # Chemins explicites + tuning
 uv run python pipeline_modular/description_image/description_image_context_modular.py \
-  --doctags    data/output_files/MonDoc/MonDoc_reordered_with_tables.doctags \
+  --doctags    data/output_files_preprocessing/MonDoc/MonDoc_reordered_with_tables.doctags \
   --pdf        data/input_files/MonDoc.pdf \
-  --output     data/output_files/MonDoc/MonDoc_reordered_with_tables_pictures.doctags \
+  --output     data/output_files_preprocessing/MonDoc/MonDoc_reordered_with_tables_pictures.doctags \
   --workers    4 --timeout 60 --dpi 200 --n-before 3 --n-after 3 \
   --image-description --dotenv .env.test
 ```
@@ -394,7 +394,7 @@ uv run python pipeline_modular/description_image/description_image_context_modul
 | `--log-level` | | `INFO` | Niveau de log. |
 | `--dotenv` | | *(aucun)* | Fichier `.env` pour VLM et `DOC_NAME`. |
 
-*Note : `--doctags` absent → `data/output_files/<DOC_NAME>/<DOC_NAME>_reordered_with_tables.doctags`. `--pdf` absent → `data/input_files/<DOC_NAME>.pdf`.*
+*Note : `--doctags` absent → `data/output_files_preprocessing/<DOC_NAME>/<DOC_NAME>_reordered_with_tables.doctags`. `--pdf` absent → `data/input_files/<DOC_NAME>.pdf`.*
 
 | Situation | Comportement |
 |-----------|-------------|
@@ -411,7 +411,7 @@ uv run python pipeline_modular/description_image/description_image_context_modul
 
 Script autonome dans `docling_image_png/` pour comparer visuellement les deux méthodes d'extraction d'images côte à côte. Ne fait pas partie du pipeline principal.
 
-Produit dans `data/output_files/<doc>/image_comparison/` :
+Produit dans `data/output_files_preprocessing/<doc>/image_comparison/` :
 - `docling_images/` — PNG extraits via Docling (`pil_image`, `generate_picture_images=True`)
 - `fitz_images/` — PNG croppés via PyMuPDF depuis les coordonnées doctags
 
@@ -453,7 +453,7 @@ uv run python pipeline_modular/simple_extraction/url_extaction_modular.py \
 | Paramètre | Alias | Défaut | Description |
 |-----------|-------|--------|-------------|
 | `--input` | `-i` | *(voir note)* | Chemin vers le PDF source. |
-| `--output` | `-o` | `data/output_files/<stem>/hyperlinks_data_<stem>.jsonl` | Fichier JSONL de sortie. |
+| `--output` | `-o` | `data/output_files_preprocessing/<stem>/hyperlinks_data_<stem>.jsonl` | Fichier JSONL de sortie. |
 | `--dotenv` | | *(aucun)* | Fichier `.env` pour résoudre `DOC_NAME`. Ignoré si `--input` est fourni. |
 
 *Note : `--input` absent → résout `data/input_files/<DOC_NAME>.pdf`.*
@@ -487,9 +487,9 @@ uv run python pipeline_modular/simple_extraction/url_tuning_vlm_modular.py --dot
 
 uv run python pipeline_modular/simple_extraction/url_tuning_vlm_modular.py \
   --input    data/input_files/MonDoc.pdf \
-  --doctags  data/output_files/MonDoc/MonDoc_reordered_with_tables_pictures.doctags \
-  --jsonl    data/output_files/MonDoc/hyperlinks_data_MonDoc.jsonl \
-  --output   data/output_files/MonDoc/MonDoc_url_vlm.doctags \
+  --doctags  data/output_files_preprocessing/MonDoc/MonDoc_reordered_with_tables_pictures.doctags \
+  --jsonl    data/output_files_preprocessing/MonDoc/hyperlinks_data_MonDoc.jsonl \
+  --output   data/output_files_preprocessing/MonDoc/MonDoc_url_vlm.doctags \
   --workers  1 --dotenv .env.test
 ```
 
@@ -531,7 +531,7 @@ Convertit un fichier `.doctags` enrichi en Markdown via Docling, **page par page
 uv run python pipeline_modular/simple_extraction/docling_markdown_converter_modular.py --dotenv .env.test
 
 uv run python pipeline_modular/simple_extraction/docling_markdown_converter_modular.py \
-  --input data/output_files/MonDoc/MonDoc_url_vlm.doctags
+  --input data/output_files_preprocessing/MonDoc/MonDoc_url_vlm.doctags
 ```
 
 ## Paramètres
@@ -543,11 +543,11 @@ uv run python pipeline_modular/simple_extraction/docling_markdown_converter_modu
 | `--suffix` | `-s` | `_url_vlm` | Suffixe ajouté au nom du `.doctags` résolu auto. Ex. `_url_vlm` → `<DOC_NAME>_url_vlm.doctags`. Ignoré si `--input` est fourni. |
 | `--dotenv` | | *(aucun)* | Fichier `.env` pour résoudre `DOC_NAME`. Ignoré si `--input` est fourni. |
 
-*Note : `--input` absent → résout `data/output_files/<DOC_NAME>/<DOC_NAME><suffix>.doctags`. Par défaut (suffix `_url_vlm`) : `<DOC_NAME>_url_vlm.doctags`.*
+*Note : `--input` absent → résout `data/output_files_preprocessing/<DOC_NAME>/<DOC_NAME><suffix>.doctags`. Par défaut (suffix `_url_vlm`) : `<DOC_NAME>_url_vlm.doctags`.*
 
 **Sorties :**
 ```
-data/output_files/MonDoc/
+data/output_files_preprocessing/MonDoc/
 ├── MonDoc_url_vlm.doctags    ← entrée (par défaut)
 └── MonDoc_url_vlm.md         ← sortie
 ```
@@ -576,8 +576,8 @@ uv run python pipeline_modular/simple_extraction/markdown_control_vlm_modular.py
 
 uv run python pipeline_modular/simple_extraction/markdown_control_vlm_modular.py \
   --input    data/input_files/MonDoc.pdf \
-  --markdown data/output_files/MonDoc/MonDoc_url_vlm.md \
-  --output   data/output_files/MonDoc/MonDoc_vlm_check.md \
+  --markdown data/output_files_preprocessing/MonDoc/MonDoc_url_vlm.md \
+  --output   data/output_files_preprocessing/MonDoc/MonDoc_vlm_check.md \
   --workers  2 --dpi 150 --dotenv .env.test
 ```
 
@@ -618,9 +618,9 @@ Si `--no-image-description` a été utilisé à l'étape 06 (aucun marqueur, auc
 uv run python pipeline_modular/simple_extraction/inject_image_descriptions_modular.py --dotenv .env.test
 
 uv run python pipeline_modular/simple_extraction/inject_image_descriptions_modular.py \
-  --markdown      data/output_files/MonDoc/MonDoc_vlm_check.md \
-  --descriptions  data/output_files/MonDoc/MonDoc_image_descriptions.md \
-  --output        data/output_files/MonDoc/MonDoc_final.md
+  --markdown      data/output_files_preprocessing/MonDoc/MonDoc_vlm_check.md \
+  --descriptions  data/output_files_preprocessing/MonDoc/MonDoc_image_descriptions.md \
+  --output        data/output_files_preprocessing/MonDoc/MonDoc_final.md
 ```
 
 ## Paramètres
@@ -645,12 +645,53 @@ uv run python pipeline_modular/simple_extraction/inject_image_descriptions_modul
 
 ---
 
+# Script markdown_tables_to_jsonl_modular.py — Tables Markdown → JSONL *(pipeline v3 uniquement)*
+
+Utilisé par `fullpipeline_modular_v3.py` (étape 09) — sans équivalent dans v2, qui convertit
+les tables en JSONL bien plus tôt (étape 04, `csv_to_jsonlines_modular.py`, avant toute
+correction VLM). Ce script-ci lit les tables markdown natives **après** correction VLM
+(`_final.md`), gère l'artefact d'en-tête dupliqué en frontière de page (correction VLM
+page par page qui réémet la ligne d'en-tête sans nouveau séparateur `|---|---|`), et produit
+deux sorties indépendantes à partir du même parsing :
+- **Traçabilité** (toujours) : un `.jsonl` par table détectée, dans `tables_markdown/` à
+  côté du markdown source — n'affecte jamais le markdown utilisé pour l'embedding.
+- **Embedding** (`--embed-output`) : réécrit le document entier avec les tables remplacées
+  par leurs lignes JSONL (ex. `<doc>_final_embed.md`) — `metadata_generation_modular.py`
+  préfère ce fichier à `_final.md` s'il existe.
+
+## Commandes types
+
+```bash
+uv run python pipeline_modular/simple_extraction/markdown_tables_to_jsonl_modular.py \
+  --markdown data/output_files_v3/MonDoc/MonDoc_final.md
+
+uv run python pipeline_modular/simple_extraction/markdown_tables_to_jsonl_modular.py \
+  --dotenv .env.test --stage5 data/output_files_v3 \
+  --embed-output data/output_files_v3/MonDoc/MonDoc_final_embed.md
+```
+
+## Paramètres
+
+| Paramètre | Alias | Défaut | Description |
+|-----------|-------|--------|-------------|
+| `--doc-name` | | *(voir note)* | Nom du document sans extension. |
+| `--stage5` | | `data/output_files_preprocessing/` | Racine de sortie (contient `<doc_name>/<doc_name>_final.md`). Sans effet en pratique dans `fullpipeline_modular_v3.py`, qui passe toujours `--markdown`/`--embed-output` explicitement. |
+| `--markdown` | `-m` | `<stage5>/<doc_name>/<doc_name>_final.md` | Chemin explicite vers le markdown à parser. |
+| `--output-dir` | `-o` | `<dossier du markdown>/tables_markdown/` | Dossier de sortie des `.jsonl` (traçabilité). |
+| `--embed-output` | | *(aucun)* | Si fourni, écrit aussi le document entier (tables → JSONL) à ce chemin. |
+| `--dotenv` | | *(aucun)* | Fichier `.env` pour résoudre `DOC_NAME`. |
+| `--log-level` | | `INFO` | Niveau de log. |
+
+*Note : `--doc-name` absent → résout `DOC_NAME` depuis `--dotenv` ou l'environnement.*
+
+---
+
 # Script metadata_generation_modular.py — Génération des métadonnées (étape 12)
 
 Orchestre la génération complète des métadonnées pour un document : appelle `enhancement_metadata_modular.py` (résumé, intents, hyq) et `embedding_metadata_modular.py` (vecteur d'embedding), assemble le bloc de métadonnées structurées et écrit le CSV final.
 
-**Lit depuis :** stages 1–11 dans `data/output_files/<doc_name>/`  
-**Écrit dans :** `data/output_files/<doc_name>/metadata/`
+**Lit depuis :** stages 1–11 dans `data/output_files_preprocessing/<doc_name>/`  
+**Écrit dans :** `data/output_files_preprocessing/<doc_name>/metadata/`
 
 ## Commandes types
 
@@ -658,7 +699,7 @@ Orchestre la génération complète des métadonnées pour un document : appelle
 uv run python pipeline_modular/metadata/metadata_generation_modular.py --dotenv .env.test
 
 uv run python pipeline_modular/metadata/metadata_generation_modular.py \
-  --dotenv .env.test --doc-path "Taxation/DISPENSE/Annulation d'une dispense.pdf"
+  --dotenv .env.test --doc-path "afac/Taxation/DISPENSE/Annulation d'une dispense.pdf"
 ```
 
 ## Paramètres
@@ -666,15 +707,15 @@ uv run python pipeline_modular/metadata/metadata_generation_modular.py \
 | Paramètre | Alias | Défaut | Description |
 |-----------|-------|--------|-------------|
 | `--dotenv` | | *(aucun)* | Fichier `.env` à charger (`DOC_NAME`, `VLM_URL`, `EMBEDDING_URL`, `VLM_CA_PEM`, …). |
-| `--doc-path` | | `<DOC_NAME>.pdf` | Chemin relatif dans `folder_source` pour la hiérarchie (ex. `Taxation/MonDoc.pdf`). Si absent, structure plate. |
-| `--folder-source` | | `metadata/folder_source/` | Racine de la hiérarchie documentaire. |
-| `--stage1` à `--stage5` | | `data/output_files/` | Dossier racine des sorties par stage. Par défaut tous pointent vers `output_files/`. |
-| `--output` | | `output_files/<doc>/metadata/<doc>_final.csv` | Fichier CSV de sortie. |
+| `--doc-path` | | `<DOC_NAME>.pdf` | Chemin relatif dans `folder_source` pour la hiérarchie, **premier segment = source** (ex. `afac/Taxation/MonDoc.pdf` → source `"afac"`). Si absent ou à plat (un seul segment, ou chemin absolu), source retombe sur `"afac"`. |
+| `--folder-source` | | `data/input_files/` | Racine de la hiérarchie documentaire — réutilise directement l'arborescence d'entrée, pas de dossier miroir séparé. |
+| `--stage1` à `--stage5` | | `data/output_files_preprocessing/` | Dossier racine des sorties par stage. Par défaut tous pointent vers `output_files_preprocessing/`. |
+| `--output` | | `output_files_preprocessing/<doc>/metadata/<doc>_final.csv` | Fichier CSV de sortie. |
 | `--log-level` | | `INFO` | Niveau de log. |
 
 **Sorties :**
 ```
-data/output_files/<doc_name>/metadata/
+data/output_files_preprocessing/<doc_name>/metadata/
 ├── resume.md          ← résumé VLM
 ├── intent.json        ← liste d'intents
 ├── hyq.json           ← questions hypothétiques
@@ -696,7 +737,7 @@ Génère trois enrichissements via VLM à partir du Markdown final (`_final.md`)
 uv run python pipeline_modular/metadata/enhancement_metadata_modular.py --dotenv .env.test
 
 uv run python pipeline_modular/metadata/enhancement_metadata_modular.py \
-  --doc-name "MonDoc" --stage4 ./data/output_files --stage5 ./data/output_files
+  --doc-name "MonDoc" --stage4 ./data/output_files_preprocessing --stage5 ./data/output_files_preprocessing
 ```
 
 ## Paramètres
@@ -705,8 +746,8 @@ uv run python pipeline_modular/metadata/enhancement_metadata_modular.py \
 |-----------|-------|--------|-------------|
 | `--doc-name` | | *(voir note)* | Nom du document sans extension. |
 | `--dotenv` | | *(aucun)* | Fichier `.env` (`VLM_URL`, `VLM_CA_PEM`, `VLM_MODEL_NAME`, `DOC_NAME`). |
-| `--stage4` | | `data/output_files/` | Dossier racine stage 4 — lit `<stage4>/<doc>/<doc>_final.md`. |
-| `--stage5` | | `data/output_files/` | Dossier racine stage 5 — écrit dans `<stage5>/<doc>/metadata/`. |
+| `--stage4` | | `data/output_files_preprocessing/` | Dossier racine stage 4 — lit `<stage4>/<doc>/<doc>_final.md`. |
+| `--stage5` | | `data/output_files_preprocessing/` | Dossier racine stage 5 — écrit dans `<stage5>/<doc>/metadata/`. |
 | `--log-level` | | `INFO` | Niveau de log. |
 
 *Note : `--doc-name` absent → résout `DOC_NAME` depuis `--dotenv` ou l'environnement.*
@@ -723,7 +764,7 @@ Génère le vecteur d'embedding du Markdown final (`_final.md`) via un modèle d
 uv run python pipeline_modular/metadata/embedding_metadata_modular.py --dotenv .env.test
 
 uv run python pipeline_modular/metadata/embedding_metadata_modular.py \
-  --doc-name "MonDoc" --stage4 ./data/output_files --stage5 ./data/output_files
+  --doc-name "MonDoc" --stage4 ./data/output_files_preprocessing --stage5 ./data/output_files_preprocessing
 ```
 
 ## Paramètres
@@ -732,8 +773,8 @@ uv run python pipeline_modular/metadata/embedding_metadata_modular.py \
 |-----------|-------|--------|-------------|
 | `--doc-name` | | *(voir note)* | Nom du document sans extension. |
 | `--dotenv` | | *(aucun)* | Fichier `.env` (`EMBEDDING_URL`, `VLM_CA_PEM`, `EMBEDDING_MODEL_NAME`, `DOC_NAME`). |
-| `--stage4` | | `data/output_files/` | Dossier racine stage 4 — lit `<stage4>/<doc>/<doc>_final.md`. |
-| `--stage5` | | `data/output_files/` | Dossier racine stage 5 — écrit `<stage5>/<doc>/metadata/embedding.json`. |
+| `--stage4` | | `data/output_files_preprocessing/` | Dossier racine stage 4 — lit `<stage4>/<doc>/<doc>_final.md`. |
+| `--stage5` | | `data/output_files_preprocessing/` | Dossier racine stage 5 — écrit `<stage5>/<doc>/metadata/embedding.json`. |
 | `--log-level` | | `INFO` | Niveau de log. |
 
 *Note : `--doc-name` absent → résout `DOC_NAME` depuis `--dotenv` ou l'environnement.*
@@ -760,14 +801,14 @@ uv run python pipeline_modular/metadata/hyq_embedding_doc_modular.py \
 | `--dotenv` | | *(aucun)* | Fichier `.env` (`EMBEDDING_URL`, `VLM_CA_PEM`, `EMBEDDING_MODEL_NAME`, `DOC_NAME`). |
 | `--doc-name` | | *(voir note)* | Nom du document sans extension. |
 | `--doc-title` | | `<DOC_NAME>.pdf` | Titre avec extension — stocké dans le champ `METADATA` de chaque CSV. |
-| `--stage5` | | `data/output_files/` | Dossier racine stage 5 — lit `<doc>/metadata/hyq.json`, écrit dans `<doc>/metadata/hyq_<doc>/`. |
+| `--stage5` | | `data/output_files_preprocessing/` | Dossier racine stage 5 — lit `<doc>/metadata/hyq.json`, écrit dans `<doc>/metadata/hyq_<doc>/`. |
 | `--log-level` | | `INFO` | Niveau de log. |
 
 *Note : `--doc-name` absent → résout `DOC_NAME` depuis `--dotenv` ou l'environnement.*
 
 **Sorties :**
 ```
-data/output_files/<doc_name>/metadata/hyq_<doc_name>/
+data/output_files_preprocessing/<doc_name>/metadata/hyq_<doc_name>/
 ├── question_1.csv
 ├── question_2.csv
 └── ...

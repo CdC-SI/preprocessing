@@ -12,9 +12,9 @@ Usage :
     uv run python inject_image_descriptions_modular.py --input data/input_files/MonDoc.pdf
     uv run python inject_image_descriptions_modular.py --dotenv .env.test
     uv run python inject_image_descriptions_modular.py \\
-        --markdown data/output_files/MonDoc/MonDoc_vlm_check.md \\
-        --descriptions data/output_files/MonDoc/MonDoc_image_descriptions.md \\
-        --output data/output_files/MonDoc/MonDoc_final.md
+        --markdown data/output_files_preprocessing/MonDoc/MonDoc_vlm_check.md \\
+        --descriptions data/output_files_preprocessing/MonDoc/MonDoc_image_descriptions.md \\
+        --output data/output_files_preprocessing/MonDoc/MonDoc_final.md
 """
 from __future__ import annotations
 
@@ -193,9 +193,9 @@ def parse_args() -> argparse.Namespace:
             "  uv run python inject_image_descriptions_modular.py --input data/input_files/MonDoc.pdf\n"
             "  uv run python inject_image_descriptions_modular.py --dotenv .env.test\n"
             "  uv run python inject_image_descriptions_modular.py \\\n"
-            "      --markdown  data/output_files/MonDoc/MonDoc_vlm_check.md \\\n"
-            "      --descriptions data/output_files/MonDoc/MonDoc_image_descriptions.md \\\n"
-            "      --output data/output_files/MonDoc/MonDoc_final.md\n"
+            "      --markdown  data/output_files_preprocessing/MonDoc/MonDoc_vlm_check.md \\\n"
+            "      --descriptions data/output_files_preprocessing/MonDoc/MonDoc_image_descriptions.md \\\n"
+            "      --output data/output_files_preprocessing/MonDoc/MonDoc_final.md\n"
         ),
     )
     parser.add_argument(
@@ -208,19 +208,19 @@ def parse_args() -> argparse.Namespace:
         "--markdown", "-m",
         type=Path,
         default=None,
-        help="Markdown à traiter. Défaut : data/output_files/<stem>/<stem>_vlm_check.md",
+        help="Markdown à traiter. Défaut : data/output_files_preprocessing/<stem>/<stem>_vlm_check.md",
     )
     parser.add_argument(
         "--descriptions", "-d",
         type=Path,
         default=None,
-        help="Fichier _image_descriptions.md. Défaut : data/output_files/<stem>/<stem>_image_descriptions.md",
+        help="Fichier _image_descriptions.md. Défaut : data/output_files_preprocessing/<stem>/<stem>_image_descriptions.md",
     )
     parser.add_argument(
         "--output", "-o",
         type=Path,
         default=None,
-        help="Markdown de sortie. Défaut : data/output_files/<stem>/<stem>_final.md",
+        help="Markdown de sortie. Défaut : data/output_files_preprocessing/<stem>/<stem>_final.md",
     )
     parser.add_argument(
         "--dotenv",
@@ -247,19 +247,19 @@ def _resolve_stem(args: argparse.Namespace) -> str:
 def _resolve_markdown(args: argparse.Namespace, stem: str) -> Path:
     if args.markdown:
         return args.markdown.resolve()
-    return project_root() / "data" / "output_files" / stem / f"{stem}_vlm_check.md"
+    return project_root() / "data" / "output_files_preprocessing" / stem / f"{stem}_vlm_check.md"
 
 
 def _resolve_descriptions(args: argparse.Namespace, stem: str) -> Path:
     if args.descriptions:
         return args.descriptions.resolve()
-    return project_root() / "data" / "output_files" / stem / f"{stem}_image_descriptions.md"
+    return project_root() / "data" / "output_files_preprocessing" / stem / f"{stem}_image_descriptions.md"
 
 
 def _resolve_output(args: argparse.Namespace, stem: str) -> Path:
     if args.output:
         return args.output.resolve()
-    return project_root() / "data" / "output_files" / stem / f"{stem}_final.md"
+    return project_root() / "data" / "output_files_preprocessing" / stem / f"{stem}_final.md"
 
 
 def main() -> None:

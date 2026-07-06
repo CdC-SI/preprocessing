@@ -27,14 +27,25 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from utils.vlm_client import VlmConfig
+    from openai import AsyncOpenAI
 
 import fitz  # PyMuPDF
-import httpx
 
+from prompts.prompts import VLM_PROMPT_STAGE4_CHECK_PAGE_EN, VLM_PROMPT_STAGE4_CHECK_PAGE_EN_V3
 from utils.paths import project_root, load_env, resolve_doc_name, resolve_input_pdf
+from utils.vlm_client import (
+    build_async_client,
+    build_vlm_config,
+    check_vlm_connectivity_async,
+    vision_completion_async,
+)
 
 _log = logging.getLogger(__name__)
+
+PROMPT_VARIANTS = {
+    "v2": VLM_PROMPT_STAGE4_CHECK_PAGE_EN,     # tables JSON lines (post load_jsonline_doctags)
+    "v3": VLM_PROMPT_STAGE4_CHECK_PAGE_EN_V3,  # tables Markdown natives (| col | col |)
+}
 
 
 class _JsonFormatter(logging.Formatter):
@@ -52,11 +63,6 @@ class _JsonFormatter(logging.Formatter):
         return json.dumps(entry, ensure_ascii=False)
 
 
-_MAX_RETRIES = 3
-_RETRY_DELAYS: tuple[int, ...] = (1, 2)  # seconds between attempts (len == _MAX_RETRIES - 1)
-_DOCLING_TIMEOUT = 300  # max seconds for Docling doctags → markdown conversion before aborting
-
-
 def _strip_code_fences(text: str) -> str:
     """Strip opening/closing code fences that Qwen sometimes wraps around its output.
 
@@ -66,15 +72,6 @@ def _strip_code_fences(text: str) -> str:
     text = re.sub(r"^```[a-zA-Z]*\s*\n", "", text)
     text = re.sub(r"\n```\s*$", "", text)
     return text.strip()
-
-
-def _should_retry(exc: Exception) -> bool:
-    """Retourne True si l'erreur est transitoire et justifie un réessai."""
-    if isinstance(exc, httpx.TimeoutException):
-        return True
-    if isinstance(exc, httpx.HTTPStatusError):
-        return exc.response.status_code >= 500 or exc.response.status_code == 429
-    return False
 
 
 def _pdf_page_count(pdf_path: Path) -> int:
@@ -124,32 +121,27 @@ async def process_page(
     page_markdown: str,
     pdf_path: Path,
     semaphore: asyncio.Semaphore,
-    client: httpx.AsyncClient,
-    vlm_cfg: VlmConfig,
+    client: AsyncOpenAI,
+    model_name: str,
     prompt_template: str,
     dpi: int = 150,
-    max_retries: int = _MAX_RETRIES,
-    retry_delays: tuple[int, ...] = _RETRY_DELAYS,
 ) -> tuple[int, str]:
     """
     Traite une page : envoie son image + son markdown au VLM et récupère la correction.
-    Tente jusqu'à max_retries fois sur erreur HTTP ou timeout transitoire.
+    Le retry sur erreur transitoire est géré par le client OpenAI (max_retries, cf.
+    utils.vlm_client.build_async_client) — plus de boucle manuelle ici.
 
     :param page_num: numéro de page (1-based)
     :param total_pages: nombre total de pages du PDF
     :param page_markdown: markdown de cette page uniquement (extrait depuis les doctags)
     :param pdf_path: chemin vers le PDF original
     :param semaphore: sémaphore de limitation de concurrence
-    :param client: client HTTP partagé
-    :param vlm_cfg: configuration VLM
+    :param client: client OpenAI partagé
+    :param model_name: nom du modèle VLM
     :param prompt_template: template du prompt à formater
     :param dpi: résolution de rendu de la page PDF
-    :param max_retries: nombre maximum de tentatives VLM (injectable pour les tests)
-    :param retry_delays: délais en secondes entre les tentatives (injectable pour les tests)
     :return: (numéro de page, markdown corrigé pour cette page)
     """
-    from utils.vlm_client import call_vlm_async
-
     async with semaphore:
         _log.info("Traitement page %d/%d ...", page_num, total_pages)
 
@@ -165,30 +157,13 @@ async def process_page(
             page_markdown=page_markdown,
         )
 
-        for attempt in range(1, max_retries + 1):
-            try:
-                result = await call_vlm_async(client, vlm_cfg, image_b64, prompt)
-                _log.info("Page %d/%d traitée.", page_num, total_pages)
-                return page_num, _strip_code_fences(result)
-            except (httpx.HTTPStatusError, httpx.TimeoutException) as e:
-                if not _should_retry(e):
-                    # 4xx client error: inutile de réessayer
-                    _log.exception("Page %d : erreur client HTTP %s, pas de réessai.", page_num, e)
-                    return page_num, ""
-                if attempt == max_retries:
-                    _log.exception("Page %d : échec après %d tentatives.", page_num, max_retries)
-                    return page_num, ""
-                delay = retry_delays[attempt - 1]
-                _log.warning(
-                    "Page %d : tentative %d/%d échouée (%s), réessai dans %ds...",
-                    page_num, attempt, max_retries, e, delay,
-                )
-                await asyncio.sleep(delay)
-            except Exception as e:
-                _log.exception("Erreur VLM page %d : %s", page_num, e)
-                return page_num, ""
-
-        return page_num, ""  # jamais atteint, satisfait le type checker
+        try:
+            result = await vision_completion_async(client, model_name, prompt, image_b64)
+            _log.info("Page %d/%d traitée.", page_num, total_pages)
+            return page_num, _strip_code_fences(result)
+        except Exception as e:
+            _log.exception("Erreur VLM page %d : %s", page_num, e)
+            return page_num, ""
 
 
 # Pipeline principal
@@ -198,7 +173,8 @@ async def run(
     md_path: Path,
     max_workers: int = 1,
     dpi: int = 150,
-    vlm_cfg: VlmConfig | None = None,
+    dotenv_path: Path | None = None,
+    prompt_template: str | None = None,
 ) -> None:
     """
     Traite le document page par page.
@@ -211,64 +187,70 @@ async def run(
     :param md_path: chemin vers le fichier .md paginé produit par stage 09
     :param max_workers: nombre de requêtes VLM simultanées
     :param dpi: résolution de rendu des pages PDF
-    :param vlm_cfg: configuration VLM (injectable pour les tests ; sinon construite depuis l'environnement)
+    :param dotenv_path: fichier .env pour la config VLM (avant ce correctif, build_vlm_config()
+        était appelé sans dotenv_path ici et ignorait donc silencieusement --dotenv — ne
+        fonctionnait que par effet de bord via os.environ déjà peuplé plus tôt dans main())
+    :param prompt_template: template de prompt à formater par page (défaut : VLM_PROMPT_STAGE4_CHECK_PAGE_EN, cf. --prompt-variant)
     """
-    from utils.vlm_client import build_vlm_config, check_vlm_connectivity
-    from prompts.prompts import VLM_PROMPT_STAGE4_CHECK_PAGE_EN
+    if prompt_template is None:
+        prompt_template = VLM_PROMPT_STAGE4_CHECK_PAGE_EN
 
-    if vlm_cfg is None:
-        vlm_cfg = build_vlm_config()
+    vlm_cfg = build_vlm_config(dotenv_path=dotenv_path)
+    client = build_async_client(vlm_cfg, timeout=180)
 
-    async with httpx.AsyncClient(verify=vlm_cfg.ca_path, timeout=180) as client:
-        if not await check_vlm_connectivity(client, vlm_cfg):
-            raise RuntimeError("VLM inaccessible, arrêt du pipeline.")
-        _log.info("PDF      : %s", pdf_path)
-        _log.info("Markdown : %s", md_path)
-        _log.info("Sortie   : %s", output_path)
-        _log.info("Workers  : %d", max_workers)
-        _log.info("DPI      : %d", dpi)
+    if not await check_vlm_connectivity_async(client, vlm_cfg.vlm_model_name):
+        raise RuntimeError("VLM inaccessible, arrêt du pipeline.")
+    _log.info("PDF      : %s", pdf_path)
+    _log.info("Markdown : %s", md_path)
+    _log.info("Sortie   : %s", output_path)
+    _log.info("Workers  : %d", max_workers)
+    _log.info("DPI      : %d", dpi)
 
-        page_markdowns = load_page_markdowns(md_path)
-        total_pages = len(page_markdowns)
+    page_markdowns = load_page_markdowns(md_path)
+    total_pages = len(page_markdowns)
 
-        pdf_page_count = await asyncio.to_thread(_pdf_page_count, pdf_path)
-        if pdf_page_count != total_pages:
-            raise RuntimeError(
-                f"Incohérence : {total_pages} page(s) dans le markdown mais "
-                f"{pdf_page_count} page(s) dans le PDF ({pdf_path.name}). "
-                f"Relancez stage 09 pour régénérer {md_path.name} avec les séparateurs <!-- page-break -->."
-            )
+    pdf_page_count = await asyncio.to_thread(_pdf_page_count, pdf_path)
+    if pdf_page_count != total_pages:
+        raise RuntimeError(
+            f"Incohérence : {total_pages} page(s) dans le markdown mais "
+            f"{pdf_page_count} page(s) dans le PDF ({pdf_path.name}). "
+            f"Relancez stage 09 pour régénérer {md_path.name} avec les séparateurs <!-- page-break -->."
+        )
 
-        _log.info("%d page(s) à contrôler.", total_pages)
+    _log.info("%d page(s) à contrôler.", total_pages)
 
-        semaphore = asyncio.Semaphore(max_workers)
-        tasks = [
-            process_page(
-                page_num=p,
-                total_pages=total_pages,
-                page_markdown=page_markdowns[p - 1],
-                pdf_path=pdf_path,
-                semaphore=semaphore,
-                client=client,
-                vlm_cfg=vlm_cfg,
-                prompt_template=VLM_PROMPT_STAGE4_CHECK_PAGE_EN,
-                dpi=dpi,
-            )
-            for p in range(1, total_pages + 1)
-        ]
+    semaphore = asyncio.Semaphore(max_workers)
+    tasks = [
+        process_page(
+            page_num=p,
+            total_pages=total_pages,
+            page_markdown=page_markdowns[p - 1],
+            pdf_path=pdf_path,
+            semaphore=semaphore,
+            client=client,
+            model_name=vlm_cfg.vlm_model_name,
+            prompt_template=prompt_template,
+            dpi=dpi,
+        )
+        for p in range(1, total_pages + 1)
+    ]
 
+    try:
         raw_results = await asyncio.gather(*tasks, return_exceptions=True)
-        results: list[tuple[int, str]] = []
-        for page_num_idx, r in enumerate(raw_results, 1):
-            if isinstance(r, BaseException):
-                _log.error(
-                    "Tâche page %d : exception inattendue.",
-                    page_num_idx,
-                    exc_info=r,
-                )
-                results.append((page_num_idx, ""))
-            else:
-                results.append(r)
+    finally:
+        await client.close()
+
+    results: list[tuple[int, str]] = []
+    for page_num_idx, r in enumerate(raw_results, 1):
+        if isinstance(r, BaseException):
+            _log.error(
+                "Tâche page %d : exception inattendue.",
+                page_num_idx,
+                exc_info=r,
+            )
+            results.append((page_num_idx, ""))
+        else:
+            results.append(r)
 
     results_sorted = sorted(results, key=lambda x: x[0])
     failed_pages = [p for p, content in results_sorted if not content.strip()]
@@ -309,7 +291,7 @@ def parse_args() -> argparse.Namespace:
             "Exemples :\n"
             "  uv run python markdown_control_vlm_modular.py \\\n"
             "      --input data/input_files/MonDoc.pdf \\\n"
-            "      --markdown data/output_files/MonDoc/MonDoc.md\n\n"
+            "      --markdown data/output_files_preprocessing/MonDoc/MonDoc.md\n\n"
             "  # Chemins résolus automatiquement depuis le stem du PDF :\n"
             "  uv run python markdown_control_vlm_modular.py --input data/input_files/MonDoc.pdf\n\n"
             "  # Via variable d'environnement DOC_NAME :\n"
@@ -331,7 +313,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help=(
             "Fichier Markdown paginé produit par stage 09. "
-            "Défaut : data/output_files/<stem>/<stem>.md"
+            "Défaut : data/output_files_preprocessing/<stem>/<stem>.md"
         ),
     )
     parser.add_argument(
@@ -340,7 +322,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help=(
             "Chemin du fichier Markdown de sortie. "
-            "Défaut : data/output_files/<stem>/<stem>_vlm_check.md"
+            "Défaut : data/output_files_preprocessing/<stem>/<stem>_vlm_check.md"
         ),
     )
     parser.add_argument(
@@ -355,6 +337,16 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=150,
         help="Résolution de rendu (DPI) des pages PDF envoyées au VLM. Défaut : 150.",
+    )
+    parser.add_argument(
+        "--prompt-variant",
+        choices=sorted(PROMPT_VARIANTS),
+        default="v2",
+        help=(
+            "v2 : tables JSON lines (pipeline avec load_jsonline_doctags_modular.py). "
+            "v3 : tables Markdown natives (| col | col |), pipeline sans conversion JSON. "
+            "Défaut : v2."
+        ),
     )
     parser.add_argument(
         "--suffix", "-s",
@@ -412,7 +404,7 @@ def resolve_markdown(args: argparse.Namespace, pdf_path: Path) -> Path:
     """
     Résout le chemin du fichier Markdown paginé produit par stage 09.
     Si --markdown est fourni, l'utilise directement.
-    Sinon, construit le chemin par défaut : data/output_files/<stem>/<stem>_url_vlm.md
+    Sinon, construit le chemin par défaut : data/output_files_preprocessing/<stem>/<stem>_url_vlm.md
 
     :param args: arguments parsés
     :param pdf_path: chemin vers le PDF résolu
@@ -421,14 +413,14 @@ def resolve_markdown(args: argparse.Namespace, pdf_path: Path) -> Path:
     if args.markdown:
         return args.markdown.resolve()
     stem = pdf_path.stem.strip()
-    return project_root() / "data" / "output_files" / stem / f"{stem}_url_vlm.md"
+    return project_root() / "data" / "output_files_preprocessing" / stem / f"{stem}_url_vlm.md"
 
 
 def resolve_output(args: argparse.Namespace, pdf_path: Path) -> Path:
     """
     Résout le chemin du fichier Markdown de sortie.
     Si --output est fourni, l'utilise directement.
-    Sinon, construit le chemin par défaut : data/output_files/<stem>/<stem>_vlm_check<suffix>.md
+    Sinon, construit le chemin par défaut : data/output_files_preprocessing/<stem>/<stem>_vlm_check<suffix>.md
 
     :param args: arguments parsés
     :param pdf_path: chemin vers le PDF résolu
@@ -438,7 +430,7 @@ def resolve_output(args: argparse.Namespace, pdf_path: Path) -> Path:
         return args.output.resolve()
     stem = pdf_path.stem.strip()
     suffix = getattr(args, "suffix", "")
-    return project_root() / "data" / "output_files" / stem / f"{stem}_vlm_check{suffix}.md"
+    return project_root() / "data" / "output_files_preprocessing" / stem / f"{stem}_vlm_check{suffix}.md"
 
 
 # Point d'entrée
@@ -481,6 +473,8 @@ def main() -> None:
             md_path=md_path,
             max_workers=args.workers,
             dpi=args.dpi,
+            dotenv_path=args.dotenv,
+            prompt_template=PROMPT_VARIANTS[args.prompt_variant],
         ))
     except RuntimeError as e:
         _log.exception("%s", e)

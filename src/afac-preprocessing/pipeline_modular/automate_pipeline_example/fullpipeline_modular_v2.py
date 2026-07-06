@@ -107,15 +107,24 @@ def parse_args() -> argparse.Namespace:
         metavar="N[,N...]",
         help="Comma-separated step numbers to skip, e.g. --skip-steps 3,6.",
     )
+    parser.add_argument(
+        "--no-ocr",
+        action="store_true",
+        help=(
+            "Forwarded to step 01 (pipeline_multietape_modular.py) only. Measured on this "
+            "corpus (born-digital PDFs, native text layer): identical extracted text, "
+            "3-4x faster than the default forced EasyOCR pass."
+        ),
+    )
     return parser.parse_args()
 
 
-def _run_step(step: int, script: Path, dotenv: Path) -> None:
+def _run_step(step: int, script: Path, dotenv: Path, extra_args: list[str] | None = None) -> None:
     print(f"\n{'=' * 60}")
     print(f"  Step {step:02d}/{_N:02d} — {script.name}")
     print(f"{'=' * 60}")
     result = subprocess.run(
-        [sys.executable, str(script), "--dotenv", str(dotenv)],
+        [sys.executable, str(script), "--dotenv", str(dotenv), *(extra_args or [])],
         stdout=sys.stdout,
         stderr=sys.stderr,
         text=True,
@@ -160,7 +169,8 @@ def main() -> None:
     print(f"Pipeline starting — steps {from_step}→{to_step}{skip_display} — dotenv: {dotenv}")
 
     for i, script in selected:
-        _run_step(i, script, dotenv)
+        extra_args = ["--no-ocr"] if (i == 1 and args.no_ocr) else None
+        _run_step(i, script, dotenv, extra_args)
 
     print(f"\n{'=' * 60}")
     print("  All steps completed successfully.")

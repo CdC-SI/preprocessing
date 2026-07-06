@@ -3,7 +3,7 @@
 Runs the full modular pipeline N times for the same document, setting GEN_ID=1..N
 each time. After each successful run, output files are snapshotted into:
 
-    data/output_files/<DOC_NAME>/gen_runs/gen_<N>/
+    data/output_files_preprocessing/<DOC_NAME>/gen_runs/gen_<N>/
 
 so you can diff outputs across generations and check VLM consistency.
 
@@ -196,7 +196,7 @@ def main() -> None:
             "Use --input <pdf> or set DOC_NAME in the .env file."
         )
 
-    output_dir = (_PROJECT_ROOT / "data" / "output_files" / doc_name).resolve()
+    output_dir = (_PROJECT_ROOT / "data" / "output_files_preprocessing" / doc_name).resolve()
     cmd = build_pipeline_cmd(args)
 
     step_range = (

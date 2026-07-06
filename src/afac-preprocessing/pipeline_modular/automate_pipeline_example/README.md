@@ -11,9 +11,11 @@ Ce dossier contient les scripts d'automatisation de haut niveau. Ils ne font auc
 | Script | Cas d'usage |
 |--------|-------------|
 | `fullpipeline_modular_v2.py` | **Recommandé** — pipeline complet (13 étapes), un document, contrôle fin |
+| `fullpipeline_modular_v3.py` | Variante v2 : tables markdown natives (pas de conversion JSON-lines), descriptions d'images activées par défaut. Sort dans `data/output_files_v3/`, jamais `data/output_files_preprocessing/`. Réutilise les questions HyQ déjà générées par v2 (v2 doit avoir tourné au préalable pour le document). |
 | `fullpipeline_modular.py` | Version simplifiée (12 étapes) — maintenu pour compatibilité, préférer v2 |
-| `batch_pipeline_all_pdfs.py` | Traitement automatique de **tous les PDFs** sous `data/input_files/` ou un sous-dossier ciblé (`--input-dir`) |
+| `batch_pipeline_all_pdfs.py` | Traitement automatique de **tous les PDFs** sous `data/input_files/` ou un sous-dossier ciblé (`--input-dir`) — v2 uniquement, pas de batch runner dédié pour v3 (boucle shell, cf. son fichier). |
 | `multi_gen_consistency_test.py` | Test de cohérence — même document, **N générations** successives (GEN_ID = 1..N) |
+| `audit_pipeline_output.py` | Contrôle santé read-only d'un arbre de sortie (`--stage5 data/output_files_preprocessing`, `_v3`, `_baseline`, ...) — détecte les documents où une étape a échoué silencieusement (marqueurs `[[[IMAGE_DESC:N]]]` non remplacés, `_final.md` vide/absent, etc.). Ne modifie rien. |
 
 ## Démarrage rapide
 
@@ -217,12 +219,12 @@ Pour chaque génération `N` :
 1. `GEN_ID="N"` est écrit dans le fichier `.env` (remplace la valeur existante).
 2. `GEN_ID=N` est injecté dans l'environnement du sous-processus — `load_dotenv` ne l'écrasera pas.
 3. `fullpipeline_modular_v2.py` est lancé avec tous les paramètres forwarded.
-4. Les fichiers produits dans `data/output_files/<DOC_NAME>/` sont copiés dans `gen_runs/gen_<N>/`.
+4. Les fichiers produits dans `data/output_files_preprocessing/<DOC_NAME>/` sont copiés dans `gen_runs/gen_<N>/`.
 
 ## Structure des sorties
 
 ```
-data/output_files/
+data/output_files_preprocessing/
 ├── <DOC_NAME>/                     ← dernière génération (overwrite à chaque run)
 │   ├── <doc>_vlm_check.md
 │   ├── <doc>_final.md
@@ -289,15 +291,15 @@ uv run python pipeline_modular/automate_pipeline_example/multi_gen_consistency_t
 ```bash
 # Comparer le _vlm_check.md entre la génération 1 et la génération 2
 diff \
-  "data/output_files/Ahésion traitement_gen1/Ahésion traitement_vlm_check.md" \
-  "data/output_files/Ahésion traitement_gen2/Ahésion traitement_vlm_check.md"
+  "data/output_files_preprocessing/Ahésion traitement_gen1/Ahésion traitement_vlm_check.md" \
+  "data/output_files_preprocessing/Ahésion traitement_gen2/Ahésion traitement_vlm_check.md"
 
 # Comparer tous les _vlm_check.md entre toutes les générations
 for i in 2 3 4 5; do
   echo "=== gen_1 vs gen_$i ==="
   diff \
-    "data/output_files/Ahésion traitement_gen1/Ahésion traitement_vlm_check.md" \
-    "data/output_files/Ahésion traitement_gen${i}/Ahésion traitement_vlm_check.md" \
+    "data/output_files_preprocessing/Ahésion traitement_gen1/Ahésion traitement_vlm_check.md" \
+    "data/output_files_preprocessing/Ahésion traitement_gen${i}/Ahésion traitement_vlm_check.md" \
     | head -20
 done
 ```
@@ -308,11 +310,11 @@ done
 ============================================================
   MULTI-GENERATION SUMMARY
 ============================================================
-  gen 01  [OK ]  → data/output_files/MonDoc_gen1
-  gen 02  [OK ]  → data/output_files/MonDoc_gen2
+  gen 01  [OK ]  → data/output_files_preprocessing/MonDoc_gen1
+  gen 02  [OK ]  → data/output_files_preprocessing/MonDoc_gen2
   gen 03  [FAIL]
-  gen 04  [OK ]  → data/output_files/MonDoc_gen4
-  gen 05  [OK ]  → data/output_files/MonDoc_gen5
+  gen 04  [OK ]  → data/output_files_preprocessing/MonDoc_gen4
+  gen 05  [OK ]  → data/output_files_preprocessing/MonDoc_gen5
 
   Failed generations: [3]
 ============================================================
@@ -321,7 +323,7 @@ done
 | Situation | Comportement |
 |-----------|-------------|
 | Génération réussie + snapshot activé | Sorties copiées dans `gen_runs/gen_<N>/`, run précédent écrasé si même numéro |
-| Génération réussie + `--no-snapshot` | Sorties dans `data/output_files/<doc>/` seulement, pas de copie |
+| Génération réussie + `--no-snapshot` | Sorties dans `data/output_files_preprocessing/<doc>/` seulement, pas de copie |
 | Dossier de sortie introuvable après run | Warning dans les logs, snapshot ignoré pour cette génération |
 | Génération échouée | Aucun snapshot, passage à la suivante si `--continue-on-error`, arrêt sinon |
 | Toutes les générations échouées | `exit 1` |

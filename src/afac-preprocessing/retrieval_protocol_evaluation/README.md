@@ -10,7 +10,7 @@ Mesurer si le doc source associé à une question HyQ est retrouvé dans le top-
 
 Les métriques calculées :
 - **Recall@k** — le doc source est-il dans les k premiers résultats ?
-- **Precision@k**, **nDCG@k**, **MRR@k** — à implémenter dans une version future
+- **Precision@k**, **nDCG@k**, **MRR@k** — implémentées (cf. `metrics.py` et `evaluate_all_docs.py`)
 
 Avec plusieurs valeurs de k : `1, 3, 5, 10, 20`.
 
@@ -39,8 +39,8 @@ Le pipeline AFAC génère pour chaque document :
 
 | Fichier | Contenu |
 |---|---|
-| `<doc>_preprocessing/metadata/<doc>_final.csv` | `CONTENT \| METADATA \| EMBEDDING` du document |
-| `<doc>_preprocessing/metadata/hyq_<doc>/question_N.csv` | `CONTENT \| METADATA \| EMBEDDING` de la question HyQ N |
+| `<doc>/metadata/<doc>_final.csv` | `CONTENT \| METADATA \| EMBEDDING` du document |
+| `<doc>/metadata/hyq_<doc>/question_N.csv` | `CONTENT \| METADATA \| EMBEDDING` de la question HyQ N |
 
 L'embedding des questions et des documents est produit par le même modèle, ce qui rend la comparaison par similarité cosinus directement applicable.
 
@@ -50,12 +50,14 @@ L'embedding des questions et des documents est produit par le même modèle, ce 
 
 ```
 retrieval_protocol_evaluation/
-├── config.py        # Constantes : chemins, TOP_KS, suffixes des dossiers
-├── loaders.py       # Chargement des CSVs → objets Python + numpy arrays
-├── similarity.py    # Matrice de similarité cosinus + ranking
-├── metrics.py       # Recall@k — fonctions pures
-├── report.py        # Export CSV des résultats + graphiques matplotlib
-└── evaluate.py      # Entrypoint CLI (argparse)
+├── config.py            # Constantes : chemins, TOP_KS, suffixes des dossiers
+├── loaders.py           # Chargement des CSVs → objets Python + numpy arrays
+├── similarity.py        # Matrice de similarité cosinus + ranking
+├── metrics.py           # Recall/Precision/nDCG/MRR@k — fonctions pures
+├── reranker.py          # Wrapper API reranker (pipeline avec reranking)
+├── report.py            # Export CSV des résultats + graphiques matplotlib
+├── evaluate.py          # Entrypoint CLI (argparse) — un document à la fois
+└── evaluate_all_docs.py # Entrypoint CLI batch — tout le corpus, semantic + reranker, cf. §VII
 ```
 
 ### Flux de données
@@ -114,7 +116,7 @@ uv run python retrieval_protocol_evaluation/evaluate.py --doc-name "Adhésion tr
 ```bash
 uv run python retrieval_protocol_evaluation/evaluate.py \
   --doc-name "Adhésion traitement" \
-  --stage5 data/output_files \
+  --stage5 data/output_files_preprocessing \
   --output-dir data/evaluation_results \
   --top-ks 1,3,5,10,20 \
   --log-level DEBUG
@@ -123,7 +125,7 @@ uv run python retrieval_protocol_evaluation/evaluate.py \
 | Argument | Défaut | Description |
 |---|---|---|
 | `--doc-name` | *(requis)* | Nom du document sans extension |
-| `--stage5` | `data/output_files` | Dossier racine contenant les `*_preprocessing/` |
+| `--stage5` | `data/output_files_preprocessing` | Dossier racine, un sous-dossier par document (`<stage5>/<doc_name>/metadata/<doc>_final.csv`) |
 | `--output-dir` | `data/evaluation_results` | Dossier de sortie des résultats |
 | `--top-ks` | `1,3,5,10,20` | Valeurs de k séparées par des virgules |
 | `--question-idx` | *(toutes)* | Index 1-based pour tester une seule question |
@@ -186,21 +188,29 @@ data/evaluation_results/
 
 ---
 
-## VII. Passage à l'échelle — 136 documents
+## VII. Passage à l'échelle — tout le corpus
 
-Pour évaluer tous les documents AFAC en boucle :
+`evaluate_all_docs.py` fait déjà ça : il découvre tous les documents sous `--stage5`
+(un `<doc>_final.csv` + au moins une question HyQ suffit, cf. `discover_doc_names()`),
+calcule Recall/Precision/nDCG/MRR@k pour chacun avec **les deux pipelines** (sémantique
+seul, puis sémantique + reranker), et écrit un résumé global :
 
 ```bash
 # Depuis la racine du projet afac-preprocessing
-for doc in data/output_files/*_preprocessing; do
-    doc_name=$(basename "$doc" _preprocessing)
-    uv run python retrieval_protocol_evaluation/evaluate.py --doc-name "$doc_name"
-done
+uv run python retrieval_protocol_evaluation/evaluate_all_docs.py
 ```
 
-Ou via un script Python dédié qui itère sur `load_all_doc_embeddings()` et appelle `evaluate.py` (ou ses fonctions directement importées) pour chaque document.
+Sorties dans `--output-dir` (défaut `data/evaluation_results/`) :
+- `<doc>/evaluation_results.csv` + `evaluation_results_reranked.csv` — détail par document.
+- `<doc>/<métrique>_at_k.png` — courbes par document.
+- `global_summary.csv` — moyennes par doc, colonnes `sem_mean_<métrique>@<k>` et
+  `rer_mean_<métrique>@<k>` (c'est ce fichier que `single_retrieval_nopreprocessing/
+  compare_baseline_report.py` consomme pour comparer au docling brut).
+- `global_<métrique>@<k>_comparison.png`, `global_pipeline_comparison.png` — graphiques agrégés.
 
-**Complexité attendue :** 136 docs × ~10 questions = ~1 360 lignes dans le CSV final.
+`evaluate.py` (ce fichier plus haut) reste utile pour inspecter un document isolé en détail
+(`--question-idx` pour une seule question), mais `evaluate_all_docs.py` est l'outil à
+utiliser pour le corpus complet.
 
 ---
 
@@ -237,6 +247,8 @@ Recall@k global = moyenne sur toutes les questions évaluées.
 
 - [ ] Valider la qualité des questions HyQ générées (revue avec Kieran)
 - [ ] Confirmer la méthode de validation du dataset "Golden"
-- [ ] Implémenter Precision@k, nDCG@k, MRR@k (base déjà dans `test_reranker_embedding.py`)
-- [ ] Ajouter un script batch pour les 136 documents
-- [ ] Comparer plusieurs variantes : chunking, metadata enrichi, modèles d’embedding différents
+- [x] Implémenter Precision@k, nDCG@k, MRR@k — fait, cf. `metrics.py` + `evaluate_all_docs.py`
+- [x] Ajouter un script batch pour tout le corpus — fait, cf. `evaluate_all_docs.py` (§VII)
+- [ ] Comparer plusieurs variantes : chunking, metadata enrichi, modèles d'embedding différents
+      (cf. `single_retrieval_nopreprocessing/` pour la comparaison baseline docling brut vs
+      pipeline de prétraitement, déjà en place)

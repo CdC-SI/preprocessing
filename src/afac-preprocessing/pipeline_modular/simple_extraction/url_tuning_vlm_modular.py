@@ -21,102 +21,23 @@ import sys
 from pathlib import Path
 
 import fitz  # PyMuPDF
-import httpx
+from openai import AsyncOpenAI
 
-from prompts.prompts import VLM_PROMPT_CORRECTION_STAGE_3_EN
-from utils.config import load_vlm_config
+from prompts.prompts import VLM_PROMPT_CORRECTION_STAGE_3_EN, VLM_PROMPT_CORRECTION_STAGE_3_EN_V3
 from utils.paths import project_root, load_env, resolve_doc_name, resolve_input_pdf
+from utils.vlm_client import (
+    build_async_client,
+    build_vlm_config,
+    check_vlm_connectivity_async,
+    vision_completion_async,
+)
 
 _log = logging.getLogger(__name__)
 
-
-# Logique VLM
-async def call_vlm_async(
-    prompt: str,
-    image_b64: str,
-    *,
-    vlm_url: str,
-    vlm_model_name: str,
-    ca_path: str,
-) -> str:
-    """
-    Docstring for call_vlm_async
-    - Appelle le VLM de manière asynchrone en lui envoyant un prompt et une image encodée en base64,
-    et retourne la réponse textuelle du VLM.
-
-    :param prompt: Description
-    :type prompt: str
-    :param image_b64: Description
-    :type image_b64: str
-    :return: Description
-    :rtype: str
-    """
-    payload = {
-        "model": vlm_model_name,
-        "messages": [{
-            "role": "user",
-            "content": [
-                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_b64}"}},
-                {"type": "text", "text": prompt},
-            ],
-        }],
-        "max_tokens": 8192,
-        "chat_template_kwargs": {"enable_thinking": False}, # désactive le mode thinking Qwen3.5 (évite content=null)
-    }
-    _RETRYABLE = {429, 500, 502, 503, 504}
-    for attempt in range(1, 4):
-        async with httpx.AsyncClient(verify=ca_path, timeout=120) as client:
-            try:
-                resp = await client.post(vlm_url, json=payload)
-                resp.raise_for_status()
-                data = resp.json()
-                message = data["choices"][0]["message"]
-                content = message.get("content")
-                if content is not None:
-                    return content.strip()
-                _log.warning("content=null, full message: %s", message)
-                raise ValueError(f"VLM returned null content. Full message: {message}")
-            except httpx.HTTPStatusError as exc:
-                if exc.response.status_code not in _RETRYABLE or attempt == 3:
-                    raise
-                wait = 15 * attempt
-                _log.warning("HTTP %d (tentative %d/3) — retry dans %ds…",
-                             exc.response.status_code, attempt, wait)
-                await asyncio.sleep(wait)
-            except (httpx.TimeoutException, httpx.ConnectError) as exc:
-                if attempt == 3:
-                    raise
-                wait = 15 * attempt
-                _log.warning("%s (tentative %d/3) — retry dans %ds…",
-                             type(exc).__name__, attempt, wait)
-                await asyncio.sleep(wait)
-
-
-async def check_vlm_connectivity(*, vlm_url: str, vlm_model_name: str, ca_path: str) -> bool:
-    """
-    Docstring for check_vlm_connectivity
-    - Effectue un test de connectivité au VLM en lui envoyant un prompt simple ("ping") et en vérifiant la réponse.
-    - Utile pour s'assurer que le VLM est accessible avant de lancer le pipeline de traitement des pages,
-    et éviter de lancer un traitement long qui échouerait ensuite faute de connectivité.
-
-    :return: Description
-    :rtype: bool
-    """
-    try:
-        _log.info("Test de connectivité au VLM : %s ...", vlm_url)
-        payload = {
-            "model": vlm_model_name,
-            "messages": [{"role": "user", "content": [{"type": "text", "text": "ping"}]}],
-            "max_tokens": 10,
-        }
-        async with httpx.AsyncClient(verify=ca_path, timeout=30) as client:
-            resp = await client.post(vlm_url, json=payload)
-            resp.raise_for_status()
-            _log.info("VLM accessible. HTTP %s", resp.status_code)
-            return True
-    except Exception as e:
-        _log.exception("Impossible de joindre le VLM : %s", e)
-        return False
+PROMPT_VARIANTS = {
+    "v2": VLM_PROMPT_CORRECTION_STAGE_3_EN,     # tables JSON lines (post load_jsonline_doctags)
+    "v3": VLM_PROMPT_CORRECTION_STAGE_3_EN_V3,  # tables <otsl> natives, préservées telles quelles
+}
 
 
 # Logique métier (fonctions pures)
@@ -171,7 +92,7 @@ def pdf_page_to_base64(pdf_path: Path, page_num: int) -> str:
     return base64.b64encode(pix.tobytes("png")).decode("utf-8")
 
 
-def build_prompt(page_tags: str, page_links: list[dict]) -> str:
+def build_prompt(page_tags: str, page_links: list[dict], prompt_template: str) -> str:
     """
     Docstring for build_prompt
     - Construit le prompt à envoyer au VLM en intégrant les doctags de la page et les liens extraits du JSONL.
@@ -182,6 +103,8 @@ def build_prompt(page_tags: str, page_links: list[dict]) -> str:
     :type page_tags: str
     :param page_links: Description
     :type page_links: list[dict]
+    :param prompt_template: Template de prompt à formater (v2 ou v3, cf. --prompt-variant)
+    :type prompt_template: str
     :return: Description
     :rtype: str
     """
@@ -192,7 +115,7 @@ def build_prompt(page_tags: str, page_links: list[dict]) -> str:
     if not links_str:
         links_str = "Aucune URL pour cette page."
 
-    return VLM_PROMPT_CORRECTION_STAGE_3_EN.format(
+    return prompt_template.format(
         page_tags=page_tags,
         links_str=links_str,
     )
@@ -205,13 +128,14 @@ async def process_page(
     pdf_path: Path,
     semaphore: asyncio.Semaphore,
     *,
-    vlm_url: str,
-    vlm_model_name: str,
-    ca_path: str,
+    client: AsyncOpenAI,
+    model_name: str,
+    prompt_template: str,
 ) -> tuple[int, str]:
     """
-    Docstring for process_page
-    - Traite une page du PDF en appelant le VLM pour reconstruire son contenu doctags enrichi avec les liens URL.
+    Traite une page du PDF en appelant le VLM pour reconstruire son contenu doctags enrichi
+    avec les liens URL. Le retry sur erreur transitoire est géré par le client OpenAI
+    (max_retries, cf. utils.vlm_client.build_async_client) — plus de boucle manuelle ici.
 
     :param page_num: Description
     :type page_num: int
@@ -223,6 +147,8 @@ async def process_page(
     :type pdf_path: Path
     :param semaphore: Description
     :type semaphore: asyncio.Semaphore
+    :param prompt_template: Template de prompt à formater (v2 ou v3, cf. --prompt-variant)
+    :type prompt_template: str
     :return: Description
     :rtype: tuple[int, str]
     """
@@ -230,11 +156,8 @@ async def process_page(
         _log.info("Page %d : %d lien(s) à insérer...", page_num, len(page_links))
         try:
             image_b64 = await asyncio.to_thread(pdf_page_to_base64, pdf_path, page_num)
-            prompt = build_prompt(page_tags, page_links)
-            result = await call_vlm_async(
-                prompt, image_b64,
-                vlm_url=vlm_url, vlm_model_name=vlm_model_name, ca_path=ca_path,
-            )
+            prompt = build_prompt(page_tags, page_links, prompt_template)
+            result = await vision_completion_async(client, model_name, prompt, image_b64)
             _log.info("Page %d traitée.", page_num)
             return page_num, result
         except Exception as e:
@@ -251,6 +174,12 @@ def split_doctags_by_page(doctags: str, n_pages: int) -> dict[int, str]:
     - Si aucune balise de séparation n'est trouvée, utilise une approche de fallback qui distribue les éléments du doctags
     de manière approximative en fonction du nombre total.
 
+    Ré-indexe séquentiellement sur les segments non vides plutôt que sur l'index brut du split :
+    un <page_break> superflu ou consécutif (ex. artefact d'un correctif amont) produit un
+    segment vide qui, indexé par position brute, décale tous les numéros de page suivants —
+    la page N se retrouve alors stockée sous la clé N+1, et run() ne la trouve jamais
+    (pages_tags.get(N, "") silencieusement vide → contenu de page perdu sans erreur).
+
     :param doctags: Description
     :type doctags: str
     :param n_pages: Description
@@ -259,15 +188,17 @@ def split_doctags_by_page(doctags: str, n_pages: int) -> dict[int, str]:
     :rtype: dict[int, str]
     """
     parts = re.split(r'<page_break\s*/?>', doctags)
+    non_empty = [content for p in parts if (content := p.strip())]
 
-    if len(parts) > 1:
-        _log.info("Split par <page_break> : %d page(s) détectées.", len(parts))
-        pages = {}
-        for i, part in enumerate(parts):
-            content = part.strip()
-            if content:
-                pages[i + 1] = content
-        return pages
+    if len(non_empty) > 1:
+        _log.info("Split par <page_break> : %d page(s) détectées.", len(non_empty))
+        if len(non_empty) != n_pages:
+            _log.warning(
+                "%d page(s) détectées via <page_break> mais %d page(s) attendues (PDF) — "
+                "vérifier le doctags source pour des <page_break> en trop ou manquants.",
+                len(non_empty), n_pages,
+            )
+        return {i + 1: content for i, content in enumerate(non_empty)}
 
     _log.warning("Aucun <page_break> trouvé, fallback distribution par count.")
     pattern = re.compile(
@@ -324,9 +255,9 @@ async def run(
     output_path: Path,
     max_workers: int = 1,
     *,
-    vlm_url: str,
-    vlm_model_name: str,
-    ca_path: str,
+    client: AsyncOpenAI,
+    model_name: str,
+    prompt_template: str = VLM_PROMPT_CORRECTION_STAGE_3_EN,
 ) -> None:
     """
     Docstring for run
@@ -347,7 +278,7 @@ async def run(
     :param max_workers: Description
     :type max_workers: int
     """
-    if not await check_vlm_connectivity(vlm_url=vlm_url, vlm_model_name=vlm_model_name, ca_path=ca_path):
+    if not await check_vlm_connectivity_async(client, model_name):
         raise RuntimeError("VLM inaccessible, arrêt du pipeline.")
 
     _log.info("=" * 60)
@@ -375,15 +306,18 @@ async def run(
             page_links=get_links_for_page(links, p),
             pdf_path=pdf_path,
             semaphore=semaphore,
-            vlm_url=vlm_url,
-            vlm_model_name=vlm_model_name,
-            ca_path=ca_path,
+            client=client,
+            model_name=model_name,
+            prompt_template=prompt_template,
         )
         for p in range(1, n_pages + 1)
         if pages_tags.get(p, "").strip()
     ]
 
-    results = await asyncio.gather(*tasks)
+    try:
+        results = await asyncio.gather(*tasks)
+    finally:
+        await client.close()
 
     processed_pages = dict(sorted(results))
     final_doctags = assemble_doctags(processed_pages)
@@ -405,8 +339,8 @@ def parse_args() -> argparse.Namespace:
             "Exemples :\n"
             "  uv run python url_tuning_vlm_modular.py \\\n"
             "      --input data/input_files/MonDoc.pdf \\\n"
-            "      --doctags data/output_files/MonDoc/MonDoc.doctags \\\n"
-            "      --jsonl data/output_files/MonDoc/hyperlinks_data_MonDoc.jsonl\n\n"
+            "      --doctags data/output_files_preprocessing/MonDoc/MonDoc.doctags \\\n"
+            "      --jsonl data/output_files_preprocessing/MonDoc/hyperlinks_data_MonDoc.jsonl\n\n"
             "  # Chemins résolus automatiquement depuis le stem du PDF :\n"
             "  uv run python url_tuning_vlm_modular.py --input data/input_files/MonDoc.pdf\n\n"
             "  # Via variable d'environnement DOC_NAME :\n"
@@ -428,7 +362,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help=(
             "Fichier doctags d'entrée à enrichir. "
-            "Défaut : data/output_files/<stem>/<stem>_reordered_with_tables_pictures.doctags"
+            "Défaut : data/output_files_preprocessing/<stem>/<stem>_reordered_with_tables_pictures.doctags"
         ),
     )
     parser.add_argument(
@@ -437,7 +371,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help=(
             "Fichier JSONL contenant les liens hypertextes extraits. "
-            "Défaut : data/output_files/<stem>/hyperlinks_data_<stem>.jsonl"
+            "Défaut : data/output_files_preprocessing/<stem>/hyperlinks_data_<stem>.jsonl"
         ),
     )
     parser.add_argument(
@@ -446,7 +380,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help=(
             "Chemin du fichier doctags de sortie. "
-            "Défaut : data/output_files/<stem>/<stem>_url_vlm.doctags"
+            "Défaut : data/output_files_preprocessing/<stem>/<stem>_url_vlm.doctags"
         ),
     )
     parser.add_argument(
@@ -455,6 +389,16 @@ def parse_args() -> argparse.Namespace:
         default=1,
         metavar="N",
         help="Nombre de requêtes VLM simultanées. Défaut : 1.",
+    )
+    parser.add_argument(
+        "--prompt-variant",
+        choices=sorted(PROMPT_VARIANTS),
+        default="v2",
+        help=(
+            "v2 : tables JSON lines (pipeline avec load_jsonline_doctags_modular.py). "
+            "v3 : tables <otsl> Docling natives, préservées telles quelles (pipeline sans conversion JSON). "
+            "Défaut : v2."
+        ),
     )
     parser.add_argument(
         "--dotenv",
@@ -496,7 +440,7 @@ def resolve_doctags(args: argparse.Namespace, pdf_path: Path) -> Path:
     Docstring for resolve_doctags
     Résout le chemin du fichier doctags d'entrée.
     Si --doctags est fourni, l'utilise directement.
-    Sinon, construit le chemin par défaut : data/output_files/<stem>/<stem>.doctags
+    Sinon, construit le chemin par défaut : data/output_files_preprocessing/<stem>/<stem>.doctags
 
     :param args: Description
     :type args: argparse.Namespace
@@ -508,7 +452,7 @@ def resolve_doctags(args: argparse.Namespace, pdf_path: Path) -> Path:
     if args.doctags:
         return args.doctags.resolve()
     stem = pdf_path.stem.strip()
-    return project_root() / "data" / "output_files" / stem / f"{stem}_reordered_with_tables_pictures.doctags"
+    return project_root() / "data" / "output_files_preprocessing" / stem / f"{stem}_reordered_with_tables_pictures.doctags"
 
 
 def resolve_jsonl(args: argparse.Namespace, pdf_path: Path) -> Path:
@@ -516,7 +460,7 @@ def resolve_jsonl(args: argparse.Namespace, pdf_path: Path) -> Path:
     Docstring for resolve_jsonl
     Résout le chemin du fichier JSONL contenant les liens.
     Si --jsonl est fourni, l'utilise directement.
-    Sinon, construit le chemin par défaut : data/output_files/<stem>/hyperlinks_data_<stem>.jsonl
+    Sinon, construit le chemin par défaut : data/output_files_preprocessing/<stem>/hyperlinks_data_<stem>.jsonl
 
     :param args: Description
     :type args: argparse.Namespace
@@ -528,7 +472,7 @@ def resolve_jsonl(args: argparse.Namespace, pdf_path: Path) -> Path:
     if args.jsonl:
         return args.jsonl.resolve()
     stem = pdf_path.stem.strip()
-    return project_root() / "data" / "output_files" / stem / f"hyperlinks_data_{stem}.jsonl"
+    return project_root() / "data" / "output_files_preprocessing" / stem / f"hyperlinks_data_{stem}.jsonl"
 
 
 def resolve_output(args: argparse.Namespace, pdf_path: Path) -> Path:
@@ -536,7 +480,7 @@ def resolve_output(args: argparse.Namespace, pdf_path: Path) -> Path:
     Docstring for resolve_output
     Résout le chemin du fichier doctags de sortie.
     Si --output est fourni, l'utilise directement.
-    Sinon, construit le chemin par défaut : data/output_files/<stem>/<stem>_url_vlm.doctags
+    Sinon, construit le chemin par défaut : data/output_files_preprocessing/<stem>/<stem>_url_vlm.doctags
 
     :param args: Description
     :type args: argparse.Namespace
@@ -548,7 +492,7 @@ def resolve_output(args: argparse.Namespace, pdf_path: Path) -> Path:
     if args.output:
         return args.output.resolve()
     stem = pdf_path.stem.strip()
-    return project_root() / "data" / "output_files" / stem / f"{stem}_url_vlm.doctags"
+    return project_root() / "data" / "output_files_preprocessing" / stem / f"{stem}_url_vlm.doctags"
 
 
 # Point d'entrée
@@ -560,10 +504,8 @@ def main() -> None:
         datefmt="%H:%M:%S",
     )
 
-    cfg = load_vlm_config(dotenv_path=args.dotenv)
-    ca_path: str = cfg["CA_PATH"]
-    vlm_url: str = cfg["VLM_URL"]
-    vlm_model_name: str = cfg["VLM_MODEL_NAME"]
+    vlm_cfg = build_vlm_config(dotenv_path=args.dotenv)
+    client = build_async_client(vlm_cfg)
 
     pdf_path = resolve_pdf(args)
     if not pdf_path.exists():
@@ -592,9 +534,9 @@ def main() -> None:
             jsonl_path=jsonl_path,
             output_path=output_path,
             max_workers=args.workers,
-            vlm_url=vlm_url,
-            vlm_model_name=vlm_model_name,
-            ca_path=ca_path,
+            client=client,
+            model_name=vlm_cfg.vlm_model_name,
+            prompt_template=PROMPT_VARIANTS[args.prompt_variant],
         ))
     except RuntimeError as e:
         _log.exception("%s", e)

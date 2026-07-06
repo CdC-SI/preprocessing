@@ -56,7 +56,7 @@ def rerank(query: str, doc_texts: list[str], timeout: int = 30) -> list[float] |
                 "model": _CFG["RERANKER_MODEL_NAME"],
                 "text_1": [query_prompt],
                 "text_2": doc_prompts,
-                "truncate_prompt_tokens": -1,
+                "truncate_prompt_tokens": -1, 
             },
             verify=_CFG["CA_PATH"],
             timeout=timeout,
@@ -64,5 +64,5 @@ def rerank(query: str, doc_texts: list[str], timeout: int = 30) -> list[float] |
         resp.raise_for_status()
         return [item["score"] for item in resp.json()["data"]]
     except Exception as exc:
-        _log.error("Reranker call failed: %s", exc)
+        _log.exception("Reranker call failed: %s", exc)
         return None

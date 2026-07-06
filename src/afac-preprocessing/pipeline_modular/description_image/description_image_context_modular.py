@@ -9,13 +9,17 @@ import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TypedDict
-from urllib.parse import urlparse, urlunparse
 import fitz  # PyMuPDF
-import requests
+from openai import OpenAI
 
 from prompts.prompts import WIKI_PROMPT_TEMPLATE
-from utils.config import load_vlm_config
 from utils.paths import project_root, resolve_input_pdf
+from utils.vlm_client import (
+    build_sync_client,
+    build_vlm_config,
+    check_vlm_connectivity,
+    vision_completion,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -61,14 +65,6 @@ class VLMResult(TypedDict):
     y1: int
     description: str
     raw_tag: str
-
-
-@dataclass
-class VLMConfig:
-    url: str
-    ca_path: str
-    model_name: str
-    timeout: int = 120
 
 
 @dataclass
@@ -227,12 +223,29 @@ def _clip_rect(page: fitz.Page, pic: PictureTag, norm: int) -> fitz.Rect:
     )
 
 
-def load_preextracted_b64(images_dir: Path, index: int, page: int) -> str | None:
-    """Charge une image pré-extraite par Docling depuis le disque (pic{i:03d}_page{page+1}.png)."""
-    path = images_dir / f"pic{index:03d}_page{page + 1}.png"
+def load_preextracted_b64(images_dir: Path, pic: PictureTag) -> str | None:
+    """Charge une image pré-extraite par Docling depuis le disque, matchée par coordonnées
+    (x0,y0,x1,y1) — jamais par index de position, pour rester correct même si
+    reordered_doctags_modular.py a changé l'ordre relatif des images sur la page. Le nom de
+    fichier est produit par pipeline_multietape_modular.export_docling_images() avec les mêmes
+    coordonnées (cf. pic.get_location_tokens(doc), identique à ce qu'exporte le <picture> tag).
+
+    Rétro-compatibilité : un dossier used_images/ généré par une exécution antérieure à ce
+    nommage par coordonnées contient des fichiers `pic{i:03d}_page{p}.png` (par index de
+    position). Repli sur ce nommage uniquement si une seule image existe pour cette page dans
+    le dossier — au-delà, l'index de position ne peut pas être retrouvé de façon fiable ici
+    (c'est précisément l'ambiguïté que le nommage par coordonnées élimine), mieux vaut retomber
+    sur le crop fitz (cf. appelant) que risquer d'associer la mauvaise image."""
+    page = pic["page"] + 1
+    path = images_dir / f"pic_page{page}_x{pic['x0']}_y{pic['y0']}_x{pic['x1']}_y{pic['y1']}.png"
     if not path.exists():
-        _log.warning("Image pré-extraite introuvable : %s", path)
-        return None
+        legacy_matches = sorted(images_dir.glob(f"pic*_page{page}.png"))
+        if len(legacy_matches) == 1:
+            _log.info("Image pré-extraite trouvée via l'ancien nommage (index) : %s", legacy_matches[0].name)
+            path = legacy_matches[0]
+        else:
+            _log.warning("Image pré-extraite introuvable : %s", path)
+            return None
     return base64.b64encode(path.read_bytes()).decode("utf-8")
 
 
@@ -257,75 +270,18 @@ def crop_to_b64(pdf_doc: fitz.Document, pic: PictureTag, norm: int = NORM, dpi: 
     return base64.b64encode(pix.tobytes("png")).decode("utf-8")
 
 
-def describe_image_b64(image_b64: str, prompt: str, vlm_cfg: VLMConfig) -> str:
-    """
-    Docstring for describe_image_b64
-    Envoie image (base64) + prompt au VLM et retourne la description.
+def describe_image_b64(image_b64: str, prompt: str, client: OpenAI, model_name: str) -> str:
+    """Envoie image (base64) + prompt au VLM et retourne la description.
 
-    :param image_b64: Description
-    :type image_b64: str
-    :param prompt: Description
-    :type prompt: str
-    :param vlm_cfg: Description
-    :type vlm_cfg: VLMConfig
-    :return: Description
-    :rtype: str
+    Cache-first + retry intégré au SDK (cf. utils.vlm_client.vision_completion) — le retry
+    manuel et le payload construit à la main ont été retirés lors de la consolidation sur un
+    client OpenAI unique.
     """
-    payload = {
-        "model": vlm_cfg.model_name,
-        "messages": [{
-            "role": "user",
-            "content": [
-                {"type": "text", "text": prompt},
-                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_b64}"}},
-            ],
-        }],
-        "max_tokens": 3000,
-        "chat_template_kwargs": {"enable_thinking": False},
-    }
     try:
-        response = requests.post(vlm_cfg.url, json=payload, verify=vlm_cfg.ca_path or False, timeout=vlm_cfg.timeout)
-        response.raise_for_status()
-        data = response.json()
-        message = data["choices"][0]["message"]
-        content = message.get("content")
-        if content is not None:
-            return content.strip()
-        _log.warning("content=null, full message: %s", message)
-        return ""
+        return vision_completion(client, model_name, prompt, image_b64, max_tokens=3000)
     except Exception:
         _log.exception("Erreur API VLM")
         return ""
-
-
-def check_vlm_connection(vlm_cfg: VLMConfig) -> bool:
-    """
-    Vérifie la connectivité au VLM via GET /v1/models avant tout traitement.
-    Loggue OK avec les modèles disponibles, ou ERROR avec la cause.
-    Retourne True si le VLM est joignable et le modèle configuré est présent.
-    """
-    parsed = urlparse(vlm_cfg.url)
-    models_url = urlunparse((parsed.scheme, parsed.netloc, "/v1/models", "", "", ""))
-    try:
-        resp = requests.get(models_url, verify=vlm_cfg.ca_path or False, timeout=10)
-        resp.raise_for_status()
-        available = [m.get("id", "?") for m in resp.json().get("data", [])]
-        _log.info("VLM OK — %s | modèles disponibles : %s", models_url, available or ["(aucun)"])
-        if vlm_cfg.model_name and vlm_cfg.model_name not in available:
-            _log.warning(
-                "Modèle configuré '%s' absent de la liste VLM : %s",
-                vlm_cfg.model_name, available,
-            )
-        return True
-    except requests.exceptions.ConnectionError:
-        _log.error("VLM non joignable — connexion refusée : %s", models_url)
-    except requests.exceptions.Timeout:
-        _log.error("VLM non joignable — timeout (10s) : %s", models_url)
-    except requests.exceptions.HTTPError as exc:
-        _log.exception("VLM non joignable — HTTP %s : %s", exc.response.status_code, models_url)
-    except Exception:
-        _log.exception("Erreur inattendue lors de la vérification VLM : %s", models_url)
-    return False
 
 
 def export_picture_images(
@@ -372,20 +328,13 @@ def _vlm_worker(
     task_queue: queue.Queue,
     results: dict[int, VLMResult],
     results_lock: threading.Lock,
-    vlm_cfg: VLMConfig,
+    client: OpenAI,
+    model_name: str,
 ) -> None:
-    """
-    Docstring for _vlm_worker
-    Thread consommateur : appelle le VLM et stocke les résultats dans results
+    """Thread consommateur : appelle le VLM et stocke les résultats dans results.
 
-    :param task_queue: Description
-    :type task_queue: queue.Queue
-    :param results: Description
-    :type results: dict[int, VLMResult]
-    :param results_lock: Description
-    :type results_lock: threading.Lock
-    :param vlm_cfg: Description
-    :type vlm_cfg: VLMConfig
+    Le client OpenAI sync est thread-safe pour un usage concurrent (pool de connexions
+    httpx.Client sous-jacent) — une seule instance est partagée par tous les workers.
     """
     while True:
         task: ImageTask | None = task_queue.get()
@@ -397,7 +346,7 @@ def _vlm_worker(
             task.index, task.total, task.page + 1,
             task.x0, task.y0, task.x1, task.y1,
         )
-        description = describe_image_b64(task.image_b64, task.prompt, vlm_cfg)
+        description = describe_image_b64(task.image_b64, task.prompt, client, model_name)
 
         with results_lock:
             results[task.index] = VLMResult(
@@ -420,7 +369,8 @@ def describe_all_pictures(
     pdf_path: Path,
     pictures: list[PictureTag],
     doc_elements: list[DocElement],
-    vlm_cfg: VLMConfig,
+    client: OpenAI,
+    model_name: str,
     language: str = "french",
     n_before: int = N_BEFORE,
     n_after: int = N_AFTER,
@@ -430,7 +380,6 @@ def describe_all_pictures(
     preextracted_images_dir: Path | None = None,
 ) -> dict[int, VLMResult]:
     """
-    Docstring for describe_all_pictures
     Crop chaque image (ou charge depuis preextracted_images_dir), construit le prompt contextualisé, envoie au VLM.
     Retourne un dict indexé (1-based) : {index: VLMResult}.
 
@@ -440,8 +389,10 @@ def describe_all_pictures(
     :type pictures: list[PictureTag]
     :param doc_elements: Description
     :type doc_elements: list[DocElement]
-    :param vlm_cfg: Description
-    :type vlm_cfg: VLMConfig
+    :param client: Client OpenAI configuré (partagé entre tous les workers)
+    :type client: OpenAI
+    :param model_name: Nom du modèle VLM
+    :type model_name: str
     :param language: Description
     :type language: str
     :param n_before: Description
@@ -461,7 +412,7 @@ def describe_all_pictures(
     task_q: queue.Queue = queue.Queue()
 
     workers = [
-        threading.Thread(target=_vlm_worker, args=(task_q, results, results_lock, vlm_cfg), daemon=True)
+        threading.Thread(target=_vlm_worker, args=(task_q, results, results_lock, client, model_name), daemon=True)
         for _ in range(n_workers)
     ]
     for w in workers:
@@ -481,7 +432,7 @@ def describe_all_pictures(
                 language=language,
             )
             if preextracted_images_dir:
-                image_b64 = load_preextracted_b64(preextracted_images_dir, i, pic["page"])
+                image_b64 = load_preextracted_b64(preextracted_images_dir, pic)
                 if image_b64 is None:
                     _log.warning("[%d/%d] Image pré-extraite manquante — fallback fitz crop", i, total)
                     image_b64 = crop_to_b64(pdf_doc, pic, norm=norm, dpi=dpi)
@@ -623,7 +574,7 @@ def parse_args() -> argparse.Namespace:
         epilog=(
             "Exemples :\n"
             "  uv run python description_image_context_modulaire.py \\\n"
-            "      --doctags data/output_files/MonDoc/MonDoc_reordered_with_tables.doctags \\\n"
+            "      --doctags data/output_files_preprocessing/MonDoc/MonDoc_reordered_with_tables.doctags \\\n"
             "      --input   data/input_files/MonDoc.pdf \\\n"
             "      --image-description\n"
             "  uv run python description_image_context_modulaire.py --dotenv .env.test\n"
@@ -635,7 +586,7 @@ def parse_args() -> argparse.Namespace:
         type=Path, default=None,
         help=(
             "Fichier .doctags source (produit par load_jsonline_doctags_modulaire.py). "
-            "Si absent, résout data/output_files/<DOC_NAME>/<DOC_NAME>_reordered_with_tables.doctags."
+            "Si absent, résout data/output_files_preprocessing/<DOC_NAME>/<DOC_NAME>_reordered_with_tables.doctags."
         ),
     )
     parser.add_argument(
@@ -671,10 +622,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--image-description",
         action=argparse.BooleanOptionalAction,
-        default=False,
+        default=None,
         help=(
-            "Active (--image-description) ou désactive (--no-image-description) la description VLM. "
-            "Défaut : False (désactivé)."
+            "Active (--image-description) ou désactive (--no-image-description) la description VLM, "
+            "prioritaire sur ENABLE_IMAGE_DESCRIPTION du .env. Si omis, retombe sur "
+            "ENABLE_IMAGE_DESCRIPTION (false si absent du .env)."
         ),
     )
     parser.add_argument(
@@ -764,7 +716,7 @@ def resolve_doctags(args: argparse.Namespace) -> Path:
     if args.doctags:
         return args.doctags.resolve()
     doc_name = _load_doc_name(args)
-    return project_root() / "data" / "output_files" / doc_name / f"{doc_name}_reordered_with_tables.doctags"
+    return project_root() / "data" / "output_files_preprocessing" / doc_name / f"{doc_name}_reordered_with_tables.doctags"
 
 
 def resolve_pdf(args: argparse.Namespace, doctags_path: Path) -> Path:
@@ -864,26 +816,27 @@ def main() -> None:
         datefmt="%H:%M:%S",
     )
 
-    # Config VLM — chargée depuis load_vlm_config (dotenv + CA certifi)
+    # Config VLM — chargée depuis build_vlm_config (dotenv + CA certifi)
     # Le dotenv est chargé ICI, donc ENABLE_IMAGE_DESCRIPTION est lisible après.
     try:
-        config = load_vlm_config(dotenv_path=args.dotenv)
+        vlm_cfg = build_vlm_config(dotenv_path=args.dotenv)
     except RuntimeError as exc:
         # dotenv chargé mais VLM_URL absent — vérifier si la description est requise
-        needs_vlm = args.image_description or os.environ.get("ENABLE_IMAGE_DESCRIPTION", "false").strip().lower() == "true"
+        env_enabled = os.environ.get("ENABLE_IMAGE_DESCRIPTION", "false").strip().lower() == "true"
+        needs_vlm = args.image_description if args.image_description is not None else env_enabled
         if needs_vlm:
             raise SystemExit(str(exc)) from exc
-        config = {"VLM_URL": "", "CA_PATH": "", "VLM_MODEL_NAME": ""}
+        vlm_cfg = None
 
-    # --image-description ou ENABLE_IMAGE_DESCRIPTION=true dans le .env (chargé ci-dessus)
-    image_desc_enabled = args.image_description or os.environ.get("ENABLE_IMAGE_DESCRIPTION", "false").strip().lower() == "true"
+    # --image-description/--no-image-description est prioritaire ; sans flag explicite,
+    # retombe sur ENABLE_IMAGE_DESCRIPTION du .env (chargé ci-dessus).
+    if args.image_description is not None:
+        image_desc_enabled = args.image_description
+    else:
+        image_desc_enabled = os.environ.get("ENABLE_IMAGE_DESCRIPTION", "false").strip().lower() == "true"
 
-    vlm_cfg = VLMConfig(
-        url=config["VLM_URL"],
-        ca_path=config["CA_PATH"],
-        model_name=config["VLM_MODEL_NAME"],
-        timeout=args.timeout,
-    )
+    model_name = vlm_cfg.vlm_model_name if vlm_cfg else ""
+    client = build_sync_client(vlm_cfg, timeout=args.timeout) if vlm_cfg else None
 
     # Résolution des chemins (DOC_NAME déjà chargé via load_vlm_config)
     doctags_path = resolve_doctags(args)
@@ -953,19 +906,19 @@ def main() -> None:
         markdown_path.write_text("", encoding="utf-8")
         sys.exit(0)
 
-    if not vlm_cfg.model_name:
+    if not model_name:
         raise SystemExit(
             "Erreur : VLM_MODEL_NAME non défini. "
             "Fournir --dotenv <fichier> ou définir VLM_MODEL_NAME dans l'environnement."
         )
 
-    if not check_vlm_connection(vlm_cfg):
+    if not check_vlm_connectivity(client, model_name):
         _log.error("Arrêt — VLM non joignable. Vérifier VLM_URL et VLM_CA_PEM.")
         sys.exit(1)
 
     try:
         results = describe_all_pictures(
-            pdf_path, pictures, doc_elements, vlm_cfg,
+            pdf_path, pictures, doc_elements, client, model_name,
             language=args.language,
             n_workers=args.workers,
             n_before=args.n_before,
@@ -985,7 +938,7 @@ def main() -> None:
 
     # Étape 5 — Export Markdown
     _log.info("ÉTAPE 5 — Export des descriptions en Markdown")
-    export_descriptions_to_markdown(results, doc_name, markdown_path, vlm_cfg.model_name)
+    export_descriptions_to_markdown(results, doc_name, markdown_path, model_name)
 
     sys.exit(0)
 

@@ -7,12 +7,13 @@ en lisant les sorties des stages 1-4 et en appelant les fonctions VLM d'enrichis
 
 Usage :
     uv run python metadata_generation_modular.py --dotenv .env.test
-    uv run python metadata_generation_modular.py --dotenv .env.test --doc-path "Taxation/DISPENSE/Annulation d'une dispense.pdf"
+    uv run python metadata_generation_modular.py --dotenv .env.test --doc-path "afac/Taxation/DISPENSE/Annulation d'une dispense.pdf"
     uv run python metadata_generation_modular.py --dotenv .env.test --output ./out/docs.csv
 """
 import argparse
 import csv
 import json
+import os
 import sys
 import uuid
 from datetime import datetime, timezone
@@ -24,9 +25,11 @@ from enhancement_metadata_modular import run_enhancement
 from embedding_metadata_modular import run_embedding
 from utils.paths import project_root, resolve_doc_name
 
-# Root
-FOLDER_SOURCE  = Path(__file__).resolve().parent / "folder_source"
-DEFAULT_OUTPUT_FILES = project_root() / "data" / "output_files"
+# Root — data/input_files/ contient déjà la hiérarchie <source>/<thème>/[<sous-thème>/]<fichier>.pdf
+# utilisée pour l'extraction (cf. resolve_input_pdf) ; on la réutilise directement pour la
+# hiérarchie de métadonnées au lieu de maintenir un second dossier miroir séparé.
+FOLDER_SOURCE  = project_root() / "data" / "input_files"
+DEFAULT_OUTPUT_FILES = project_root() / "data" / "output_files_preprocessing"
 DEFAULT_STAGE1 = DEFAULT_OUTPUT_FILES
 DEFAULT_STAGE2 = DEFAULT_OUTPUT_FILES
 DEFAULT_STAGE3 = DEFAULT_OUTPUT_FILES
@@ -41,18 +44,25 @@ ISO_8601_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
 def get_hierarchy(folder_source: Path, relative_doc_path: str) -> dict:
     """
-    Déduit source, parent_label, children_label et sibling
-    depuis le chemin relatif dans folder_source.
+    Déduit source, parent_label, children_label et sibling depuis le chemin relatif du
+    document dans folder_source (data/input_files/ par défaut).
 
-    Exemple : "Taxation/DISPENSE/Annulation d'une dispense.pdf"
-        source -> "afac"
+    Exemple : "afac/Taxation/DISPENSE/Annulation d'une dispense.pdf"
+        source -> "afac"                 (premier segment du chemin — dossier racine du corpus,
+                                           peut varier : afac, ou une autre source)
         parent_label -> ["DISPENSE"]
         children_label -> sous-dossiers présents dans DISPENSE
         sibling -> autres fichiers présents dans DISPENSE
+
+    Retombe sur "afac" quand le chemin n'a pas de vraie hiérarchie <source>/... à lire :
+    chemin à plat ("MonDoc.pdf", un seul segment — DOC_PATH absent, cf. main() cas 3) ou
+    chemin absolu (DOC_PATH réglé sur un chemin absolu quand --input pointe hors de
+    data/input_files/, cf. fullpipeline_modular_v3.py _resolve_doc_name()) — sinon parts[0]
+    vaudrait respectivement le nom de fichier ou la racine du système de fichiers ("/").
     """
     doc_path = Path(relative_doc_path)
-    source = "afac"
     parts = doc_path.parts
+    source = parts[0] if len(parts) >= 2 and not doc_path.is_absolute() else "afac"
 
     parent_dir = (folder_source / doc_path).parent
 
@@ -283,6 +293,22 @@ def get_incoming_links(stage3_dir: Path, doc_name: str) -> list[dict]:
 
 
 # Stage 4 – markdown final
+def _resolve_stage4_file(stage4_dir: Path, doc_name: str) -> Path | None:
+    """
+    Résout le fichier markdown à utiliser comme CONTENT (donc comme source de l'embedding —
+    cf. get_stage4_content, appelée juste avant write_csv_row).
+
+    Préfère <doc>_final_embed.md (tables remplacées par du JSONL, produit par
+    markdown_tables_to_jsonl_modular.py --embed-output) s'il existe, sinon <doc>_final.md.
+    Rétrocompatible : les documents sans _final_embed.md (v1/v2/baseline) sont inchangés.
+    """
+    for suffix in ("_final_embed.md", "_final.md"):
+        candidate = stage4_dir / doc_name / f"{doc_name}{suffix}"
+        if candidate.exists():
+            return candidate
+    return None
+
+
 def get_stage4_info(stage4_dir: Path, doc_name: str) -> tuple[str, int]:
     """
     Retourne (content_filename, chunk_count).
@@ -294,19 +320,50 @@ def get_stage4_info(stage4_dir: Path, doc_name: str) -> tuple[str, int]:
     :return: Tuple (nom du fichier markdown, nombre de chunks)
     :rtype: tuple[str, int]
     """
-    if not stage4_dir.exists():
-        return f"{doc_name}_final.md", 0
-
-    single = stage4_dir / doc_name / f"{doc_name}_final.md"
-    if single.exists():
-        return single.name, 1
-
+    resolved = _resolve_stage4_file(stage4_dir, doc_name) if stage4_dir.exists() else None
+    if resolved:
+        return resolved.name, 1
     return f"{doc_name}_final.md", 0
+
+
+def load_existing_enrichment(stage5_dir: Path, doc_name: str) -> dict:
+    """
+    Lit resume.md / intent.json / hyq.json déjà présents (au lieu d'appeler run_enhancement,
+    qui régénère ces 3 champs via VLM depuis le markdown courant). Utilisé avec --skip-enhancement
+    pour recalculer un embedding sans changer les questions HyQ déjà utilisées ailleurs.
+
+    :param stage5_dir: Dossier racine stage5
+    :type stage5_dir: Path
+    :param doc_name: Nom du document sans extension
+    :type doc_name: str
+    :return: Dictionnaire {"resume": str, "intent": list[str], "hyq": list[str]}
+    :rtype: dict
+    """
+    meta_dir = stage5_dir / doc_name / "metadata"
+    resume_path = meta_dir / "resume.md"
+    intent_path = meta_dir / "intent.json"
+    hyq_path = meta_dir / "hyq.json"
+
+    missing = [p.name for p in (resume_path, intent_path, hyq_path) if not p.exists()]
+    if missing:
+        raise FileNotFoundError(
+            f"--skip-enhancement requiert resume.md/intent.json/hyq.json existants dans {meta_dir} "
+            f"— manquant(s) : {', '.join(missing)}"
+        )
+
+    return {
+        "resume": resume_path.read_text(encoding="utf-8").strip(),
+        "intent": json.loads(intent_path.read_text(encoding="utf-8")),
+        "hyq": json.loads(hyq_path.read_text(encoding="utf-8")),
+    }
 
 
 def get_stage4_content(stage4_dir: Path, doc_name: str) -> str:
     """
-    Retourne le contenu markdown du document depuis stage4.
+    Retourne le contenu markdown du document depuis stage4 — cf. _resolve_stage4_file
+    pour la préférence _final_embed.md / _final.md. C'est ce texte qui devient la
+    colonne CONTENT du CSV final ET la source de l'embedding (run_embedding lit le
+    même fichier via embedding_metadata_modular._read_stage4).
 
     :param stage4_dir: Dossier stage4
     :type stage4_dir: Path
@@ -315,10 +372,8 @@ def get_stage4_content(stage4_dir: Path, doc_name: str) -> str:
     :return: Contenu markdown
     :rtype: str
     """
-    single = stage4_dir / doc_name / f"{doc_name}_final.md"
-    if single.exists():
-        return single.read_text(encoding="utf-8")
-    return ""
+    resolved = _resolve_stage4_file(stage4_dir, doc_name)
+    return resolved.read_text(encoding="utf-8") if resolved else ""
 
 
 def get_pdf_creation_date(pdf_path: Path) -> str:
@@ -480,14 +535,15 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default=None,
         help=(
-            "Chemin relatif du document dans folder_source pour la hiérarchie "
-            "(ex: \"Taxation/DISPENSE/MonDoc.pdf\"). "
-            "Si absent, construit <DOC_NAME>.pdf (structure plate, sans sous-dossier)."
+            "Chemin relatif du document dans folder_source (data/input_files/) pour la "
+            "hiérarchie (ex: \"afac/Taxation/DISPENSE/MonDoc.pdf\"). "
+            "Si absent, réutilise DOC_PATH (déjà résolu par --input dans fullpipeline_modular_v2/v3.py). "
+            "Si DOC_PATH est aussi absent, construit <DOC_NAME>.pdf (structure plate, sans sous-dossier)."
         ),
     )
     parser.add_argument(
         "--folder-source", type=Path, default=FOLDER_SOURCE,
-        help="Racine de la hiérarchie documentaire (défaut: metadata/folder_source/).",
+        help="Racine de la hiérarchie documentaire (défaut: data/input_files/).",
     )
     parser.add_argument("--stage1", type=Path, default=DEFAULT_STAGE1)
     parser.add_argument("--stage2", type=Path, default=DEFAULT_STAGE2)
@@ -496,7 +552,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--stage5", type=Path, default=DEFAULT_STAGE5)
     parser.add_argument(
         "--output", type=Path, default=None,
-        help="Fichier CSV de sortie (défaut: data/output_files/metadata/<DOC_NAME>_final.csv).",
+        help="Fichier CSV de sortie (défaut: data/output_files_preprocessing/metadata/<DOC_NAME>_final.csv).",
+    )
+    parser.add_argument(
+        "--skip-enhancement",
+        action="store_true",
+        help=(
+            "Ne pas régénérer resume/intent/hyq via VLM — lit resume.md, intent.json et hyq.json "
+            "déjà présents dans <stage5>/<DOC_NAME>/metadata/. Utile pour recalculer l'embedding "
+            "d'un document sans changer les questions HyQ déjà utilisées ailleurs (comparabilité)."
+        ),
     )
     return parser.parse_args()
 
@@ -508,13 +573,19 @@ def main() -> None:
         doc_name = resolve_doc_name(args, primary_flag="--dotenv")
         dotenv_path = args.dotenv
 
-        # --doc-path définit la position dans la hiérarchie folder_source.
-        # Si absent, on utilise DOC_NAME.pdf (structure plate, pas de sous-dossier).
-        relative_doc_path = args.doc_path or f"{doc_name}.pdf"
+        # --doc-path définit la position dans la hiérarchie folder_source (data/input_files/).
+        # Résolution : 1. --doc-path explicite  2. DOC_PATH (déjà résolu par --input dans
+        # fullpipeline_modular_v2/v3.py, ou défini dans le .env chargé par resolve_doc_name
+        # ci-dessus — propagé aux sous-processus par héritage d'environnement)  3. DOC_NAME.pdf
+        # à plat (aucune hiérarchie disponible → parent/children/sibling resteront vides).
+        relative_doc_path = args.doc_path or os.environ.get("DOC_PATH", "").strip() or f"{doc_name}.pdf"
         output_path = args.output or (args.stage5 / doc_name / "metadata" / f"{doc_name}_final.csv")
 
-        # Stage 5 – VLM enrichment (resume, intent, hyq)
-        enrichment = run_enhancement(doc_name, args.stage4, args.stage5, dotenv_path=dotenv_path)
+        # Stage 5 – VLM enrichment (resume, intent, hyq), ou lecture de l'existant si --skip-enhancement
+        if args.skip_enhancement:
+            enrichment = load_existing_enrichment(args.stage5, doc_name)
+        else:
+            enrichment = run_enhancement(doc_name, args.stage4, args.stage5, dotenv_path=dotenv_path)
 
         # Stage 5 – embedding du contenu markdown (retourne aussi le nom du modèle)
         embedding_str, embedding_model_name = run_embedding(

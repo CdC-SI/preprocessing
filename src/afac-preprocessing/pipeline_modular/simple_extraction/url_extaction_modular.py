@@ -138,7 +138,7 @@ def parse_args() -> argparse.Namespace:
             "  uv run python url_extaction_modular.py --input data/input_files/MonDoc.pdf\n"
             "  uv run python url_extaction_modular.py "
             "--input data/input_files/MonDoc.pdf "
-            "--output data/output_files/MonDoc/hyperlinks_data_MonDoc.jsonl\n"
+            "--output data/output_files_preprocessing/MonDoc/hyperlinks_data_MonDoc.jsonl\n"
             "  uv run python url_extaction_modular.py --dotenv .env.test\n"
         ),
     )
@@ -157,7 +157,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help=(
             "Fichier JSONL de sortie. "
-            "Défaut : data/output_files/<nom_pdf>/hyperlinks_data_<nom_pdf>.jsonl"
+            "Défaut : data/output_files_preprocessing/<nom_pdf>/hyperlinks_data_<nom_pdf>.jsonl"
         ),
     )
     parser.add_argument(
@@ -196,7 +196,7 @@ def resolve_output(args: argparse.Namespace, pdf_path: Path) -> Path:
     Docstring for resolve_output
     Résout le chemin du fichier de sortie JSONL selon la logique suivante :
     1. Si --output est fourni, utilise ce chemin.
-    2. Sinon, construit le chemin par défaut : data/output_files/<nom_pdf>/hyperlinks_data_<nom_pdf>.jsonl
+    2. Sinon, construit le chemin par défaut : data/output_files_preprocessing/<nom_pdf>/hyperlinks_data_<nom_pdf>.jsonl
 
     :param args: Description
     :type args: argparse.Namespace
@@ -208,7 +208,7 @@ def resolve_output(args: argparse.Namespace, pdf_path: Path) -> Path:
     if args.output:
         return args.output.resolve()
     stem = pdf_path.stem.strip()
-    return project_root() / "data" / "output_files" / stem / f"hyperlinks_data_{stem}.jsonl"
+    return project_root() / "data" / "output_files_preprocessing" / stem / f"hyperlinks_data_{stem}.jsonl"
 
 
 # Point d'entrée

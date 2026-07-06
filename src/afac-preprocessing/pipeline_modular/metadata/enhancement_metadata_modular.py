@@ -13,16 +13,14 @@ Output (stage5_test/<doc_name>/):
 
 Usage:
     uv run python enhancement_metadata_modular.py --dotenv .env.test --doc-name "MonDoc"
-    uv run python enhancement_metadata_modular.py --doc-name "MonDoc" --stage4 ./data/output_files/stage4_test --stage5 ./data/output_files/stage5_test
+    uv run python enhancement_metadata_modular.py --doc-name "MonDoc" --stage4 ./data/output_files_preprocessing/stage4_test --stage5 ./data/output_files_preprocessing/stage5_test
 """
 import argparse
 import json
 import logging
 import sys
 from pathlib import Path
-from urllib.parse import urlparse, urlunparse
 
-import httpx
 from openai import OpenAI
 from pydantic import BaseModel
 
@@ -33,10 +31,10 @@ from prompts.metadata_prompts import (
     INTENT_PROMPT_3,
     RESUME_PROMPT,
 )
-from utils.config import load_vlm_config
 from utils.paths import project_root, resolve_doc_name
+from utils.vlm_client import build_sync_client, build_vlm_config, text_completion_structured
 
-DEFAULT_OUTPUT_FILES = project_root() / "data" / "output_files"
+DEFAULT_OUTPUT_FILES = project_root() / "data" / "output_files_preprocessing"
 DEFAULT_STAGE4 = DEFAULT_OUTPUT_FILES
 DEFAULT_STAGE5 = DEFAULT_OUTPUT_FILES
 
@@ -80,16 +78,8 @@ def generate_resume(markdown_content: str, client: OpenAI, vlm_model_name: str) 
     :return: Résumé court du document
     :rtype: str
     """
-    response = client.beta.chat.completions.parse(
-        model=vlm_model_name,
-        messages=[
-            {"role": "system", "content": RESUME_PROMPT},
-            {"role": "user", "content": markdown_content},
-        ],
-        response_format=ResumeOutput,
-        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
-    )
-    return response.choices[0].message.parsed.resume
+    result = text_completion_structured(client, vlm_model_name, RESUME_PROMPT, markdown_content, ResumeOutput)
+    return result.resume
 
 
 def generate_intent(markdown_content: str, client: OpenAI, vlm_model_name: str) -> list[str]:
@@ -109,16 +99,8 @@ def generate_intent(markdown_content: str, client: OpenAI, vlm_model_name: str) 
     intents: list[str] = []
     seen: set[str] = set()
     for system_prompt in [INTENT_PROMPT_1, INTENT_PROMPT_2, INTENT_PROMPT_3]:
-        response = client.beta.chat.completions.parse(
-            model=vlm_model_name,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": markdown_content},
-            ],
-            response_format=IntentOutput,
-            extra_body={"chat_template_kwargs": {"enable_thinking": False}},
-        )
-        for item in response.choices[0].message.parsed.intent:
+        result = text_completion_structured(client, vlm_model_name, system_prompt, markdown_content, IntentOutput)
+        for item in result.intent:
             normalized = item.strip()
             if normalized and normalized not in seen:
                 seen.add(normalized)
@@ -139,16 +121,8 @@ def generate_hyq(markdown_content: str, client: OpenAI, vlm_model_name: str) -> 
     :return: Liste de questions hypothétiques
     :rtype: list[str]
     """
-    response = client.beta.chat.completions.parse(
-        model=vlm_model_name,
-        messages=[
-            {"role": "system", "content": HYQ_PROMPT},
-            {"role": "user", "content": markdown_content},
-        ],
-        response_format=HyQOutput,
-        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
-    )
-    return response.choices[0].message.parsed.hyq
+    result = text_completion_structured(client, vlm_model_name, HYQ_PROMPT, markdown_content, HyQOutput)
+    return result.hyq
 
 
 # Stage 5 writer
@@ -215,16 +189,9 @@ def run_enhancement(
     :return: Dictionnaire avec les 3 champs enrichis
     :rtype: dict
     """
-    config = load_vlm_config(dotenv_path=dotenv_path)
-    ca_path = config["CA_PATH"]
-    vlm_model_name = config["VLM_MODEL_NAME"]
-    parsed = urlparse(config["VLM_URL"])
-    base_url = urlunparse((parsed.scheme, parsed.netloc, "/v1", "", "", ""))
-    client = OpenAI(
-        base_url=base_url,
-        api_key="no-key",
-        http_client=httpx.Client(verify=ca_path),
-    )
+    vlm_cfg = build_vlm_config(dotenv_path=dotenv_path)
+    vlm_model_name = vlm_cfg.vlm_model_name
+    client = build_sync_client(vlm_cfg)
 
     markdown_content = _read_stage4(stage4_dir, doc_name)
     if not markdown_content:

@@ -7,11 +7,11 @@ couleur et soulignement.
 
 Usage :
     uv run python stage1_modulaire/docling_markdown_converter_modular.py \
-        --input data/output_files/MonDoc/MonDoc.doctags
+        --input data/output_files_preprocessing/MonDoc/MonDoc.doctags
     uv run python stage1_modulaire/docling_markdown_converter_modular.py --dotenv .env.test
     uv run python stage1_modulaire/docling_markdown_converter_modular.py \
-        --input  data/output_files/MonDoc/MonDoc.doctags \
-        --output data/output_files/MonDoc/MonDoc.md
+        --input  data/output_files_preprocessing/MonDoc/MonDoc.doctags \
+        --output data/output_files_preprocessing/MonDoc/MonDoc.md
 """
 import argparse
 import logging
@@ -155,11 +155,11 @@ def parse_args() -> argparse.Namespace:
         epilog=(
             "Exemples :\n"
             "  uv run python stage1_modulaire/docling_markdown_converter_modular.py \\\n"
-            "      --input data/output_files/MonDoc/MonDoc.doctags\n\n"
+            "      --input data/output_files_preprocessing/MonDoc/MonDoc.doctags\n\n"
             "  # Sortie personnalisée :\n"
             "  uv run python stage1_modulaire/docling_markdown_converter_modular.py \\\n"
-            "      --input  data/output_files/MonDoc/MonDoc.doctags \\\n"
-            "      --output data/output_files/MonDoc/MonDoc.md\n\n"
+            "      --input  data/output_files_preprocessing/MonDoc/MonDoc.doctags \\\n"
+            "      --output data/output_files_preprocessing/MonDoc/MonDoc.md\n\n"
             "  # Via variable d'environnement DOC_NAME :\n"
             "  uv run python stage1_modulaire/docling_markdown_converter_modular.py \\\n"
             "      --dotenv .env.test\n"
@@ -171,7 +171,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help=(
             "Fichier .doctags à convertir. "
-            "Si absent, résout data/output_files/<DOC_NAME>/<DOC_NAME>.doctags depuis l'environnement."
+            "Si absent, résout data/output_files_preprocessing/<DOC_NAME>/<DOC_NAME>.doctags depuis l'environnement."
         ),
     )
     parser.add_argument(
@@ -180,7 +180,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help=(
             "Fichier Markdown de sortie. "
-            "Défaut : data/output_files/<stem>/<stem>.md"
+            "Défaut : data/output_files_preprocessing/<stem>/<stem>.md"
         ),
     )
     parser.add_argument(
@@ -221,7 +221,7 @@ def resolve_input(args: argparse.Namespace) -> Path:
         return args.input.resolve()
     doc_name = resolve_doc_name(args, primary_flag="--input")
     suffix = getattr(args, "suffix", "")
-    return project_root() / "data" / "output_files" / doc_name / f"{doc_name}{suffix}.doctags"
+    return project_root() / "data" / "output_files_preprocessing" / doc_name / f"{doc_name}{suffix}.doctags"
 
 
 def resolve_output(args: argparse.Namespace, input_path: Path) -> Path:
@@ -229,7 +229,7 @@ def resolve_output(args: argparse.Namespace, input_path: Path) -> Path:
     Docstring for resolve_output
     Résout le chemin du fichier Markdown de sortie :
     1. --output fourni → utilisé directement.
-    2. Sinon → data/output_files/<stem>/<stem>.md
+    2. Sinon → data/output_files_preprocessing/<stem>/<stem>.md
 
     :param args: Description
     :type args: argparse.Namespace

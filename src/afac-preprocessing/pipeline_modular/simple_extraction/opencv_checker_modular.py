@@ -130,7 +130,7 @@ def parse_args() -> argparse.Namespace:
         epilog=(
             "Exemples :\n"
             "  uv run python opencv_checker_modulaire.py "
-            "--input data/input_files/MonDoc.pdf --doctags data/output_files/MonDoc/MonDoc.doctags\n"
+            "--input data/input_files/MonDoc.pdf --doctags data/output_files_preprocessing/MonDoc/MonDoc.doctags\n"
             "  uv run python opencv_checker_modulaire.py --dotenv .env.test --dpi 150\n"
         ),
     )
@@ -149,7 +149,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help=(
             "Chemin vers le fichier .doctags produit par pipeline_multietape_modulaire.py. "
-            "Défaut : data/output_files/<nom_pdf>/<nom_pdf>.doctags."
+            "Défaut : data/output_files_preprocessing/<nom_pdf>/<nom_pdf>.doctags."
         ),
     )
     parser.add_argument(
@@ -158,7 +158,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help=(
             "Dossier de sortie pour les images PNG. "
-            "Défaut : data/output_files/<nom_pdf>/opencv_validation/."
+            "Défaut : data/output_files_preprocessing/<nom_pdf>/opencv_validation/."
         ),
     )
     parser.add_argument(
@@ -190,13 +190,13 @@ def resolve_doctags(args: argparse.Namespace, pdf_path: Path) -> Path:
     if args.doctags:
         return args.doctags.resolve()
     stem = pdf_path.stem.strip()
-    return project_root() / "data" / "output_files" / stem / f"{stem}.doctags"
+    return project_root() / "data" / "output_files_preprocessing" / stem / f"{stem}.doctags"
 
 
 def resolve_output(args: argparse.Namespace, pdf_path: Path) -> Path:
     if args.output_dir:
         return args.output_dir.resolve()
-    return project_root() / "data" / "output_files" / pdf_path.stem.strip() / "opencv_validation"
+    return project_root() / "data" / "output_files_preprocessing" / pdf_path.stem.strip() / "opencv_validation"
 
 
 # Point d'entrée

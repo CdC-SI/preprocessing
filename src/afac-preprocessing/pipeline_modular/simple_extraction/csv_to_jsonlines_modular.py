@@ -5,7 +5,7 @@ Pour chaque CSV trouvé dans le dossier d'entrée, produit un fichier .jsonl
 contenant une ligne JSON par ligne du tableau.
 
 Usage :
-    uv run python csv_to_jsonlines_modulaire.py --input-dir data/output_files/MonDoc/tables
+    uv run python csv_to_jsonlines_modulaire.py --input-dir data/output_files_preprocessing/MonDoc/tables
     uv run python csv_to_jsonlines_modulaire.py --dotenv .env.test
 """
 import argparse
@@ -129,10 +129,10 @@ def parse_args() -> argparse.Namespace:
         epilog=(
             "Exemples :\n"
             "  uv run python csv_to_jsonlines_modulaire.py "
-            "--input-dir data/output_files/MonDoc/tables\n"
+            "--input-dir data/output_files_preprocessing/MonDoc/tables\n"
             "  uv run python csv_to_jsonlines_modulaire.py "
-            "--input-dir data/output_files/MonDoc/tables "
-            "--output-dir data/output_files/MonDoc/jsonlines\n"
+            "--input-dir data/output_files_preprocessing/MonDoc/tables "
+            "--output-dir data/output_files_preprocessing/MonDoc/jsonlines\n"
             "  uv run python csv_to_jsonlines_modulaire.py --dotenv .env.test\n"
         ),
     )
@@ -142,7 +142,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help=(
             "Dossier contenant les fichiers CSV à convertir. "
-            "Si absent, résout data/output_files/<DOC_NAME>/tables/ depuis l'environnement."
+            "Si absent, résout data/output_files_preprocessing/<DOC_NAME>/tables/ depuis l'environnement."
         ),
     )
     parser.add_argument(
@@ -177,7 +177,7 @@ def resolve_input_dir(args: argparse.Namespace) -> Path:
     if args.input_dir:
         return args.input_dir.resolve()
     doc_name = resolve_doc_name(args, primary_flag="--input-dir")
-    return project_root() / "data" / "output_files" / doc_name / "tables"
+    return project_root() / "data" / "output_files_preprocessing" / doc_name / "tables"
 
 
 def resolve_output_dir(args: argparse.Namespace, input_dir: Path) -> Path:

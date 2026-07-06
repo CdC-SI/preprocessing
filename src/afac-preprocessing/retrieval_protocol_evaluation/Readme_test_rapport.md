@@ -27,7 +27,7 @@ These documents are trivially retrievable — their content is unique enough tha
 |---|---|---|---|
 | Adhésion traitement | 0.399 | 0.798 | +0.399 |
 | Pas immatriculé | 0.527 | 0.824 | +0.297 |
-| NON adhésion - Refuser |0.521	|0.663 | +0.142 |
+| NON adhésion - Refuser | 0.521	|0.663 | +0.142 |
 | Liste pays UE-AELE | 0.850 | 1.000 | +0.150 |
 | Demande prématurée | 0.829 | 0.954 | +0.125 |
 

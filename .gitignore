@@ -9,8 +9,13 @@ RUNBOOK.md
 src/afac-preprocessing/data/**
 !src/afac-preprocessing/data/input_files/
 !src/afac-preprocessing/data/input_files/.gitkeep
-!src/afac-preprocessing/data/output_files/
-!src/afac-preprocessing/data/output_files/.gitkeep
+!src/afac-preprocessing/data/output_files_v2/
+!src/afac-preprocessing/data/output_files_v2/.gitkeep
+!src/afac-preprocessing/data/output_files_v3/
+!src/afac-preprocessing/data/output_files_v3/.gitkeep
+!src/afac-preprocessing/data/output_files_baseline/
+!src/afac-preprocessing/data/output_files_baseline/.gitkeep
+!src/afac-preprocessing/data/output_files_preprocessing/.gitkeep
 src/afac-preprocessing/graph_url/graph_output
 src/afac-preprocessing/prompts/__pycache__
 src/afac-preprocessing/utils/__pycache__
@@ -21,3 +26,5 @@ src/afac-preprocessing/trash
 resultat_claude_audit.md
 src/afac-preprocessing/pipeline_modular/docling_image_png
 table_control_vlm_modular.py
+unread_file
+.venv

@@ -155,33 +155,37 @@ def evaluate_doc(
     return sem_rows, rer_rows
 
 
+def _add_mean_metrics(
+    row: dict,
+    df: pd.DataFrame,
+    prefix: str,
+    top_ks: list[int],
+) -> None:
+    """Ajoute dans `row` les moyennes de chaque métrique@k pour le pipeline `prefix`."""
+    for metric in ("recall", "precision", "ndcg", "mrr"):
+        for k in top_ks:
+            col = f"{metric}@{k}"
+            if col in df.columns:
+                row[f"{prefix}_mean_{col}"] = df[col].mean()
+
+
 def build_global_summary(
     sem_results: dict[str, list[dict]],
     rer_results: dict[str, list[dict]],
     top_ks: list[int],
 ) -> pd.DataFrame:
-    """One row per doc — mean metrics for both pipelines."""
+    """Une ligne par document — métriques moyennes pour les deux pipelines."""
     rows = []
     for doc_name, sem_rows in sem_results.items():
         if not sem_rows:
             continue
         sem_df = pd.DataFrame(sem_rows)
         row: dict = {"doc_name": doc_name, "n_questions": len(sem_df)}
-
-        for metric in ("recall", "precision", "ndcg", "mrr"):
-            for k in top_ks:
-                col = f"{metric}@{k}"
-                if col in sem_df.columns:
-                    row[f"sem_mean_{col}"] = sem_df[col].mean()
+        _add_mean_metrics(row, sem_df, "sem", top_ks)
 
         rer_rows = rer_results.get(doc_name, [])
         if rer_rows:
-            rer_df = pd.DataFrame(rer_rows)
-            for metric in ("recall", "precision", "ndcg", "mrr"):
-                for k in top_ks:
-                    col = f"{metric}@{k}"
-                    if col in rer_df.columns:
-                        row[f"rer_mean_{col}"] = rer_df[col].mean()
+            _add_mean_metrics(row, pd.DataFrame(rer_rows), "rer", top_ks)
 
         rows.append(row)
 

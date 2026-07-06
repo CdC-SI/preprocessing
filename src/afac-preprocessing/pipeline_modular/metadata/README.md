@@ -53,7 +53,7 @@ Ces champs sont déduits de la position du document dans `folder_source/`, le do
 ### Référence au contenu
 | Champ | Comment il est obtenu |
 |---|---|
-| `content` | Nom du fichier markdown final produit au Stage 11 (`<nom_doc>_final.md`). |
+| `content` | Nom du fichier markdown produit au Stage 11 : `<nom_doc>_final_embed.md` s'il existe (tables remplacées par du JSONL, produit par `markdown_tables_to_jsonl_modular.py --embed-output`, pipeline v3), sinon `<nom_doc>_final.md`. |
 | `chunk_count` | Nombre de fichiers markdown trouvés pour ce document dans le Stage 11. |
 
 ---
@@ -72,7 +72,9 @@ Ces trois champs sont générés en envoyant le contenu markdown du Stage 11 (`_
 
 ## Embedding (Stage 5)
 
-Le contenu markdown complet du Stage 11 (`_final.md`) est envoyé à un modèle d'embedding. Le vecteur produit est :
+Le contenu markdown complet du Stage 11 est envoyé à un modèle d'embedding — `_final_embed.md`
+s'il existe (tables en JSONL, pipeline v3, cf. `markdown_tables_to_jsonl_modular.py`),
+sinon `_final.md` (v1/v2/baseline, comportement inchangé). Le vecteur produit est :
 - Sauvegardé dans `embedding.json` dans le dossier de sortie du Stage 5.
 - Écrit sous forme de flottants séparés par des virgules dans la colonne **EMBEDDING** du CSV final.
 
@@ -94,7 +96,7 @@ CONTENT | METADATA | EMBEDDING
 
 Le fichier de sortie est écrit dans :
 ```
-data/output_files/<nom_doc>/metadata/<nom_doc>_final.csv
+data/output_files_preprocessing/<nom_doc>/metadata/<nom_doc>_final.csv
 ```
 
 L'opération est **idempotente** : relancer le script pour un même document remplace la ligne existante.

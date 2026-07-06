@@ -16,7 +16,7 @@ Chaque CSV contient une ligne (+ en-tête) :
 Usage:
     uv run python hyq_embedding_doc_modular.py --dotenv .env.test
     uv run python hyq_embedding_doc_modular.py --dotenv .env.test --doc-title "MonDoc.pdf"
-    uv run python hyq_embedding_doc_modular.py --doc-name "MonDoc" --doc-title "MonDoc.pdf" --stage5 ./data/output_files/stage5_test
+    uv run python hyq_embedding_doc_modular.py --doc-name "MonDoc" --doc-title "MonDoc.pdf" --stage5 ./data/output_files_preprocessing/stage5_test
 """
 
 import argparse
@@ -25,15 +25,18 @@ import json
 import logging
 import sys
 from pathlib import Path
-from urllib.parse import urlparse, urlunparse
 
-import httpx
 from openai import OpenAI
 
-from utils.config import load_vlm_config
 from utils.paths import project_root, resolve_doc_name
+from utils.vlm_client import (
+    build_embedding_client,
+    build_vlm_config,
+    embedding_to_string,
+    get_embedding,
+)
 
-DEFAULT_STAGE5 = project_root() / "data" / "output_files"
+DEFAULT_STAGE5 = project_root() / "data" / "output_files_preprocessing"
 
 _log = logging.getLogger(__name__)
 
@@ -55,39 +58,6 @@ def load_hyq(stage5_dir: Path, doc_name: str) -> list[str]:
     return json.loads(hyq_path.read_text(encoding="utf-8"))
 
 
-def generate_embedding(text: str, client: OpenAI, embedding_model_name: str) -> list[float]:
-    """
-    Envoie le texte au modèle d'embedding et retourne le vecteur brut.
-
-    :param text: Texte à encoder
-    :type text: str
-    :param client: Client OpenAI configuré
-    :type client: OpenAI
-    :param embedding_model_name: Nom du modèle d'embedding
-    :type embedding_model_name: str
-    :return: Vecteur d'embedding
-    :rtype: list[float]
-    """
-    response = client.embeddings.create(
-        input=text,
-        model=embedding_model_name,
-    )
-    return response.data[0].embedding
-
-
-def embedding_to_string(embedding: list[float]) -> str:
-    """
-    Convertit un vecteur d'embedding en chaîne sans crochets.
-    Ex: [0.4, 0.8, 1.5] -> "0.4, 0.8, 1.5"
-
-    :param embedding: Vecteur d'embedding
-    :type embedding: list[float]
-    :return: Représentation string du vecteur
-    :rtype: str
-    """
-    return str(embedding).replace("[", "").replace("]", "")
-
-
 def write_hyq_csv(
     stage5_dir: Path,
     doc_name: str,
@@ -99,6 +69,12 @@ def write_hyq_csv(
     """
     Pour chaque question hyq, génère son embedding et écrit un CSV dédié :
     stage5/<doc_name>/hyq_<doc_name>/question_1.csv, question_2.csv, …
+
+    Supprime d'abord tout question_*.csv préexistant : sans ça, relancer ce script sur un
+    hyq.json régénéré avec moins de questions qu'avant laisse les fichiers en trop d'une
+    exécution précédente (ex. question_11.csv orphelin si hyq.json est passé de 11 à 10
+    questions) — silencieusement inclus par tout code qui lit hyq_<doc_name>/*.csv comme
+    "l'ensemble courant des questions" (single_docling_baseline.py, retrieval_protocol_evaluation).
 
     Les erreurs par question sont loggées et ignorées — les questions suivantes
     sont toujours traitées.
@@ -120,12 +96,14 @@ def write_hyq_csv(
     """
     out_dir = stage5_dir / doc_name / "metadata" / f"hyq_{doc_name}"
     out_dir.mkdir(parents=True, exist_ok=True)
+    for stale in out_dir.glob("question_*.csv"):
+        stale.unlink()
     n_err = 0
 
     for i, question in enumerate(questions, start=1):
         _log.info("Embedding question %d/%d : %s...", i, len(questions), question[:60])
         try:
-            embedding = generate_embedding(question, client, embedding_model_name)
+            embedding = get_embedding(client, embedding_model_name, question)
             csv_path = out_dir / f"question_{i}.csv"
             with open(csv_path, "w", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f, quoting=csv.QUOTE_ALL)
@@ -197,16 +175,9 @@ def main() -> None:
 
     doc_title = args.doc_title or f"{doc_name}.pdf"
 
-    config = load_vlm_config(dotenv_path=dotenv_path)
-    ca_path = config["CA_PATH"]
-    embedding_model_name = config["EMBEDDING_MODEL_NAME"]
-    parsed = urlparse(config["EMBEDDING_URL"])
-    base_url = urlunparse((parsed.scheme, parsed.netloc, "/v1", "", "", ""))
-    client = OpenAI(
-        base_url=base_url,
-        api_key="no-key",
-        http_client=httpx.Client(verify=ca_path),
-    )
+    vlm_cfg = build_vlm_config(dotenv_path=dotenv_path)
+    embedding_model_name = vlm_cfg.embedding_model_name
+    client = build_embedding_client(vlm_cfg)
 
     _log.info("Chargement des hyq pour : %s", doc_name)
     questions = load_hyq(args.stage5, doc_name)
