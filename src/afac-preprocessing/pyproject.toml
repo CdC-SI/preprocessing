@@ -33,6 +33,8 @@ dependencies = [
     "PyMuPDF==1.27.2.3",
     "python-dotenv==1.2.2",
     "certifi==2026.4.22",
+    "neo4j>=6.2.0",
+    "neo4j-graphrag>=1.18.0",
 ]
 
 [tool.uv]

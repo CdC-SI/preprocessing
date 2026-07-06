@@ -45,3 +45,8 @@ certifi==2026.4.22
 
 # PDF (partagé Stage 1, 2, 3, 4, metadata)
 PyMuPDF==1.27.2.3
+
+# neo4j_graphrag_ontology (knowledge graph)
+# Driver Bolt Neo4j + pipeline GraphRAG officiel (extraction entités/relations, retrievers)
+neo4j==6.2.0
+neo4j-graphrag==1.18.0
