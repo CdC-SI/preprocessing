@@ -1,15 +1,54 @@
 """
-Stage 5 - Script de génération de metadata pour chaque document
+Génération des metadata d'un document
 Script 1 : metadata_generation_modular.py
 
-Génère les metadata personnalisées pour chaque document (CONTENT + METADATA + EMBEDDING)
-en lisant les sorties des stages 1-4 et en appelant les fonctions VLM d'enrichissement.
+Construit la ligne finale (CONTENT + METADATA + EMBEDDING) d'un document en lisant les
+sorties des stages 1-4, puis en appelant l'enrichissement VLM (resume / intent / hyq via
+run_enhancement) et l'embedding du contenu markdown (via run_embedding). Ces metadata
+servent ensuite au reranking et à l'embedding.
+
+Écrit une ligne dans un CSV de 3 colonnes (idempotent : une ligne du même titre est
+remplacée) :
+    CONTENT   -> markdown final du document (stage4, _final_embed.md ou _final.md)
+    METADATA  -> JSON généré par ce script (voir champs ci-dessous)
+    EMBEDDING -> vecteur d'embedding du contenu (généré par run_embedding)
+
+Champs du bloc METADATA :
+- uuid : uuid5 déterministe basé sur le chemin relatif du document (stable entre les runs)
+- user_uuid : chaîne vide par défaut
+- source : premier segment du chemin (ex : "afac"), sinon "afac" par défaut
+- title : nom du fichier avec extension (ex : "Annulation d'une dispense.pdf")
+- doctype : pdf, docx, html, ... (déduit du mimetype Docling)
+- version : version extraite d'une table du document (ex : "4.2"), sinon chaîne vide
+- visibility : "internal" par défaut ("internal" / "public" / "sensitive")
+- language : "fr" (tous les documents AF)
+- outgoing_links : liens hypertextes sortants extraits du document (stage3)
+- incoming_links : références au document trouvées dans les hyperlinks des autres documents
+- created_at : date de création du PDF (ISO 8601 YYYY-MM-DDTHH:MM:SSZ), sinon chaîne vide
+- updated_at : horodatage UTC courant (ISO 8601)
+- media_type : liste des images extraites du document (stage2, used_images/)
+- parent_label : dossier parent du document (ex : ["DISPENSE"])
+- children_label : sous-dossiers présents dans le dossier du document
+- sibling : autres fichiers présents dans le même dossier (hors document lui-même)
+- content : nom du fichier markdown utilisé comme CONTENT (ex : "MonDoc_final.md")
+- page_count : nombre de pages du document
+- page_num : numéros de page en chaîne CSV (ex : "1,2,3")
+- chunk_count : 1 si le markdown final existe, sinon 0
+- embedding_model : nom du modèle d'embedding (résolu depuis la config VLM)
+- resume : résumé du document (VLM, depuis le markdown stage4)
+- intent : intentions du document, jointes en une chaîne (VLM)
+- hyq : questions fréquentes, jointes en une chaîne (VLM)
 
 Usage :
     uv run python metadata_generation_modular.py --dotenv .env.test
     uv run python metadata_generation_modular.py --dotenv .env.test --doc-path "afac/Taxation/DISPENSE/Annulation d'une dispense.pdf"
     uv run python metadata_generation_modular.py --dotenv .env.test --output ./out/docs.csv
+    uv run python metadata_generation_modular.py --dotenv .env.test --skip-enhancement
+
+Sortie par défaut :
+    data/output_files_preprocessing/metadata/<DOC_NAME>_final.csv
 """
+
 import argparse
 import csv
 import json
