@@ -15,7 +15,14 @@ src/afac-preprocessing/data/**
 !src/afac-preprocessing/data/output_files_v3/.gitkeep
 !src/afac-preprocessing/data/output_files_baseline/
 !src/afac-preprocessing/data/output_files_baseline/.gitkeep
+!src/afac-preprocessing/data/output_files_v3_noimg/
+!src/afac-preprocessing/data/output_files_v3_noimg/.gitkeep
+!src/afac-preprocessing/data/output_files_preprocessing/
 !src/afac-preprocessing/data/output_files_preprocessing/.gitkeep
+!src/afac-preprocessing/data/evaluation_results/
+!src/afac-preprocessing/data/evaluation_results/.gitkeep
+!src/afac-preprocessing/data/evaluation_results_v3_noimg/
+!src/afac-preprocessing/data/evaluation_results_v3_noimg/.gitkeep
 src/afac-preprocessing/graph_url/graph_output
 src/afac-preprocessing/prompts/__pycache__
 src/afac-preprocessing/utils/__pycache__
