@@ -129,3 +129,5 @@ Valider la chaîne bout-en-bout sur **un seul document** (ex. *Mineur*) avant de
 installer Neo4j → définir l'ontologie → extraire les triplets d'un document → charger → vérifier
 le graphe dans le Browser. Une fois le squelette fonctionnel, généraliser au corpus complet puis
 brancher l'évaluation.
+
+my first commit new branch KG sand Ontology
