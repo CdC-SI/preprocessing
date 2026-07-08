@@ -29,6 +29,7 @@ from pathlib import Path
 import httpx
 import neo4j
 from neo4j_graphrag.embeddings import OpenAIEmbeddings
+from neo4j_graphrag.experimental.components.types import LexicalGraphConfig
 from neo4j_graphrag.experimental.pipeline.kg_builder import SimpleKGPipeline
 from neo4j_graphrag.llm import OpenAILLM
 
@@ -49,6 +50,15 @@ _log = logging.getLogger("build_kg")
 # extra_body identique au reste du pipeline (évite content=null sur Qwen3)
 _ENABLE_THINKING_FALSE = {"chat_template_kwargs": {"enable_thinking": False}}
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "data" / "output_files_preprocessing"
+
+# Labels de la couche lexicale de neo4j-graphrag (structure Document→Chunk propre à la
+# librairie). On les renomme pour NE PAS entrer en collision avec le label métier "Document"
+# de notre ontologie (cf. ontology/afac_ontology.py) : sinon :Document mélange les nœuds de
+# plomberie (path="document.txt", type="inline_text") et les entités métier extraites.
+LEXICAL_GRAPH_CONFIG = LexicalGraphConfig(
+    document_node_label="TextSource",
+    chunk_node_label="TextChunk",
+)
 
 
 def resolve_final_md(doc_name: str, output_dir: Path) -> Path:
@@ -145,8 +155,9 @@ async def run(doc_name: str, dotenv: str | None, output_dir: Path, use_embedding
         entities=NODE_TYPES,
         relations=RELATIONSHIP_TYPES,
         potential_schema=PATTERNS,
-        from_pdf=False,
+        from_file=False,  # on fournit du texte brut (run_async(text=...)), pas de loader de fichier
         perform_entity_resolution=True,
+        lexical_graph_config=LEXICAL_GRAPH_CONFIG,
         neo4j_database=None,
     )
 

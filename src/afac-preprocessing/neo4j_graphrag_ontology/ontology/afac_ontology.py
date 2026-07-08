@@ -23,17 +23,13 @@ Format directement consommable par `neo4j_graphrag` :
 """
 from __future__ import annotations
 
-
-# --------------------------------------------------------------------------------------------
 # Types de nœuds (labels fermés)
-# --------------------------------------------------------------------------------------------
 # Chaque entité porte au minimum une propriété `name` (le nom normalisé, cf. normalize_name).
-
 NODE_TYPES: list[dict] = [
     {
         "label": "Document",
         "description": "Un aide-mémoire / guide opérationnel AFAC (un fichier PDF source). "
-                       "Ex. « Adhésion d'un mineur », « Confirmer l'adhésion ».",
+                       "Ex. « Adhésion d'un mineur.pdf », « Confirmer l'adhésion.pdf ».",
         "properties": [
             {"name": "name", "type": "STRING"},
             {"name": "version", "type": "STRING"},
@@ -90,10 +86,7 @@ NODE_TYPES: list[dict] = [
 ]
 
 
-# --------------------------------------------------------------------------------------------
 # Types de relations (labels fermés)
-# --------------------------------------------------------------------------------------------
-
 RELATIONSHIP_TYPES: list[dict] = [
     {"label": "PART_OF",
      "description": "Appartenance / rattachement (un Document fait partie d'un Theme)."},
@@ -112,12 +105,8 @@ RELATIONSHIP_TYPES: list[dict] = [
                     "spécifique identifié."},
 ]
 
-
-# --------------------------------------------------------------------------------------------
 # Patterns autorisés : (source_label, RELATION, target_label)
-# --------------------------------------------------------------------------------------------
 # Guide le LLM sur les combinaisons plausibles et évite les arêtes incohérentes.
-
 PATTERNS: list[tuple[str, str, str]] = [
     ("Document", "PART_OF",    "Theme"),
     ("Document", "REFERENCES", "Process"),
@@ -142,13 +131,9 @@ PATTERNS: list[tuple[str, str, str]] = [
     ("Process",   "APPLIES_TO", "Concept"),
 ]
 
-
-# --------------------------------------------------------------------------------------------
 # Normalisation des noms d'entités
-# --------------------------------------------------------------------------------------------
 # Le scan du corpus montre des variantes de casse/orthographe pour la même entité. On les
 # rabat sur une forme canonique AVANT insertion dans Neo4j pour éviter les nœuds dupliqués.
-
 NAME_ALIASES: dict[str, str] = {
     "gedo": "GEDO",
     "ara": "ARA",

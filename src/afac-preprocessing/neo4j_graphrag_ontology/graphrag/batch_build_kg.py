@@ -26,6 +26,7 @@ from neo4j_graphrag.experimental.pipeline.kg_builder import SimpleKGPipeline
 # Réutilise la config/paths/helpers du script unitaire (met aussi sys.path en place).
 from build_kg import (
     DEFAULT_OUTPUT_DIR,
+    LEXICAL_GRAPH_CONFIG,
     build_embedder,
     build_llm,
     graph_summary,
@@ -112,7 +113,8 @@ async def run(dotenv: str | None, output_dir: Path, use_embeddings: bool, wipe: 
     pipeline = SimpleKGPipeline(
         llm=llm, driver=driver, embedder=embedder,
         entities=NODE_TYPES, relations=RELATIONSHIP_TYPES, potential_schema=PATTERNS,
-        from_pdf=False, perform_entity_resolution=True,
+        from_file=False, perform_entity_resolution=True,
+        lexical_graph_config=LEXICAL_GRAPH_CONFIG,
     )
 
     ok, failed = 0, []

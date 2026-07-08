@@ -130,4 +130,39 @@ installer Neo4j → définir l'ontologie → extraire les triplets d'un document
 le graphe dans le Browser. Une fois le squelette fonctionnel, généraliser au corpus complet puis
 brancher l'évaluation.
 
-my first commit new branch KG sand Ontology
+ENGLISH:
+Neo4j baseline :
+
+Current chunking
+You never pass text_splitter= to SimpleKGPipeline, so it defaults to FixedSizeSplitter() (kg_builder.py:88 — "Defaults to FixedSizeSplitter()"), whose defaults are:
+
+|Parametre|Value|Meaning|
+|---|---|---|
+|`chunck_size`|4000|4000 *characters* per chunck|
+|`chunck_overlap`|200|200 characters|
+|`approximate`|**true**|nudges the cut to the nearest word boundary instead of slicing mid-word|
+
+So your chunk overlap is 200 characters (~5% of chunk size).
+
+générer le graphe complet:
+MATCH (n)-[r]->(m) RETURN n, r, m
+
+## 8. Visualisation — taille des nœuds selon leur connectivité
+
+Neo4j Browser n'a pas de notion de « degré » calculée à la volée pour le style : il faut
+d'abord stocker le degré comme propriété, puis mapper cette propriété à la taille dans le
+panneau de style. À refaire après chaque rechargement du graphe (`build_kg.py` /
+`batch_build_kg.py`), le degré n'étant pas mis à jour automatiquement.
+
+1. Dans la barre de requête du Browser, calculer et stocker le degré de chaque nœud :
+
+   ```cypher
+   MATCH (n)
+   SET n.degree = size((n)--())
+   ```
+
+2. Relancer `MATCH (n)-[r]->(m) RETURN n, r, m` pour afficher le graphe.
+3. Dans le panneau latéral (légende par label, ex. `Concept`, `System`…), cliquer sur un
+   label puis choisir **Size mapped by...** (ou l'icône de taille) → sélectionner la
+   propriété `degree`. Les nœuds les plus connectés (ex. `mineur`, `GEDO`) apparaissent
+   alors visiblement plus gros que les nœuds périphériques.
