@@ -29,7 +29,10 @@ src/afac-preprocessing/utils/__pycache__
 src/afac-preprocessing/stage5_metadata/folder_source
 src/afac-preprocessing/stage5_metadata/__pycache__
 graphify-out
+src/afac-preprocessing/readme_comparasison.md
+src/afac-preprocessing/readme_simplification.md
 # KG export — données dérivées de documents AFAC sensibles, ne pas publier
+src/afac-preprocessing/neo4j_graphrag_ontology/examples
 src/afac-preprocessing/neo4j_graphrag_ontology/export/
 src/afac-preprocessing/trash
 resultat_claude_audit.md
