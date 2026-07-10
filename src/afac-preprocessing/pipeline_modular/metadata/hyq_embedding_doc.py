@@ -1,8 +1,8 @@
 """
 Stage 5 - Script qui génère les embeddings des questions hyq pour un document donné.
-Script 4 : hyq_embedding_doc_modular.py
+Script 4 : hyq_embedding_doc.py
 
-Lit hyq.json depuis stage5 (écrit par metadata_generation_modular.py / step 11),
+Lit hyq.json depuis stage5 (écrit par metadata_generation.py / step 11),
 génère l'embedding de chaque question et écrit un CSV dédié par question :
     stage5/<doc_name>/hyq_<doc_name>/question_1.csv
     stage5/<doc_name>/hyq_<doc_name>/question_2.csv
@@ -14,9 +14,9 @@ Chaque CSV contient une ligne (+ en-tête) :
     EMBEDDING: le vecteur d'embedding de la question, ex. "0.48, 0.84, 1.59, -2.71"
 
 Usage:
-    uv run python hyq_embedding_doc_modular.py --dotenv .env.test
-    uv run python hyq_embedding_doc_modular.py --dotenv .env.test --doc-title "MonDoc.pdf"
-    uv run python hyq_embedding_doc_modular.py --doc-name "MonDoc" --doc-title "MonDoc.pdf" --stage5 ./data/output_files_preprocessing/stage5_test
+    uv run python hyq_embedding_doc.py --dotenv .env.test
+    uv run python hyq_embedding_doc.py --dotenv .env.test --doc-title "MonDoc.pdf"
+    uv run python hyq_embedding_doc.py --doc-name "MonDoc" --doc-title "MonDoc.pdf" --stage5 ./data/output_files_preprocessing/stage5_test
 """
 
 import argparse
@@ -126,8 +126,8 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Exemples :\n"
-            "  uv run python hyq_embedding_doc_modular.py --dotenv .env.test\n"
-            "  uv run python hyq_embedding_doc_modular.py --dotenv .env.test --doc-title \"MonDoc.pdf\"\n"
+            "  uv run python hyq_embedding_doc.py --dotenv .env.test\n"
+            "  uv run python hyq_embedding_doc.py --dotenv .env.test --doc-title \"MonDoc.pdf\"\n"
         ),
     )
     parser.add_argument(

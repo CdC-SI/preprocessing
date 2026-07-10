@@ -148,7 +148,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=None,
         help=(
-            "Chemin vers le fichier .doctags produit par pipeline_multietape_modulaire.py. "
+            "Chemin vers le fichier .doctags produit par docling_extract.py. "
             "Défaut : data/output_files_preprocessing/<nom_pdf>/<nom_pdf>.doctags."
         ),
     )

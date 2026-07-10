@@ -5,7 +5,7 @@ Docling peut extraire les blocs dans un ordre incorrect quand des coordonnées y
 similaires ou absentes. Ce script les retrie par position verticale (y0) puis horizontale (x0),
 page par page, avant les étapes VLM aval.
 
-Se lance après pipeline_multietape_modulaire.py (qui produit le .doctags source).
+Se lance après docling_extract.py (qui produit le .doctags source).
 
 Usage :
     uv run python reordered_doctags.py --input data/output_files_preprocessing/MonDoc/MonDoc.doctags
@@ -159,7 +159,7 @@ def split_pages(blocks: list[Block]) -> list[list[Block]]:
     observé au milieu du contenu d'une page physique plutôt qu'à sa frontière réelle). Le
     traiter comme déclencheur de coupure produirait alors une page supplémentaire
     fantôme : la page physique concernée serait scindée en deux morceaux, et en aval
-    url_tuning_vlm_modular.py (qui boucle sur range(1, n_pages+1) où n_pages vient du
+    url_tuning_vlm.py (qui boucle sur range(1, n_pages+1) où n_pages vient du
     compte réel de pages du PDF) ne traiterait jamais le morceau en trop — contenu de
     page silencieusement perdu, et une autre page dupliquée sous deux numéros. D'où le
     choix de ne compter que sur <page_footer> quand il existe.
@@ -181,7 +181,7 @@ def split_pages(blocks: list[Block]) -> list[list[Block]]:
     <page_break> autonomes sont écartés alors qu'un <page_footer> existe ailleurs dans le
     document, signal qu'une page a peut-être perdu son footer. Le contrôle downstream
     (comparaison du nombre de pages réassemblées au nombre de pages du PDF, cf.
-    markdown_control_vlm_modular.py) reste le filet de sécurité qui détecte un vrai
+    markdown_control_vlm.py) reste le filet de sécurité qui détecte un vrai
     décalage.
 
     :param blocks: Description
@@ -307,7 +307,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Réordonne les blocs d'un fichier .doctags par coordonnées y0/x0 (page par page). "
-            "À lancer après pipeline_multietape_modulaire.py."
+            "À lancer après docling_extract.py."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(

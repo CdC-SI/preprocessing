@@ -73,7 +73,7 @@ for _path in (_SRC_ROOT, _RETRIEVAL_EVAL_DIR, _EMBEDDING_MODULE_DIR):
 
 from utils.paths import project_root  # noqa: E402
 from utils.vlm_client import build_vlm_config, build_embedding_client, embedding_to_string  # noqa: E402
-from embedding_metadata_modular import generate_embedding  # noqa: E402
+from embedding_metadata import generate_embedding  # noqa: E402
 from evaluate_all_docs import evaluate_doc  # noqa: E402
 from loaders import parse_embedding as parse_embedding_field  # noqa: E402
 from config import TOP_KS  # noqa: E402

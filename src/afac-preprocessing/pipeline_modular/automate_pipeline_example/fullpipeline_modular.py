@@ -24,18 +24,18 @@ _DESCIMG = _PIPELINE_ROOT / "description_image"
 _META    = _PIPELINE_ROOT / "metadata"
 
 STEPS: list[Path] = [
-    _SIMPLE  / "pipeline_multietape_modular.py",        # 01 – doctags via Docling
-    _SIMPLE  / "reordered_doctags_modular.py",          # 02 – réordonnement des balises
-    _SIMPLE  / "opencv_checker_modular.py",             # 03 – contrôle qualité images
-    _SIMPLE  / "csv_to_jsonlines_modular.py",           # 04 – CSV → JSONL
-    _SIMPLE  / "load_jsonline_doctags_modular.py",      # 05 – chargement doctags enrichi
-    _DESCIMG / "description_image_context_modular.py",  # 06 – descriptions images VLM
-    _SIMPLE  / "url_extaction_modular.py",              # 07 – extraction URL (typo intentionnel)
-    _SIMPLE  / "url_tuning_vlm_modular.py",             # 08 – tuning URL via VLM
-    _SIMPLE  / "docling_markdown_converter_modular.py", # 09 – conversion markdown
-    _SIMPLE  / "markdown_control_vlm_modular.py",       # 10 – contrôle markdown VLM
-    _META    / "metadata_generation_modular.py",        # 11 – metadata + embedding CSV
-    _META    / "hyq_embedding_doc_modular.py",          # 12 – embeddings des questions hyq
+    _SIMPLE  / "docling_extract.py",        # 01 – doctags via Docling
+    _SIMPLE  / "reordered_doctags.py",          # 02 – réordonnement des balises
+    _SIMPLE  / "opencv_checker.py",             # 03 – contrôle qualité images
+    _SIMPLE  / "csv_to_jsonlines.py",           # 04 – CSV → JSONL
+    _SIMPLE  / "load_jsonline_doctags.py",      # 05 – chargement doctags enrichi
+    _DESCIMG / "description_image_context.py",  # 06 – descriptions images VLM
+    _SIMPLE  / "url_extaction.py",              # 07 – extraction URL (typo intentionnel)
+    _SIMPLE  / "url_tuning_vlm.py",             # 08 – tuning URL via VLM
+    _SIMPLE  / "docling_markdown_converter.py", # 09 – conversion markdown
+    _SIMPLE  / "markdown_control_vlm.py",       # 10 – contrôle markdown VLM
+    _META    / "metadata_generation.py",        # 11 – metadata + embedding CSV
+    _META    / "hyq_embedding_doc.py",          # 12 – embeddings des questions hyq
 ]
 
 

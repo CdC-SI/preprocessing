@@ -478,10 +478,10 @@ PAGE MARKDOWN (to correct):
 
 # ---------------------------------------------------------------------------
 # V3 variants — pipeline v3 skips the CSV→JSONL table injection
-# (csv_to_jsonlines_modular.py / load_jsonline_doctags_modular.py), so tables
+# (csv_to_jsonlines.py / load_jsonline_doctags.py), so tables
 # stay in Docling's native <otsl> form through url_tuning_vlm and are
 # rendered as real Markdown pipe tables (| col | col |) by
-# docling_markdown_converter_modular.py — never as JSON lines. These variants
+# docling_markdown_converter.py — never as JSON lines. These variants
 # replace the JSON-lines table handling accordingly. Everything else is
 # unchanged from the v2 prompt.
 # ---------------------------------------------------------------------------

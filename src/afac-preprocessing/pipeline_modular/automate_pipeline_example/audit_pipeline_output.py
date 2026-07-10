@@ -11,7 +11,7 @@ Checks per document:
   - stage 1 presence   : <doc>.doctags, <doc>.md
   - final content       : <doc>_final.md exists and is non-empty
   - leftover placeholders: [[[IMAGE_DESC:N]]] markers not replaced by
-                            inject_image_descriptions_modular.py (VLM description or
+                            inject_image_descriptions.py (VLM description or
                             injection failed for that image)
   - image coverage      : count of <picture> tags in the raw doctags vs "## OK" sections in
                             <doc>_image_descriptions.md (only meaningful if image description
@@ -61,7 +61,7 @@ def _check_stage1(doc_dir: Path, doc_name: str) -> list[str]:
 
 def _resolve_final_content(doc_dir: Path, doc_name: str) -> Path | None:
     """<doc>_final_embed.md if present, else <doc>_final.md — same preference order used by
-    embedding_metadata_modular.py and metadata_generation_modular.py."""
+    embedding_metadata.py and metadata_generation.py."""
     final_embed = doc_dir / f"{doc_name}_final_embed.md"
     final_md = doc_dir / f"{doc_name}_final.md"
     if final_embed.exists():
@@ -80,7 +80,7 @@ def _check_leftover_placeholders(content: str) -> tuple[list[str], int]:
 
 
 def _check_image_coverage(doc_dir: Path, doc_name: str, raw_doctags: Path) -> tuple[list[str], dict]:
-    """description_image_context_modular.py always writes an (empty) markdown file even when
+    """description_image_context.py always writes an (empty) markdown file even when
     ENABLE_IMAGE_DESCRIPTION is off, so an empty/absent file means "disabled for this run"
     (informational) — only a non-empty file with fewer OK sections than pictures found means
     the VLM step actually ran and failed on some images (real issue)."""

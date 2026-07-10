@@ -2,7 +2,7 @@
 Pipeline unifié Docling — OCR + export formats + export tables en une seule conversion.
 
 Usage :
-    uv run python pipeline_multietape_modulaire.py --input doc.pdf [options]
+    uv run python docling_extract.py --input doc.pdf [options]
 
 Remplace pipeline_multietape.py (stage1) + export_table_docling.py (stage2) :
 un seul appel DocumentConverter.convert() produit tous les formats demandés.
@@ -91,7 +91,7 @@ def export_docling_images(conv_result, output_dir: Path) -> int:
     """Sauvegarde les images extraites par Docling (pil_image) en PNG, nommées par leurs
     coordonnées doctags (x0,y0,x1,y1) via pic.get_location_tokens(doc) — identiques à celles
     du <picture> tag correspondant dans l'export doctags. Nommer par coordonnées plutôt que
-    par index de position évite un désalignement si reordered_doctags_modular.py change
+    par index de position évite un désalignement si reordered_doctags.py change
     ensuite l'ordre relatif des images sur une page (son rôle même) : un matching par index
     de position dans le doctags réordonné ne pointerait alors plus vers le bon fichier."""
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -163,8 +163,8 @@ def export_tables(conv_result: ConversionResult, output_dir: Path, formats: froz
     Extrait et exporte les tables détectées dans le document Docling vers les formats demandés
     (csv, html). Nommées <stem>-table-{i:02d}_page{page}_x{x0}_y{y0}_x{x1}_y{y1} — les
     coordonnées (via table.get_location_tokens(doc), identiques à celles du <otsl> tag
-    correspondant dans le doctags) permettent à load_jsonline_doctags_modular.py de matcher
-    chaque JSONL au bon <otsl> même si reordered_doctags_modular.py a changé l'ordre relatif
+    correspondant dans le doctags) permettent à load_jsonline_doctags.py de matcher
+    chaque JSONL au bon <otsl> même si reordered_doctags.py a changé l'ordre relatif
     des tables sur une page. L'index {i:02d} n'est là que pour la lisibilité humaine du
     dossier — jamais utilisé pour le matching en aval.
 
@@ -232,12 +232,12 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Exemples :\n"
-            "  uv run python pipeline_multietape_modulaire.py --input doc.pdf\n"
-            "  uv run python pipeline_multietape_modulaire.py --input doc.pdf "
+            "  uv run python docling_extract.py --input doc.pdf\n"
+            "  uv run python docling_extract.py --input doc.pdf "
             "--formats doctags json\n"
-            "  uv run python pipeline_multietape_modulaire.py --input doc.pdf "
+            "  uv run python docling_extract.py --input doc.pdf "
             "--formats doctags --no-tables\n"
-            "  uv run python pipeline_multietape_modulaire.py --input doc.pdf "
+            "  uv run python docling_extract.py --input doc.pdf "
             "--no-ocr --formats json\n"
         ),
     )
@@ -319,7 +319,7 @@ def parse_args() -> argparse.Namespace:
         "--extract-images",
         action="store_true",
         default=False,
-        help="Active generate_picture_images pour exporter les PNGs Docling (utilisés par description_image_context_modular.py). Défaut : désactivé.",
+        help="Active generate_picture_images pour exporter les PNGs Docling (utilisés par description_image_context.py). Défaut : désactivé.",
     )
     parser.add_argument(
         "--images-scale",

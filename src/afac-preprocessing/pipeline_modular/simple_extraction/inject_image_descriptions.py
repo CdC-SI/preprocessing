@@ -1,17 +1,17 @@
 """
 Stage 4b - Injection des descriptions d'images dans le Markdown final.
-Script : inject_image_descriptions_modular.py
+Script : inject_image_descriptions.py
 
-Remplace les marqueurs [[[IMAGE_DESC:N]]] laissés par description_image_context_modular.py
+Remplace les marqueurs [[[IMAGE_DESC:N]]] laissés par description_image_context.py
 avec les descriptions VLM issues du fichier _image_descriptions.md.
 
-Les descriptions sont injectées APRÈS markdown_control_vlm_modular.py (stage 10),
+Les descriptions sont injectées APRÈS markdown_control_vlm.py (stage 10),
 garantissant qu'elles ne peuvent pas être supprimées par les étapes VLM précédentes.
 
 Usage :
-    uv run python inject_image_descriptions_modular.py --input data/input_files/MonDoc.pdf
-    uv run python inject_image_descriptions_modular.py --dotenv .env.test
-    uv run python inject_image_descriptions_modular.py \\
+    uv run python inject_image_descriptions.py --input data/input_files/MonDoc.pdf
+    uv run python inject_image_descriptions.py --dotenv .env.test
+    uv run python inject_image_descriptions.py \\
         --markdown data/output_files_preprocessing/MonDoc/MonDoc_vlm_check.md \\
         --descriptions data/output_files_preprocessing/MonDoc/MonDoc_image_descriptions.md \\
         --output data/output_files_preprocessing/MonDoc/MonDoc_final.md
@@ -150,7 +150,7 @@ def run(markdown_path: Path, descriptions_path: Path, output_path: Path) -> None
     if no_placeholders:
         _log.warning(
             "Descriptions disponibles mais aucun marqueur [[[IMAGE_DESC:N]]] trouvé dans %s. "
-            "Vérifier que description_image_context_modular.py utilise bien les placeholders.",
+            "Vérifier que description_image_context.py utilise bien les placeholders.",
             markdown_path.name,
         )
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -175,7 +175,7 @@ def run(markdown_path: Path, descriptions_path: Path, output_path: Path) -> None
     if missing:
         _log.warning(
             "%d description(s) manquante(s). "
-            "Vérifier _image_descriptions.md ou relancer description_image_context_modular.py.",
+            "Vérifier _image_descriptions.md ou relancer description_image_context.py.",
             missing,
         )
 
@@ -185,14 +185,14 @@ def parse_args() -> argparse.Namespace:
         description=(
             "Injecte les descriptions VLM dans le Markdown final en remplaçant "
             "les marqueurs [[[IMAGE_DESC:N]]]. "
-            "À exécuter après markdown_control_vlm_modular.py (stage 10)."
+            "À exécuter après markdown_control_vlm.py (stage 10)."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Exemples :\n"
-            "  uv run python inject_image_descriptions_modular.py --input data/input_files/MonDoc.pdf\n"
-            "  uv run python inject_image_descriptions_modular.py --dotenv .env.test\n"
-            "  uv run python inject_image_descriptions_modular.py \\\n"
+            "  uv run python inject_image_descriptions.py --input data/input_files/MonDoc.pdf\n"
+            "  uv run python inject_image_descriptions.py --dotenv .env.test\n"
+            "  uv run python inject_image_descriptions.py \\\n"
             "      --markdown  data/output_files_preprocessing/MonDoc/MonDoc_vlm_check.md \\\n"
             "      --descriptions data/output_files_preprocessing/MonDoc/MonDoc_image_descriptions.md \\\n"
             "      --output data/output_files_preprocessing/MonDoc/MonDoc_final.md\n"

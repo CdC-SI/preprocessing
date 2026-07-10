@@ -1,6 +1,6 @@
 """
 Stage 4 - Script de contrôle du Markdown généré par le VLM
-Script 2 : markdown_control_vlm_modular.py
+Script 2 : markdown_control_vlm.py
 
 Ce script effectue une vérification approfondie du Markdown généré à partir des doctags enrichis,
 en utilisant un VLM (Vision-Language Model) pour analyser chaque page du PDF original.
@@ -10,9 +10,9 @@ Chaque appel VLM reçoit uniquement le markdown de SA page (extrait depuis les d
 à un contexte trop large.
 
 Usage :
-    uv run python markdown_control_vlm_modular.py --input doc.pdf --doctags doc.doctags
-    uv run python markdown_control_vlm_modular.py --dotenv .env.test
-    uv run python markdown_control_vlm_modular.py --input data/input_files/MonDoc.pdf
+    uv run python markdown_control_vlm.py --input doc.pdf --doctags doc.doctags
+    uv run python markdown_control_vlm.py --dotenv .env.test
+    uv run python markdown_control_vlm.py --input data/input_files/MonDoc.pdf
 """
 from __future__ import annotations
 
@@ -289,13 +289,13 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Exemples :\n"
-            "  uv run python markdown_control_vlm_modular.py \\\n"
+            "  uv run python markdown_control_vlm.py \\\n"
             "      --input data/input_files/MonDoc.pdf \\\n"
             "      --markdown data/output_files_preprocessing/MonDoc/MonDoc.md\n\n"
             "  # Chemins résolus automatiquement depuis le stem du PDF :\n"
-            "  uv run python markdown_control_vlm_modular.py --input data/input_files/MonDoc.pdf\n\n"
+            "  uv run python markdown_control_vlm.py --input data/input_files/MonDoc.pdf\n\n"
             "  # Via variable d'environnement DOC_NAME :\n"
-            "  uv run python markdown_control_vlm_modular.py --dotenv .env.test\n"
+            "  uv run python markdown_control_vlm.py --dotenv .env.test\n"
         ),
     )
     parser.add_argument(
@@ -343,7 +343,7 @@ def parse_args() -> argparse.Namespace:
         choices=sorted(PROMPT_VARIANTS),
         default="v2",
         help=(
-            "v2 : tables JSON lines (pipeline avec load_jsonline_doctags_modular.py). "
+            "v2 : tables JSON lines (pipeline avec load_jsonline_doctags.py). "
             "v3 : tables Markdown natives (| col | col |), pipeline sans conversion JSON. "
             "Défaut : v2."
         ),
