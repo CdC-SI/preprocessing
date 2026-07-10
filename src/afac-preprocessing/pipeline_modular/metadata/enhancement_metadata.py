@@ -1,19 +1,19 @@
 """
-Stage 5 - Script d'enrichissement des métadonnées avec VLM
+Script d'enrichissement des métadonnées avec VLM
 Script 2 : enhancement_metadata.py
 Dans ce script, nous allons ajouter les appels vlm pour enrichir les métadonnées avec :
-- resume: str, demande un VLM de résumer le document markdown généré en stage 4
-- intent: list[str], demande un VLM de générer une liste d'intent à partir du markdown généré en stage 4
-- hyq: list[str], demande un VLM de générer une liste de questions hypothétiques à partir du markdown généré en stage 4
+- resume: str, demande un VLM de résumer le document markdown final
+- intent: list[str], demande un VLM de générer une liste d'intent à partir du markdown final
+- hyq: list[str], demande un VLM de générer une liste de questions hypothétiques à partir du markdown final
 
-Output (stage5_test/<doc_name>/):
+Output (output_test/<doc_name>/):
     resume.md   - résumé court en markdown
     intent.json - liste d'intents (list[str])
     hyq.json    - liste de questions hypothétiques (list[str])
 
 Usage:
     uv run python enhancement_metadata.py --dotenv .env.test --doc-name "MonDoc"
-    uv run python enhancement_metadata.py --doc-name "MonDoc" --stage4 ./data/output_files_preprocessing/stage4_test --stage5 ./data/output_files_preprocessing/stage5_test
+    uv run python enhancement_metadata.py --doc-name "MonDoc" --markdown-dir ./data/output_files_preprocessing/markdown_test --output-dir ./data/output_files_preprocessing/output_test
 """
 import argparse
 import json
@@ -35,8 +35,8 @@ from utils.paths import project_root, resolve_doc_name
 from utils.vlm_client import build_sync_client, build_vlm_config, text_completion_structured
 
 DEFAULT_OUTPUT_FILES = project_root() / "data" / "output_files_preprocessing"
-DEFAULT_STAGE4 = DEFAULT_OUTPUT_FILES
-DEFAULT_STAGE5 = DEFAULT_OUTPUT_FILES
+DEFAULT_MARKDOWN_DIR = DEFAULT_OUTPUT_FILES
+DEFAULT_OUTPUT_DIR = DEFAULT_OUTPUT_FILES
 
 _log = logging.getLogger(__name__)
 
@@ -55,9 +55,9 @@ class HyQOutput(BaseModel):
     hyq: list[str]
 
 
-# Stage 4 content loader
-def _read_stage4(stage4_dir: Path, doc_name: str) -> str:
-    single = stage4_dir / doc_name / f"{doc_name}_final.md"
+# Markdown content loader
+def _read_markdown(markdown_dir: Path, doc_name: str) -> str:
+    single = markdown_dir / doc_name / f"{doc_name}_final.md"
     if single.exists():
         return single.read_text(encoding="utf-8")
     return ""
@@ -69,7 +69,7 @@ def generate_resume(markdown_content: str, client: OpenAI, vlm_model_name: str) 
     """
     Génère un résumé court du document markdown via structured output.
 
-    :param markdown_content: Contenu markdown du document (stage 4)
+    :param markdown_content: Contenu markdown du document (markdown_dir)
     :type markdown_content: str
     :param client: Client OpenAI configuré
     :type client: OpenAI
@@ -87,7 +87,7 @@ def generate_intent(markdown_content: str, client: OpenAI, vlm_model_name: str) 
     Génère une liste d'intents/objectifs du document depuis 3 perspectives expertes.
     Les 3 appels sont fusionnés et dédupliqués pour enrichir le résultat.
 
-    :param markdown_content: Contenu markdown du document (stage 4)
+    :param markdown_content: Contenu markdown du document (markdown_dir)
     :type markdown_content: str
     :param client: Client OpenAI configuré
     :type client: OpenAI
@@ -112,7 +112,7 @@ def generate_hyq(markdown_content: str, client: OpenAI, vlm_model_name: str) -> 
     """
     Génère une liste de questions hypothétiques auxquelles le document peut répondre.
 
-    :param markdown_content: Contenu markdown du document (stage 4)
+    :param markdown_content: Contenu markdown du document (markdown_dir)
     :type markdown_content: str
     :param client: Client OpenAI configuré
     :type client: OpenAI
@@ -125,24 +125,24 @@ def generate_hyq(markdown_content: str, client: OpenAI, vlm_model_name: str) -> 
     return result.hyq
 
 
-# Stage 5 writer
-def write_stage5(
-    stage5_dir: Path,
+# Enrichment output writer
+def write_enrichment_output(
+    output_dir: Path,
     doc_name: str,
     resume: str,
     intent: list[str],
     hyq: list[str],
 ) -> Path:
     """
-    Écrit les 3 fichiers d'enrichissement dans stage5_dir/<doc_name>/metadata/.
+    Écrit les 3 fichiers d'enrichissement dans output_dir/<doc_name>/metadata/.
 
     Fichiers produits :
         metadata/resume.md   - résumé en texte markdown
         metadata/intent.json - liste d'intents (array JSON)
         metadata/hyq.json    - liste de questions hypothétiques (array JSON)
 
-    :param stage5_dir: Dossier racine stage5
-    :type stage5_dir: Path
+    :param output_dir: Dossier racine de sortie (metadata)
+    :type output_dir: Path
     :param doc_name: Nom du document (sans extension)
     :type doc_name: str
     :param resume: Résumé court
@@ -154,7 +154,7 @@ def write_stage5(
     :return: Chemin du dossier créé
     :rtype: Path
     """
-    out_dir = stage5_dir / doc_name / "metadata"
+    out_dir = output_dir / doc_name / "metadata"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     (out_dir / "resume.md").write_text(resume, encoding="utf-8")
@@ -170,20 +170,20 @@ def write_stage5(
 # Orchestration
 def run_enhancement(
     doc_name: str,
-    stage4_dir: Path,
-    stage5_dir: Path,
+    markdown_dir: Path,
+    output_dir: Path,
     dotenv_path: Path | None = None,
 ) -> dict:
     """
-    Lit le markdown stage4, appelle les 3 fonctions VLM et écrit les résultats dans stage5.
+    Lit le markdown depuis markdown_dir, appelle les 3 fonctions VLM et écrit les résultats dans output_dir.
     La config VLM est chargée ici (pas au niveau module) pour respecter le --dotenv tardif.
 
     :param doc_name: Nom du document (sans extension)
     :type doc_name: str
-    :param stage4_dir: Dossier stage4
-    :type stage4_dir: Path
-    :param stage5_dir: Dossier stage5
-    :type stage5_dir: Path
+    :param markdown_dir: Dossier contenant le markdown final
+    :type markdown_dir: Path
+    :param output_dir: Dossier racine de sortie (metadata)
+    :type output_dir: Path
     :param dotenv_path: Fichier .env à charger pour la config VLM
     :type dotenv_path: Path | None
     :return: Dictionnaire avec les 3 champs enrichis
@@ -193,10 +193,10 @@ def run_enhancement(
     vlm_model_name = vlm_cfg.vlm_model_name
     client = build_sync_client(vlm_cfg)
 
-    markdown_content = _read_stage4(stage4_dir, doc_name)
+    markdown_content = _read_markdown(markdown_dir, doc_name)
     if not markdown_content:
         raise FileNotFoundError(
-            f"Aucun fichier markdown trouvé pour '{doc_name}' dans {stage4_dir}"
+            f"Aucun fichier markdown trouvé pour '{doc_name}' dans {markdown_dir}"
         )
 
     _log.info("Création du résumé")
@@ -208,15 +208,15 @@ def run_enhancement(
     _log.info("Création des questions hypothétiques (hyq)")
     hyq = generate_hyq(markdown_content, client, vlm_model_name)
 
-    out_dir = write_stage5(stage5_dir, doc_name, resume, intent, hyq)
-    _log.info("stage5 écrit dans : %s", out_dir)
+    out_dir = write_enrichment_output(output_dir, doc_name, resume, intent, hyq)
+    _log.info("Sortie écrite dans : %s", out_dir)
 
     return {"resume": resume, "intent": intent, "hyq": hyq}
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Enrichit les métadonnées d'un document via VLM (resume, intent, hyq) et écrit les résultats dans stage5."
+        description="Enrichit les métadonnées d'un document via VLM (resume, intent, hyq) et écrit les résultats dans output_dir."
     )
     parser.add_argument(
         "--doc-name",
@@ -231,8 +231,14 @@ def parse_args() -> argparse.Namespace:
         metavar="FICHIER",
         help="Fichier .env à charger (VLM_URL, VLM_CA_PEM, VLM_MODEL_NAME, DOC_NAME).",
     )
-    parser.add_argument("--stage4", type=Path, default=DEFAULT_STAGE4)
-    parser.add_argument("--stage5", type=Path, default=DEFAULT_STAGE5)
+    parser.add_argument(
+        "--markdown-dir", type=Path, default=DEFAULT_MARKDOWN_DIR,
+        help="Dossier contenant le markdown final à résumer/enrichir.",
+    )
+    parser.add_argument(
+        "--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR,
+        help="Dossier racine de sortie (resume.md, intent.json, hyq.json).",
+    )
     parser.add_argument(
         "--log-level",
         default="INFO",
@@ -254,7 +260,7 @@ def main() -> None:
     dotenv_path = args.dotenv
 
     _log.info("Enrichissement de : %s", doc_name)
-    result = run_enhancement(doc_name, args.stage4, args.stage5, dotenv_path=dotenv_path)
+    result = run_enhancement(doc_name, args.markdown_dir, args.output_dir, dotenv_path=dotenv_path)
 
     _log.info("resume : %s", result["resume"])
     _log.info("intent : %s", result["intent"])

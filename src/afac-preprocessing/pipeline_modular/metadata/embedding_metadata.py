@@ -1,16 +1,16 @@
 """
-Stage 5 - Script qui génère l'embedding du markdown stage4 pour chaque document, et écrit le résultat dans stage5.
+Script qui génère l'embedding du markdown final pour chaque document, et écrit le résultat dans le dossier de sortie.
 Script 3 : embedding_metadata.py
-Génère l'embedding du contenu markdown (stage 4) de chaque document via un modèle d'embedding,
-écrit le vecteur dans stage5/<doc_name>/embedding.json, et retourne le vecteur
+Génère l'embedding du contenu markdown (markdown_dir) de chaque document via un modèle d'embedding,
+écrit le vecteur dans output_dir/<doc_name>/embedding.json, et retourne le vecteur
 sous forme de chaîne CSV (ex: "0.4, 0.8, 1.5") pour la colonne EMBEDDING du CSV final.
 
-Output (stage5/<doc_name>/):
+Output (output_dir/<doc_name>/):
     embedding.json  - vecteur brut (list[float])
 
 Usage:
     uv run python embedding_metadata.py --dotenv .env.test --doc-name "MonDoc"
-    uv run python embedding_metadata.py --doc-name "MonDoc" --stage4 ./data/output_files_preprocessing/stage4_test --stage5 ./data/output_files_preprocessing/stage5_test
+    uv run python embedding_metadata.py --doc-name "MonDoc" --markdown-dir ./data/output_files_preprocessing/markdown_test --output-dir ./data/output_files_preprocessing/output_test
 """
 import argparse
 import json
@@ -24,29 +24,29 @@ from utils.paths import project_root, resolve_doc_name
 from utils.vlm_client import build_embedding_client, build_vlm_config, embedding_to_string, get_embedding
 
 DEFAULT_OUTPUT_FILES = project_root() / "data" / "output_files_preprocessing"
-DEFAULT_STAGE4 = DEFAULT_OUTPUT_FILES
-DEFAULT_STAGE5 = DEFAULT_OUTPUT_FILES
+DEFAULT_MARKDOWN_DIR = DEFAULT_OUTPUT_FILES
+DEFAULT_OUTPUT_DIR = DEFAULT_OUTPUT_FILES
 
 _log = logging.getLogger(__name__)
 
 
-def _read_stage4(stage4_dir: Path, doc_name: str) -> str:
+def _read_markdown(markdown_dir: Path, doc_name: str) -> str:
     """
-    Lit le markdown du stage 4 pour un document donné.
+    Lit le markdown final pour un document donné.
 
     Préfère <doc>_final_embed.md (tables Markdown remplacées par du JSONL, produit par
     markdown_tables_to_jsonl.py --embed-output) s'il existe, sinon <doc>_final.md.
     Rétrocompatible : les documents sans _final_embed.md (v1/v2/baseline) sont inchangés.
 
-    :param stage4_dir: Dossier stage4
-    :type stage4_dir: Path
+    :param markdown_dir: Dossier contenant le markdown final
+    :type markdown_dir: Path
     :param doc_name: Nom du document sans extension
     :type doc_name: str
     :return: Contenu markdown du document
     :rtype: str
     """
     for suffix in ("_final_embed.md", "_final.md"):
-        candidate = stage4_dir / doc_name / f"{doc_name}{suffix}"
+        candidate = markdown_dir / doc_name / f"{doc_name}{suffix}"
         if candidate.exists():
             return candidate.read_text(encoding="utf-8")
     return ""
@@ -59,7 +59,7 @@ def generate_embedding(text: str, client: OpenAI, embedding_model_name: str) -> 
     Délègue à utils.vlm_client.get_embedding (cache-first) — conservé sous ce nom car
     single_retrieval_nopreprocessing/single_docling_baseline.py l'importe directement.
 
-    :param text: Contenu markdown du document (stage 4)
+    :param text: Contenu markdown du document (markdown_dir)
     :type text: str
     :param client: Client OpenAI configuré
     :type client: OpenAI
@@ -71,12 +71,12 @@ def generate_embedding(text: str, client: OpenAI, embedding_model_name: str) -> 
     return get_embedding(client, embedding_model_name, text)
 
 
-def write_stage5_embedding(stage5_dir: Path, doc_name: str, embedding: list[float]) -> Path:
+def write_embedding_output(output_dir: Path, doc_name: str, embedding: list[float]) -> Path:
     """
-    Écrit le vecteur brut dans stage5/<doc_name>/metadata/embedding.json.
+    Écrit le vecteur brut dans output_dir/<doc_name>/metadata/embedding.json.
 
-    :param stage5_dir: Dossier racine stage5
-    :type stage5_dir: Path
+    :param output_dir: Dossier racine de sortie (metadata)
+    :type output_dir: Path
     :param doc_name: Nom du document sans extension
     :type doc_name: str
     :param embedding: Vecteur d'embedding
@@ -84,7 +84,7 @@ def write_stage5_embedding(stage5_dir: Path, doc_name: str, embedding: list[floa
     :return: Chemin du dossier créé
     :rtype: Path
     """
-    out_dir = stage5_dir / doc_name / "metadata"
+    out_dir = output_dir / doc_name / "metadata"
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "embedding.json").write_text(
         json.dumps(embedding, ensure_ascii=False), encoding="utf-8"
@@ -94,21 +94,21 @@ def write_stage5_embedding(stage5_dir: Path, doc_name: str, embedding: list[floa
 
 def run_embedding(
     doc_name: str,
-    stage4_dir: Path,
-    stage5_dir: Path,
+    markdown_dir: Path,
+    output_dir: Path,
     dotenv_path: Path | None = None,
 ) -> tuple[str, str]:
     """
-    Lit le markdown stage4, génère l'embedding, écrit embedding.json en stage5,
+    Lit le markdown depuis markdown_dir, génère l'embedding, écrit embedding.json dans output_dir,
     et retourne (embedding_string, embedding_model_name).
     La config est chargée ici (pas au niveau module) pour respecter le --dotenv tardif.
 
     :param doc_name: Nom du document sans extension
     :type doc_name: str
-    :param stage4_dir: Dossier stage4
-    :type stage4_dir: Path
-    :param stage5_dir: Dossier stage5
-    :type stage5_dir: Path
+    :param markdown_dir: Dossier contenant le markdown final
+    :type markdown_dir: Path
+    :param output_dir: Dossier racine de sortie (metadata)
+    :type output_dir: Path
     :param dotenv_path: Fichier .env à charger pour la config embedding
     :type dotenv_path: Path | None
     :return: Tuple (vecteur string CSV, nom du modèle embedding)
@@ -118,16 +118,16 @@ def run_embedding(
     embedding_model_name = vlm_cfg.embedding_model_name
     client = build_embedding_client(vlm_cfg)
 
-    markdown_content = _read_stage4(stage4_dir, doc_name)
+    markdown_content = _read_markdown(markdown_dir, doc_name)
     if not markdown_content:
         raise FileNotFoundError(
-            f"Aucun fichier markdown trouvé pour '{doc_name}' dans {stage4_dir}"
+            f"Aucun fichier markdown trouvé pour '{doc_name}' dans {markdown_dir}"
         )
 
     _log.info("Génération de l'embedding")
     embedding = generate_embedding(markdown_content, client, embedding_model_name)
 
-    out_dir = write_stage5_embedding(stage5_dir, doc_name, embedding)
+    out_dir = write_embedding_output(output_dir, doc_name, embedding)
     _log.info("embedding écrit dans : %s", out_dir / "embedding.json")
 
     return embedding_to_string(embedding), embedding_model_name
@@ -135,7 +135,7 @@ def run_embedding(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Génère l'embedding du markdown stage4 et écrit le résultat dans stage5."
+        description="Génère l'embedding du markdown final et écrit le résultat dans output_dir."
     )
     parser.add_argument(
         "--doc-name",
@@ -150,8 +150,14 @@ def parse_args() -> argparse.Namespace:
         metavar="FICHIER",
         help="Fichier .env à charger (EMBEDDING_URL, VLM_CA_PEM, EMBEDDING_MODEL_NAME, DOC_NAME).",
     )
-    parser.add_argument("--stage4", type=Path, default=DEFAULT_STAGE4)
-    parser.add_argument("--stage5", type=Path, default=DEFAULT_STAGE5)
+    parser.add_argument(
+        "--markdown-dir", type=Path, default=DEFAULT_MARKDOWN_DIR,
+        help="Dossier contenant le markdown final à embedder.",
+    )
+    parser.add_argument(
+        "--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR,
+        help="Dossier racine de sortie (embedding.json).",
+    )
     parser.add_argument(
         "--log-level",
         default="INFO",
@@ -173,7 +179,7 @@ def main() -> None:
     dotenv_path = args.dotenv
 
     _log.info("Embedding de : %s", doc_name)
-    embedding_str, model_name = run_embedding(doc_name, args.stage4, args.stage5, dotenv_path=dotenv_path)
+    embedding_str, model_name = run_embedding(doc_name, args.markdown_dir, args.output_dir, dotenv_path=dotenv_path)
 
     _log.info("modèle : %s", model_name)
     preview = ", ".join(embedding_str.split(", ")[:5])
