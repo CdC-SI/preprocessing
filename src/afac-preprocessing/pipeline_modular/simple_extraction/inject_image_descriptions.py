@@ -126,14 +126,18 @@ def run(markdown_path: Path, descriptions_path: Path, output_path: Path) -> None
     """
     if not markdown_path.exists():
         raise FileNotFoundError(f"Markdown introuvable : {markdown_path}")
-    if not descriptions_path.exists():
-        raise FileNotFoundError(f"Descriptions introuvables : {descriptions_path}")
 
     _log.info("Markdown source  : %s", markdown_path)
-    _log.info("Descriptions     : %s", descriptions_path)
     _log.info("Sortie           : %s", output_path)
 
-    descriptions = parse_image_descriptions_md(descriptions_path)
+    if descriptions_path.exists():
+        _log.info("Descriptions     : %s", descriptions_path)
+        descriptions = parse_image_descriptions_md(descriptions_path)
+    else:
+        # Absent == pas d'images ou descriptions désactivées à l'étape 06
+        # (description_image_context.py ne crée plus ce fichier dans ce cas).
+        _log.info("Descriptions     : %s (absent — pas d'images ou désactivées)", descriptions_path)
+        descriptions = {}
     content = markdown_path.read_text(encoding="utf-8")
 
     found = PLACEHOLDER_RE.findall(content)

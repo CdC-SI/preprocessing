@@ -873,9 +873,11 @@ def main() -> None:
     doc_elements = extract_document_elements(content)
 
     if not pictures:
-        _log.warning("Aucune balise <picture> trouvée — doctags copié sans modification.")
+        _log.warning(
+            "Aucune balise <picture> trouvée — doctags copié sans modification, "
+            "pas de fichier descriptions créé."
+        )
         output_path.write_text(content, encoding="utf-8")
-        markdown_path.write_text("", encoding="utf-8")
         sys.exit(0)
 
     # Étape 2 — Export PNG fitz (ignoré si des images pré-extraites sont disponibles)
@@ -901,9 +903,12 @@ def main() -> None:
     # Étape 3 — Description VLM (ou suppression si désactivée)
     _log.info("ÉTAPE 3 — Description des images avec contexte textuel")
     if not image_desc_enabled:
-        _log.warning("Descriptions VLM désactivées pour '%s' — balises <picture> supprimées.", doc_name)
+        _log.warning(
+            "Descriptions VLM désactivées pour '%s' — balises <picture> supprimées, "
+            "pas de fichier descriptions créé.",
+            doc_name,
+        )
         output_path.write_text(remove_picture_tags(content), encoding="utf-8")
-        markdown_path.write_text("", encoding="utf-8")
         sys.exit(0)
 
     if not model_name:
