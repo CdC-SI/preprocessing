@@ -1,5 +1,5 @@
 """
-url_tuning_vlm_modular.py — Intégration des liens hypertextes dans le doctags via VLM.
+url_tuning_vlm.py — Intégration des liens hypertextes dans le doctags via VLM.
 
 Utilise le VLM pour reconstruire le doctags page par page en y intégrant
 les liens extraits (URL, mailto) au format markdown [text](url).
@@ -7,9 +7,9 @@ les liens extraits (URL, mailto) au format markdown [text](url).
 Fonctionne en standalone ou en bout de pipeline stage3.
 
 Usage :
-    uv run python url_tuning_vlm_modular.py --input doc.pdf --doctags doc.doctags --jsonl links.jsonl
-    uv run python url_tuning_vlm_modular.py --dotenv .env.test
-    uv run python url_tuning_vlm_modular.py --input data/input_files/MonDoc.pdf
+    uv run python url_tuning_vlm.py --input doc.pdf --doctags doc.doctags --jsonl links.jsonl
+    uv run python url_tuning_vlm.py --dotenv .env.test
+    uv run python url_tuning_vlm.py --input data/input_files/MonDoc.pdf
 """
 import argparse
 import asyncio
@@ -337,14 +337,14 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Exemples :\n"
-            "  uv run python url_tuning_vlm_modular.py \\\n"
+            "  uv run python url_tuning_vlm.py \\\n"
             "      --input data/input_files/MonDoc.pdf \\\n"
             "      --doctags data/output_files_preprocessing/MonDoc/MonDoc.doctags \\\n"
             "      --jsonl data/output_files_preprocessing/MonDoc/hyperlinks_data_MonDoc.jsonl\n\n"
             "  # Chemins résolus automatiquement depuis le stem du PDF :\n"
-            "  uv run python url_tuning_vlm_modular.py --input data/input_files/MonDoc.pdf\n\n"
+            "  uv run python url_tuning_vlm.py --input data/input_files/MonDoc.pdf\n\n"
             "  # Via variable d'environnement DOC_NAME :\n"
-            "  uv run python url_tuning_vlm_modular.py --dotenv .env.test\n"
+            "  uv run python url_tuning_vlm.py --dotenv .env.test\n"
         ),
     )
     parser.add_argument(
@@ -395,7 +395,7 @@ def parse_args() -> argparse.Namespace:
         choices=sorted(PROMPT_VARIANTS),
         default="v2",
         help=(
-            "v2 : tables JSON lines (pipeline avec load_jsonline_doctags_modular.py). "
+            "v2 : tables JSON lines (pipeline avec load_jsonline_doctags.py). "
             "v3 : tables <otsl> Docling natives, préservées telles quelles (pipeline sans conversion JSON). "
             "Défaut : v2."
         ),

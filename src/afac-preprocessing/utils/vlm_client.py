@@ -3,13 +3,13 @@ vlm_client.py — Client OpenAI unifié pour tous les appels VLM/embedding du pi
 
 Avant ce module, chaque script VLM construisait son propre client HTTP (httpx sync, httpx
 async, requests, ou openai) avec sa propre logique de retry :
-  - description_image_context_modular.py : requests, aucun retry
-  - url_tuning_vlm_modular.py             : httpx.AsyncClient, retry maison (3 tentatives, 15s*n)
-  - markdown_control_vlm_modular.py       : httpx.AsyncClient (via l'ancien utils/vlm_client.py),
+  - description_image_context.py : requests, aucun retry
+  - url_tuning_vlm.py             : httpx.AsyncClient, retry maison (3 tentatives, 15s*n)
+  - markdown_control_vlm.py       : httpx.AsyncClient (via l'ancien utils/vlm_client.py),
                                              retry maison (_should_retry, _MAX_RETRIES, _RETRY_DELAYS)
-  - enhancement_metadata_modular.py       : openai.OpenAI, aucun retry explicite
-  - embedding_metadata_modular.py /
-    hyq_embedding_doc_modular.py          : openai.OpenAI, generate_embedding dupliqué
+  - enhancement_metadata.py       : openai.OpenAI, aucun retry explicite
+  - embedding_metadata.py /
+    hyq_embedding_doc.py          : openai.OpenAI, generate_embedding dupliqué
 
 Ce module remplace tout ça par une paire de clients openai (sync + async), en s'appuyant sur
 le retry intégré du SDK (max_retries=3 : connexion, 408/409/429, 5xx, avec backoff) plutôt que
@@ -52,8 +52,8 @@ class VlmConfig:
 def _to_base_url(raw_url: str) -> str:
     """Réduit une URL d'endpoint complète (ex. .../v1/chat/completions) à scheme://host/v1,
     format attendu par le SDK OpenAI en base_url (il ajoute lui-même /chat/completions,
-    /embeddings, /models, ...). Même logique que enhancement_metadata_modular.py /
-    embedding_metadata_modular.py avant ce correctif — centralisée ici."""
+    /embeddings, /models, ...). Même logique que enhancement_metadata.py /
+    embedding_metadata.py avant ce correctif — centralisée ici."""
     if not raw_url:
         return ""
     parsed = urlparse(raw_url)
@@ -213,7 +213,7 @@ def text_completion_structured(
     user_content: str,
     response_format: type[_T],
 ) -> _T:
-    """Structured output (Pydantic) — resume/intent/hyq (enhancement_metadata_modular.py)."""
+    """Structured output (Pydantic) — resume/intent/hyq (enhancement_metadata.py)."""
     response = client.beta.chat.completions.parse(
         model=model,
         messages=[

@@ -1,15 +1,15 @@
 """
-url_extaction_modular.py — Extraction des liens hypertextes (URL, mailto) depuis un PDF.
+url_extaction.py — Extraction des liens hypertextes (URL, mailto) depuis un PDF.
 
 Utilise PyMuPDF pour extraire les liens externes de chaque page et associe
 le texte des mots dont le centre se trouve dans le rectangle du lien.
 Produit un fichier JSONL — une ligne par lien trouvé.
 
-Se lance indépendamment ou après pipeline_multietape_modulaire.py.
+Se lance indépendamment ou après docling_extract.py.
 
 Usage :
-    uv run python url_extaction_modular.py --input data/input_files/MonDoc.pdf
-    uv run python url_extaction_modular.py --dotenv .env.test
+    uv run python url_extaction.py --input data/input_files/MonDoc.pdf
+    uv run python url_extaction.py --dotenv .env.test
 """
 import argparse
 import logging
@@ -135,11 +135,11 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Exemples :\n"
-            "  uv run python url_extaction_modular.py --input data/input_files/MonDoc.pdf\n"
-            "  uv run python url_extaction_modular.py "
+            "  uv run python url_extaction.py --input data/input_files/MonDoc.pdf\n"
+            "  uv run python url_extaction.py "
             "--input data/input_files/MonDoc.pdf "
             "--output data/output_files_preprocessing/MonDoc/hyperlinks_data_MonDoc.jsonl\n"
-            "  uv run python url_extaction_modular.py --dotenv .env.test\n"
+            "  uv run python url_extaction.py --dotenv .env.test\n"
         ),
     )
     parser.add_argument(

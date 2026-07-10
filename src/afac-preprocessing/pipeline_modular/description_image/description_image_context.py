@@ -226,8 +226,8 @@ def _clip_rect(page: fitz.Page, pic: PictureTag, norm: int) -> fitz.Rect:
 def load_preextracted_b64(images_dir: Path, pic: PictureTag) -> str | None:
     """Charge une image pré-extraite par Docling depuis le disque, matchée par coordonnées
     (x0,y0,x1,y1) — jamais par index de position, pour rester correct même si
-    reordered_doctags_modular.py a changé l'ordre relatif des images sur la page. Le nom de
-    fichier est produit par pipeline_multietape_modular.export_docling_images() avec les mêmes
+    reordered_doctags.py a changé l'ordre relatif des images sur la page. Le nom de
+    fichier est produit par docling_extract.export_docling_images() avec les mêmes
     coordonnées (cf. pic.get_location_tokens(doc), identique à ce qu'exporte le <picture> tag).
 
     Rétro-compatibilité : un dossier used_images/ généré par une exécution antérieure à ce
@@ -464,7 +464,7 @@ def replace_picture_tags(content: str, results: dict[int, VLMResult]) -> str:
     Docstring for replace_picture_tags
     Remplace les balises <picture> par des marqueurs [[[IMAGE_DESC:N]]] dans le contenu doctags.
     Les descriptions réelles sont injectées après le contrôle VLM (stage 4) par
-    inject_image_descriptions_modular.py, garantissant qu'elles ne peuvent pas être
+    inject_image_descriptions.py, garantissant qu'elles ne peuvent pas être
     supprimées ou altérées par les étapes VLM intermédiaires.
 
     :param content: Description
@@ -668,7 +668,7 @@ def parse_args() -> argparse.Namespace:
         "--preextracted-images-dir",
         type=Path, default=None, metavar="DOSSIER",
         help=(
-            "Dossier contenant les PNGs pré-extraits par pipeline_multietape_modular.py --extract-images "
+            "Dossier contenant les PNGs pré-extraits par docling_extract.py --extract-images "
             "(nommés pic{i:03d}_page{p}.png). Si fourni, remplace le crop fitz. "
             "Défaut : None (fitz utilisé)."
         ),

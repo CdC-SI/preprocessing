@@ -1,15 +1,15 @@
 """
-docling_markdown_converter_modular.py — Conversion des doctags enrichis en Markdown.
+docling_markdown_converter.py — Conversion des doctags enrichis en Markdown.
 
 Pré-traite le fichier .doctags (split pages, correction des balises mal placées),
 le convertit en Markdown via Docling, puis post-traite les balises personnalisées
 couleur et soulignement.
 
 Usage :
-    uv run python stage1_modulaire/docling_markdown_converter_modular.py \
+    uv run python stage1_modulaire/docling_markdown_converter.py \
         --input data/output_files_preprocessing/MonDoc/MonDoc.doctags
-    uv run python stage1_modulaire/docling_markdown_converter_modular.py --dotenv .env.test
-    uv run python stage1_modulaire/docling_markdown_converter_modular.py \
+    uv run python stage1_modulaire/docling_markdown_converter.py --dotenv .env.test
+    uv run python stage1_modulaire/docling_markdown_converter.py \
         --input  data/output_files_preprocessing/MonDoc/MonDoc.doctags \
         --output data/output_files_preprocessing/MonDoc/MonDoc.md
 """
@@ -30,7 +30,7 @@ _log = logging.getLogger(__name__)
 def _split_pages(content: str) -> str:
     """
     Si le contenu est un seul bloc <doctag>, le découpe en un bloc par page en utilisant
-    </page_footer> (doctags Docling natif) ou <page_break> (produit par url_tuning_vlm_modular.py)
+    </page_footer> (doctags Docling natif) ou <page_break> (produit par url_tuning_vlm.py)
     comme délimiteur, ce que from_multipage_doctags_and_images attend.
     Sans ce découpage, Docling s'arrête après la première page et ignore le reste.
 
@@ -46,7 +46,7 @@ def _split_pages(content: str) -> str:
     inner = re.sub(r"\s*</doctag>\s*$", "", inner, flags=re.DOTALL)
 
     # Tente d'abord </page_footer> (doctags Docling natif),
-    # puis <page_break> (séparateur produit par url_tuning_vlm_modular.py et assemble_doctags).
+    # puis <page_break> (séparateur produit par url_tuning_vlm.py et assemble_doctags).
     parts = re.split(r"(?<=</page_footer>)", inner)
     if len(parts) <= 1:
         parts = re.split(r"<page_break\s*/?>", inner)
@@ -154,14 +154,14 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Exemples :\n"
-            "  uv run python stage1_modulaire/docling_markdown_converter_modular.py \\\n"
+            "  uv run python stage1_modulaire/docling_markdown_converter.py \\\n"
             "      --input data/output_files_preprocessing/MonDoc/MonDoc.doctags\n\n"
             "  # Sortie personnalisée :\n"
-            "  uv run python stage1_modulaire/docling_markdown_converter_modular.py \\\n"
+            "  uv run python stage1_modulaire/docling_markdown_converter.py \\\n"
             "      --input  data/output_files_preprocessing/MonDoc/MonDoc.doctags \\\n"
             "      --output data/output_files_preprocessing/MonDoc/MonDoc.md\n\n"
             "  # Via variable d'environnement DOC_NAME :\n"
-            "  uv run python stage1_modulaire/docling_markdown_converter_modular.py \\\n"
+            "  uv run python stage1_modulaire/docling_markdown_converter.py \\\n"
             "      --dotenv .env.test\n"
         ),
     )

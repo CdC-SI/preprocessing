@@ -1,5 +1,5 @@
 """
-markdown_tables_to_jsonl_modular.py — Exporte les tables Markdown (natives, pipe |col|col|)
+markdown_tables_to_jsonl.py — Exporte les tables Markdown (natives, pipe |col|col|)
 d'un document corrigé (_final.md) en JSONL.
 
 Deux sorties possibles, à partir du même parsing (cf. iter_blocks) :
@@ -11,7 +11,7 @@ Deux sorties possibles, à partir du même parsing (cf. iter_blocks) :
      des tables structurées plutôt que sur du Markdown pipe — au prix du surcoût de tokens
      déjà mesuré (répétition des clés de colonne à chaque ligne, cf. comparaison baseline).
 
-Contrairement à csv_to_jsonlines_modular.py (qui convertit les CSV extraits par Docling
+Contrairement à csv_to_jsonlines.py (qui convertit les CSV extraits par Docling
 avant toute correction VLM), ce script lit les tables APRÈS correction VLM.
 
 Gère l'artefact de frontière de page : quand la correction VLM (page par page) réémet
@@ -20,10 +20,10 @@ la ligne d'en-tête au début d'une nouvelle page sans nouvelle ligne de sépara
 que traitée comme une ligne de données.
 
 Usage :
-    uv run python markdown_tables_to_jsonl_modular.py --markdown data/output_files_v3/MonDoc/MonDoc_final.md
-    uv run python markdown_tables_to_jsonl_modular.py --dotenv .env.test --stage5 data/output_files_v3
-    uv run python markdown_tables_to_jsonl_modular.py --markdown ... --output-dir data/output_files_v3/MonDoc/tables_markdown
-    uv run python markdown_tables_to_jsonl_modular.py --markdown MonDoc_final.md --embed-output MonDoc_final_embed.md
+    uv run python markdown_tables_to_jsonl.py --markdown data/output_files_v3/MonDoc/MonDoc_final.md
+    uv run python markdown_tables_to_jsonl.py --dotenv .env.test --stage5 data/output_files_v3
+    uv run python markdown_tables_to_jsonl.py --markdown ... --output-dir data/output_files_v3/MonDoc/tables_markdown
+    uv run python markdown_tables_to_jsonl.py --markdown MonDoc_final.md --embed-output MonDoc_final_embed.md
 """
 import argparse
 import json
@@ -226,9 +226,9 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Exemples :\n"
-            "  uv run python markdown_tables_to_jsonl_modular.py \\\n"
+            "  uv run python markdown_tables_to_jsonl.py \\\n"
             "      --markdown data/output_files_v3/MonDoc/MonDoc_final.md\n"
-            "  uv run python markdown_tables_to_jsonl_modular.py --dotenv .env.test --stage5 data/output_files_v3\n"
+            "  uv run python markdown_tables_to_jsonl.py --dotenv .env.test --stage5 data/output_files_v3\n"
         ),
     )
     parser.add_argument(

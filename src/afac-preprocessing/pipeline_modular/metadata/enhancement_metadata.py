@@ -1,6 +1,6 @@
 """
 Stage 5 - Script d'enrichissement des métadonnées avec VLM
-Script 2 : enhancement_metadata_modular.py
+Script 2 : enhancement_metadata.py
 Dans ce script, nous allons ajouter les appels vlm pour enrichir les métadonnées avec :
 - resume: str, demande un VLM de résumer le document markdown généré en stage 4
 - intent: list[str], demande un VLM de générer une liste d'intent à partir du markdown généré en stage 4
@@ -12,8 +12,8 @@ Output (stage5_test/<doc_name>/):
     hyq.json    - liste de questions hypothétiques (list[str])
 
 Usage:
-    uv run python enhancement_metadata_modular.py --dotenv .env.test --doc-name "MonDoc"
-    uv run python enhancement_metadata_modular.py --doc-name "MonDoc" --stage4 ./data/output_files_preprocessing/stage4_test --stage5 ./data/output_files_preprocessing/stage5_test
+    uv run python enhancement_metadata.py --dotenv .env.test --doc-name "MonDoc"
+    uv run python enhancement_metadata.py --doc-name "MonDoc" --stage4 ./data/output_files_preprocessing/stage4_test --stage5 ./data/output_files_preprocessing/stage5_test
 """
 import argparse
 import json

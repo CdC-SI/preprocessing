@@ -1,6 +1,6 @@
 """
 Stage 5 - Script qui génère l'embedding du markdown stage4 pour chaque document, et écrit le résultat dans stage5.
-Script 3 : embedding_metadata_modular.py
+Script 3 : embedding_metadata.py
 Génère l'embedding du contenu markdown (stage 4) de chaque document via un modèle d'embedding,
 écrit le vecteur dans stage5/<doc_name>/embedding.json, et retourne le vecteur
 sous forme de chaîne CSV (ex: "0.4, 0.8, 1.5") pour la colonne EMBEDDING du CSV final.
@@ -9,8 +9,8 @@ Output (stage5/<doc_name>/):
     embedding.json  - vecteur brut (list[float])
 
 Usage:
-    uv run python embedding_metadata_modular.py --dotenv .env.test --doc-name "MonDoc"
-    uv run python embedding_metadata_modular.py --doc-name "MonDoc" --stage4 ./data/output_files_preprocessing/stage4_test --stage5 ./data/output_files_preprocessing/stage5_test
+    uv run python embedding_metadata.py --dotenv .env.test --doc-name "MonDoc"
+    uv run python embedding_metadata.py --doc-name "MonDoc" --stage4 ./data/output_files_preprocessing/stage4_test --stage5 ./data/output_files_preprocessing/stage5_test
 """
 import argparse
 import json
@@ -35,7 +35,7 @@ def _read_stage4(stage4_dir: Path, doc_name: str) -> str:
     Lit le markdown du stage 4 pour un document donné.
 
     Préfère <doc>_final_embed.md (tables Markdown remplacées par du JSONL, produit par
-    markdown_tables_to_jsonl_modular.py --embed-output) s'il existe, sinon <doc>_final.md.
+    markdown_tables_to_jsonl.py --embed-output) s'il existe, sinon <doc>_final.md.
     Rétrocompatible : les documents sans _final_embed.md (v1/v2/baseline) sont inchangés.
 
     :param stage4_dir: Dossier stage4

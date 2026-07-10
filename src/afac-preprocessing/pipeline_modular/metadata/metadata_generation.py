@@ -1,6 +1,6 @@
 """
 Génération des metadata d'un document
-Script 1 : metadata_generation_modular.py
+Script 1 : metadata_generation.py
 
 Construit la ligne finale (CONTENT + METADATA + EMBEDDING) d'un document en lisant les
 sorties des stages 1-4, puis en appelant l'enrichissement VLM (resume / intent / hyq via
@@ -40,10 +40,10 @@ Champs du bloc METADATA :
 - hyq : questions fréquentes, jointes en une chaîne (VLM)
 
 Usage :
-    uv run python metadata_generation_modular.py --dotenv .env.test
-    uv run python metadata_generation_modular.py --dotenv .env.test --doc-path "afac/Taxation/DISPENSE/Annulation d'une dispense.pdf"
-    uv run python metadata_generation_modular.py --dotenv .env.test --output ./out/docs.csv
-    uv run python metadata_generation_modular.py --dotenv .env.test --skip-enhancement
+    uv run python metadata_generation.py --dotenv .env.test
+    uv run python metadata_generation.py --dotenv .env.test --doc-path "afac/Taxation/DISPENSE/Annulation d'une dispense.pdf"
+    uv run python metadata_generation.py --dotenv .env.test --output ./out/docs.csv
+    uv run python metadata_generation.py --dotenv .env.test --skip-enhancement
 
 Sortie par défaut :
     data/output_files_preprocessing/metadata/<DOC_NAME>_final.csv
@@ -60,8 +60,8 @@ from pathlib import Path
 
 import fitz  # PyMuPDF
 
-from enhancement_metadata_modular import run_enhancement
-from embedding_metadata_modular import run_embedding
+from enhancement_metadata import run_enhancement
+from embedding_metadata import run_embedding
 from utils.paths import project_root, resolve_doc_name
 
 # Root — data/input_files/ contient déjà la hiérarchie <source>/<thème>/[<sous-thème>/]<fichier>.pdf
@@ -338,7 +338,7 @@ def _resolve_stage4_file(stage4_dir: Path, doc_name: str) -> Path | None:
     cf. get_stage4_content, appelée juste avant write_csv_row).
 
     Préfère <doc>_final_embed.md (tables remplacées par du JSONL, produit par
-    markdown_tables_to_jsonl_modular.py --embed-output) s'il existe, sinon <doc>_final.md.
+    markdown_tables_to_jsonl.py --embed-output) s'il existe, sinon <doc>_final.md.
     Rétrocompatible : les documents sans _final_embed.md (v1/v2/baseline) sont inchangés.
     """
     for suffix in ("_final_embed.md", "_final.md"):
@@ -402,7 +402,7 @@ def get_stage4_content(stage4_dir: Path, doc_name: str) -> str:
     Retourne le contenu markdown du document depuis stage4 — cf. _resolve_stage4_file
     pour la préférence _final_embed.md / _final.md. C'est ce texte qui devient la
     colonne CONTENT du CSV final ET la source de l'embedding (run_embedding lit le
-    même fichier via embedding_metadata_modular._read_stage4).
+    même fichier via embedding_metadata._read_stage4).
 
     :param stage4_dir: Dossier stage4
     :type stage4_dir: Path
@@ -557,8 +557,8 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Exemples :\n"
-            "  uv run python metadata_generation_modular.py --dotenv .env.test\n"
-            "  uv run python metadata_generation_modular.py --dotenv .env.test "
+            "  uv run python metadata_generation.py --dotenv .env.test\n"
+            "  uv run python metadata_generation.py --dotenv .env.test "
             "--doc-path \"Taxation/DISPENSE/Annulation d'une dispense.pdf\"\n"
         ),
     )

@@ -50,7 +50,7 @@ TableCoords = tuple[int, int, int, int, int]  # (page, x0, y0, x1, y1)
 
 def _parse_table_coords(filename: str) -> TableCoords | None:
     """Extrait (page, x0, y0, x1, y1) d'un nom de fichier produit par
-    pipeline_multietape_modular.export_tables() (page 1-indexée, coordonnées doctags 0-500).
+    docling_extract.export_tables() (page 1-indexée, coordonnées doctags 0-500).
     Retourne None pour un fichier antérieur à ce correctif (pas de coordonnées dans le nom) —
     déclenche le repli sur le matching par ordre de fichier dans replace_otsl_with_jsonl.
     """
@@ -65,7 +65,7 @@ def _find_otsl_blocks(content: str) -> list[tuple[re.Match, TableCoords]]:
     """Localise chaque bloc <otsl>…</otsl> avec ses coordonnées (page, x0, y0, x1, y1).
 
     Page déduite du nombre de <page_footer> rencontrés avant le bloc (1-indexée, même
-    convention que pipeline_multietape_modular.export_tables — table.prov[0].page_no).
+    convention que docling_extract.export_tables — table.prov[0].page_no).
     Coordonnées lues directement dans le tag d'ouverture <otsl><loc_x0><loc_y0><loc_x1><loc_y1>.
     """
     footer_offsets = [m.start() for m in re.finditer(r"<page_footer>", content)]
@@ -88,7 +88,7 @@ def replace_otsl_with_jsonl(
 ) -> int:
     """Remplace les balises <otsl>…</otsl> par le contenu JSONL de la table correspondante,
     matchée par coordonnées (page, x0, y0, x1, y1) — jamais par ordre de fichier — pour rester
-    correct même si reordered_doctags_modular.py a changé l'ordre relatif des tables sur une
+    correct même si reordered_doctags.py a changé l'ordre relatif des tables sur une
     page (son rôle même). Retombe sur l'ordre de fichier historique (bogué si l'ordre a
     changé, ou si un document compte 10+ tables — tri alphabétique de "table-10" avant
     "table-2") uniquement si les JSONL présents datent d'avant ce correctif et ne portent pas
