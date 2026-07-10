@@ -5,6 +5,8 @@ Usage:
     uv run python pipeline_extraction.py --dotenv .env.test --from-step 8
     uv run python pipeline_extraction.py --dotenv .env.test --from-step 11 --to-step 12
     uv run python pipeline_extraction.py --dotenv .env.test --skip-steps 3,6
+    uv run python pipeline_extraction.py --dotenv .env.test --input data/input_files/afac/Adhésion/MonDoc.pdf
+    uv run python pipeline_extraction.py --dotenv .env.test --input data/input_files/afac/Adhésion  # dossier → traite tous les PDF trouvés récursivement
 
 Each step receives the resolved --dotenv path so DOC_NAME is picked up
 consistently from the same .env file throughout the run.
@@ -79,11 +81,13 @@ def parse_args() -> argparse.Namespace:
         "--input", "-i",
         type=Path,
         default=None,
-        metavar="PDF",
+        metavar="PDF_OR_DIR",
         help=(
-            "Path to the input PDF. Overrides DOC_NAME and DOC_PATH from the .env file. "
-            "Sets DOC_NAME to the file stem and DOC_PATH to the path relative to "
-            "data/input_files/ (or the absolute path if outside that directory)."
+            "Path to an input PDF, or a directory to batch-process every PDF found "
+            "recursively inside it. Overrides DOC_NAME and DOC_PATH from the .env file "
+            "(per file processed). Sets DOC_NAME to the file stem and DOC_PATH to the "
+            "path relative to data/input_files/ (or the absolute path if outside that "
+            "directory)."
         ),
     )
     parser.add_argument(
@@ -127,7 +131,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _run_step(step: int, script: Path, dotenv: Path, extra_args: list[str] | None = None) -> None:
+def _run_step(step: int, script: Path, dotenv: Path, extra_args: list[str] | None = None) -> int:
     print(f"\n{'=' * 60}")
     print(f"  Step {step:02d}/{_N:02d} — {script.name}")
     print(f"{'=' * 60}")
@@ -139,7 +143,32 @@ def _run_step(step: int, script: Path, dotenv: Path, extra_args: list[str] | Non
     )
     if result.returncode != 0:
         print(f"\n[FAILED] {script.name} exited with code {result.returncode}")
-        sys.exit(result.returncode)
+    return result.returncode
+
+
+def _set_doc_env(input_path: Path) -> None:
+    """Set DOC_NAME/DOC_PATH from an input PDF path, mirroring --input's single-file behavior."""
+    os.environ["DOC_NAME"] = input_path.stem.strip()
+    input_files_root = (_PROJECT_ROOT / "data" / "input_files").resolve()
+    try:
+        os.environ["DOC_PATH"] = str(input_path.relative_to(input_files_root))
+    except ValueError:
+        os.environ["DOC_PATH"] = str(input_path)
+
+
+def _run_selected_steps(
+    selected: list[tuple[int, Path]], dotenv: Path, no_ocr: bool
+) -> int:
+    """Run the selected steps once against whatever DOC_NAME/DOC_PATH is currently set.
+
+    Returns the exit code of the first failing step, or 0 if all succeeded.
+    """
+    for i, script in selected:
+        extra_args = ["--no-ocr"] if (i == 1 and no_ocr) else None
+        code = _run_step(i, script, dotenv, extra_args)
+        if code != 0:
+            return code
+    return 0
 
 
 def main() -> None:
@@ -148,17 +177,6 @@ def main() -> None:
     dotenv = args.dotenv.resolve()
     if not dotenv.exists():
         raise SystemExit(f"[ERROR] .env file not found: {dotenv}")
-
-    if args.input:
-        input_path = args.input.resolve()
-        if not input_path.exists():
-            raise SystemExit(f"[ERROR] Input PDF not found: {input_path}")
-        os.environ["DOC_NAME"] = input_path.stem.strip()
-        input_files_root = (_PROJECT_ROOT / "data" / "input_files").resolve()
-        try:
-            os.environ["DOC_PATH"] = str(input_path.relative_to(input_files_root))
-        except ValueError:
-            os.environ["DOC_PATH"] = str(input_path)
 
     skip: set[int] = {int(s) for s in args.skip_steps.split(",") if s.strip()}
     if not args.with_opencv_check:
@@ -176,11 +194,51 @@ def main() -> None:
         raise SystemExit("[ERROR] No steps selected — check --from-step, --to-step, --skip-steps.")
 
     skip_display = f"  skip: {sorted(skip)}" if skip else ""
+
+    # --input pointing at a directory → batch mode: run the selected steps for every PDF found.
+    if args.input and args.input.resolve().is_dir():
+        input_root = args.input.resolve()
+        pdfs = sorted(input_root.rglob("*.pdf"))
+        if not pdfs:
+            raise SystemExit(f"[ERROR] No PDF files found under {input_root}")
+
+        print(f"Found {len(pdfs)} PDF(s) under {input_root}/\n")
+        for pdf in pdfs:
+            print(f"  {pdf.relative_to(input_root)}")
+        print(f"\nPipeline starting — steps {from_step}→{to_step}{skip_display} — dotenv: {dotenv}")
+
+        failed: list[tuple[Path, int]] = []
+        for idx, pdf in enumerate(pdfs, start=1):
+            print(f"\n{'#' * 60}")
+            print(f"  PDF {idx}/{len(pdfs)}: {pdf.relative_to(input_root)}")
+            print(f"{'#' * 60}")
+            _set_doc_env(pdf)
+            code = _run_selected_steps(selected, dotenv, args.no_ocr)
+            if code != 0:
+                failed.append((pdf, code))
+
+        print(f"\n{'#' * 60}")
+        if failed:
+            print(f"  Batch finished with {len(failed)} failure(s):")
+            for pdf, code in failed:
+                print(f"    - {pdf.relative_to(input_root)}  (exit {code})")
+            sys.exit(1)
+        print(f"  Batch finished — all {len(pdfs)} PDF(s) processed successfully.")
+        print(f"{'#' * 60}")
+        return
+
+    # --input pointing at a single file (or no --input → DOC_NAME comes from the .env file).
+    if args.input:
+        input_path = args.input.resolve()
+        if not input_path.exists():
+            raise SystemExit(f"[ERROR] Input PDF not found: {input_path}")
+        _set_doc_env(input_path)
+
     print(f"Pipeline starting — steps {from_step}→{to_step}{skip_display} — dotenv: {dotenv}")
 
-    for i, script in selected:
-        extra_args = ["--no-ocr"] if (i == 1 and args.no_ocr) else None
-        _run_step(i, script, dotenv, extra_args)
+    code = _run_selected_steps(selected, dotenv, args.no_ocr)
+    if code != 0:
+        sys.exit(code)
 
     print(f"\n{'=' * 60}")
     print("  All steps completed successfully.")
