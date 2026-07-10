@@ -25,6 +25,7 @@ src/afac-preprocessing/data/**
 !src/afac-preprocessing/data/evaluation_results_v3_noimg/.gitkeep
 src/afac-preprocessing/graph_url/graph_output
 src/afac-preprocessing/prompts/__pycache__
+src/afac-preprocessing/prompts/prompts_test_playground.py
 src/afac-preprocessing/utils/__pycache__
 src/afac-preprocessing/stage5_metadata/folder_source
 src/afac-preprocessing/stage5_metadata/__pycache__
