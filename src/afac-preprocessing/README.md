@@ -67,7 +67,7 @@ dossier parent, documents frères) — pas de dossier miroir séparé à mainten
 
 ```bash
 # Pipeline complet sur un PDF (y compris dans un sous-dossier de data/input_files/)
-uv run python pipeline_modular/automate_pipeline_example/fullpipeline_modular_v2.py \
+uv run python pipeline_modular/automate_pipeline_example/pipeline_extraction.py \
   --dotenv .env.test --input "data/input_files/afac/Adhésion/Demande prématurée.pdf"
 
 # Pipeline complet sur TOUS les PDFs de data/input_files/ (sous-dossiers inclus)
@@ -102,7 +102,7 @@ uv run python pipeline_modular/automate_pipeline_example/batch_pipeline_all_pdfs
   --dotenv .env.test --input-dir "data/input_files/afac/Adhésion"
 ```
 
-Boucle sur chaque PDF trouvé et lance `fullpipeline_modular_v2.py` (13 étapes). Si un
+Boucle sur chaque PDF trouvé et lance `pipeline_extraction.py` (13 étapes). Si un
 document échoue, le batch continue et liste les échecs à la fin ; rejouer un seul document
 après correction avec `--input <pdf> --from-step N` (numéro de la première étape en échec).
 

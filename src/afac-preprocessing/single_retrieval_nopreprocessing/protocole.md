@@ -6,7 +6,7 @@ représentations d'un même document :
   enrichissement.
 - **pipeline** : markdown enrichi (descriptions d'images VLM, tuning des URLs, contrôle
   markdown VLM, structuration des tables) — actuellement la version « v2 »
-  (`fullpipeline_modular_v2.py`), sortie dans `data/output_files_preprocessing/`.
+  (`pipeline_extraction.py`), sortie dans `data/output_files_preprocessing/`.
 
 Les deux représentations sont évaluées avec **les mêmes questions HyQ** et **les mêmes
 métriques** (Recall/Precision/nDCG/MRR@k) — seule la représentation du document change.
@@ -37,7 +37,7 @@ uv run python pipeline_modular/automate_pipeline_example/batch_pipeline_all_pdfs
 ```
 
 Ce script boucle sur chaque PDF trouvé sous `--input-dir` et lance
-`fullpipeline_modular_v2.py` (13 étapes : extraction Docling/EasyOCR → réordonnancement
+`pipeline_extraction.py` (13 étapes : extraction Docling/EasyOCR → réordonnancement
 → enrichissement VLM → metadata + embedding). Sortie par document :
 `data/output_files_preprocessing/<doc>/` (dont `<doc>.md` = markdown brut, `<doc>_final.md`
 = markdown enrichi, `metadata/<doc>_final.csv` = CONTENT + METADATA + EMBEDDING,
@@ -48,11 +48,11 @@ embeddings).
 fin (`Batch finished with N failure(s)`). Pour rejouer un seul document après
 correction :
 ```bash
-uv run python pipeline_modular/automate_pipeline_example/fullpipeline_modular_v2.py \
+uv run python pipeline_modular/automate_pipeline_example/pipeline_extraction.py \
   --dotenv .env.test --input "data/input_files/afac/Adhésion/<doc>.pdf" --from-step N
 ```
 (`--from-step` = numéro de la première étape en échec, cf. l'en-tête de
-`fullpipeline_modular_v2.py` pour la liste des 13 étapes — inutile de refaire
+`pipeline_extraction.py` pour la liste des 13 étapes — inutile de refaire
 l'extraction Docling si elle a déjà réussi).
 
 Vérifier que tous les documents ont bien produit `<doc>.md`, `metadata/hyq.json` et au

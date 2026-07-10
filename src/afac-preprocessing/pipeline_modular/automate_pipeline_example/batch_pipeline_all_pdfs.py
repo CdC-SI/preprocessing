@@ -7,7 +7,7 @@ Usage:
     uv run python batch_pipeline_all_pdfs.py --dotenv .env.test --skip-steps 3,6
     uv run python batch_pipeline_all_pdfs.py --dotenv .env.test --dry-run
 
-All flags except --dry-run and --input-dir are forwarded as-is to fullpipeline_modular_v2.py.
+All flags except --dry-run and --input-dir are forwarded as-is to pipeline_extraction.py.
 """
 
 import argparse
@@ -19,7 +19,7 @@ _HERE = Path(__file__).resolve().parent
 _PIPELINE_ROOT = _HERE.parent
 _PROJECT_ROOT = _PIPELINE_ROOT.parent
 
-_FULL_PIPELINE = _HERE / "fullpipeline_modular_v2.py"
+_FULL_PIPELINE = _HERE / "pipeline_extraction.py"
 _INPUT_ROOT = _PROJECT_ROOT / "data" / "input_files"
 
 
@@ -45,21 +45,21 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=None,
         metavar="N",
-        help="First step to run (forwarded to fullpipeline_modular_v2.py).",
+        help="First step to run (forwarded to pipeline_extraction.py).",
     )
     parser.add_argument(
         "--to-step",
         type=int,
         default=None,
         metavar="N",
-        help="Last step to run (forwarded to fullpipeline_modular_v2.py).",
+        help="Last step to run (forwarded to pipeline_extraction.py).",
     )
     parser.add_argument(
         "--skip-steps",
         type=str,
         default=None,
         metavar="N[,N...]",
-        help="Comma-separated steps to skip (forwarded to fullpipeline_modular_v2.py).",
+        help="Comma-separated steps to skip (forwarded to pipeline_extraction.py).",
     )
     parser.add_argument(
         "--input-dir",
@@ -80,7 +80,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def build_forward_args(args: argparse.Namespace) -> list[str]:
-    """Build the list of extra flags to forward to fullpipeline_modular_v2.py."""
+    """Build the list of extra flags to forward to pipeline_extraction.py."""
     extra: list[str] = []
     if args.from_step is not None:
         extra += ["--from-step", str(args.from_step)]
