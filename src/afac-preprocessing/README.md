@@ -20,7 +20,6 @@ git clone <url-du-repo>
 cd preprocessing
 
 # 2. Installer les dépendances (lit uv.lock — versions exactes)
-cd src/afac-preprocessing
 uv sync
 ```
 
