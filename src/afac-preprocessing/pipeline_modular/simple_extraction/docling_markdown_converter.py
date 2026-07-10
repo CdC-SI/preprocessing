@@ -1,11 +1,11 @@
 """
-docling_markdown_converter.py — Conversion des doctags enrichis en Markdown.
+docling_markdown_converter.py — Convert enriched doctags to Markdown.
 
-Pré-traite le fichier .doctags (split pages, correction des balises mal placées),
-le convertit en Markdown via Docling, puis post-traite les balises personnalisées
-couleur et soulignement.
+Preprocesses the .doctags file (page splitting, misplaced tag correction),
+converts it to Markdown via Docling, then post-processes the custom color and
+underline tags.
 
-Usage :
+Usage:
     uv run python stage1_modulaire/docling_markdown_converter.py \
         --input data/output_files_preprocessing/MonDoc/MonDoc.doctags
     uv run python stage1_modulaire/docling_markdown_converter.py --dotenv .env.test
@@ -26,27 +26,27 @@ from utils.paths import project_root, load_env, resolve_doc_name
 _log = logging.getLogger(__name__)
 
 
-# Logique métier (fonctions pures)
+# Business logic (pure functions)
 def _split_pages(content: str) -> str:
     """
-    Si le contenu est un seul bloc <doctag>, le découpe en un bloc par page en utilisant
-    </page_footer> (doctags Docling natif) ou <page_break> (produit par url_tuning_vlm.py)
-    comme délimiteur, ce que from_multipage_doctags_and_images attend.
-    Sans ce découpage, Docling s'arrête après la première page et ignore le reste.
+    If the content is a single <doctag> block, split it into one block per page using
+    </page_footer> (native Docling doctags) or <page_break> (produced by url_tuning_vlm.py)
+    as the delimiter — the format from_multipage_doctags_and_images expects.
+    Without this split, Docling stops after the first page and ignores the rest.
 
-    :param content: contenu doctags brut
+    :param content: raw doctags content
     :type content: str
-    :return: contenu découpé en blocs <doctag> par page
+    :return: content split into per-page <doctag> blocks
     :rtype: str
     """
     if content.count("<doctag>") > 1:
-        return content  # déjà au bon format multi-pages
+        return content  # already in the correct multi-page format
 
     inner = re.sub(r"^\s*</?doctag>\s*", "", content.strip(), flags=re.DOTALL)
     inner = re.sub(r"\s*</doctag>\s*$", "", inner, flags=re.DOTALL)
 
-    # Tente d'abord </page_footer> (doctags Docling natif),
-    # puis <page_break> (séparateur produit par url_tuning_vlm.py et assemble_doctags).
+    # Try </page_footer> first (native Docling doctags),
+    # then <page_break> (separator produced by url_tuning_vlm.py and assemble_doctags).
     parts = re.split(r"(?<=</page_footer>)", inner)
     if len(parts) <= 1:
         parts = re.split(r"<page_break\s*/?>", inner)
@@ -54,20 +54,21 @@ def _split_pages(content: str) -> str:
     parts = [p.strip() for p in parts if p.strip()]
 
     if len(parts) <= 1:
-        return content  # document d'une seule page, rien à faire
+        return content  # single-page document, nothing to do
 
     return "\n".join(f"<doctag>\n{p}\n</doctag>" for p in parts)
 
 
 def _hoist_misplaced_tags(content: str) -> str:
     """
-    Docling ne peut pas gérer les <section_header_level_N> ou <unordered_list> imbriqués
-    dans un <ordered_list>. Il les écrase dans la liste, perdant les en-têtes et les frontières de section.
-    Extrait ces balises des blocs <ordered_list> et les place juste après le </ordered_list> correspondant.
+    Docling cannot handle <section_header_level_N> or <unordered_list> nested inside an
+    <ordered_list>. It flattens them into the list, losing headers and section boundaries.
+    Extracts these tags from <ordered_list> blocks and places them right after the
+    matching </ordered_list>.
 
-    :param content: contenu doctags
+    :param content: doctags content
     :type content: str
-    :return: contenu avec les balises mal placées extraites
+    :return: content with misplaced tags hoisted out
     :rtype: str
     """
     HOIST = re.compile(
@@ -96,11 +97,11 @@ def _hoist_misplaced_tags(content: str) -> str:
 
 def preprocess_doctags(content: str) -> str:
     """
-    Pré-traite le contenu doctags : découpage en pages et correction des balises mal placées.
-    Point d'entrée public pour les modules externes — évite de coupler sur les helpers privés.
+    Preprocess the doctags content: page splitting and misplaced tag correction.
+    Public entry point for external modules — avoids coupling on the private helpers.
 
-    :param content: contenu doctags brut
-    :return: contenu pré-traité, prêt pour DocTagsDocument
+    :param content: raw doctags content
+    :return: preprocessed content, ready for DocTagsDocument
     """
     content = _split_pages(content)
     content = _hoist_misplaced_tags(content)
@@ -111,12 +112,12 @@ PAGE_BREAK = "<!-- page-break -->"
 
 def convert_doctags_to_markdown(doctags_path: Path) -> str:
     """
-    Lit le fichier .doctags, applique les pré-traitements, convertit en Markdown via Docling
-    page par page, puis joint les pages avec un séparateur <!-- page-break -->.
+    Read the .doctags file, apply preprocessing, convert to Markdown via Docling
+    page by page, then join the pages with a <!-- page-break --> separator.
 
-    :param doctags_path: chemin vers le fichier .doctags à convertir
+    :param doctags_path: path to the .doctags file to convert
     :type doctags_path: Path
-    :return: contenu Markdown final avec séparateurs de page
+    :return: final Markdown content with page separators
     :rtype: str
     """
     from utils.markdown_utils import apply_markdown_transforms
@@ -147,20 +148,20 @@ def convert_doctags_to_markdown(doctags_path: Path) -> str:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Convertit un fichier .doctags enrichi en Markdown via Docling. "
-            "Pré-traite les pages et les balises mal placées, "
-            "post-traite les balises couleur et soulignement personnalisées."
+            "Converts an enriched .doctags file to Markdown via Docling. "
+            "Preprocesses pages and misplaced tags, "
+            "post-processes the custom color and underline tags."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
-            "Exemples :\n"
+            "Examples:\n"
             "  uv run python stage1_modulaire/docling_markdown_converter.py \\\n"
             "      --input data/output_files_preprocessing/MonDoc/MonDoc.doctags\n\n"
-            "  # Sortie personnalisée :\n"
+            "  # Custom output:\n"
             "  uv run python stage1_modulaire/docling_markdown_converter.py \\\n"
             "      --input  data/output_files_preprocessing/MonDoc/MonDoc.doctags \\\n"
             "      --output data/output_files_preprocessing/MonDoc/MonDoc.md\n\n"
-            "  # Via variable d'environnement DOC_NAME :\n"
+            "  # Via the DOC_NAME environment variable:\n"
             "  uv run python stage1_modulaire/docling_markdown_converter.py \\\n"
             "      --dotenv .env.test\n"
         ),
@@ -170,8 +171,8 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=None,
         help=(
-            "Fichier .doctags à convertir. "
-            "Si absent, résout data/output_files_preprocessing/<DOC_NAME>/<DOC_NAME>.doctags depuis l'environnement."
+            "The .doctags file to convert. "
+            "If absent, resolves data/output_files_preprocessing/<DOC_NAME>/<DOC_NAME>.doctags from the environment."
         ),
     )
     parser.add_argument(
@@ -179,42 +180,41 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=None,
         help=(
-            "Fichier Markdown de sortie. "
-            "Défaut : data/output_files_preprocessing/<stem>/<stem>.md"
+            "Output Markdown file. "
+            "Default: data/output_files_preprocessing/<stem>/<stem>.md"
         ),
     )
     parser.add_argument(
         "--suffix", "-s",
         type=str,
         default="_url_vlm",
-        metavar="SUFFIXE",
+        metavar="SUFFIX",
         help=(
-            "Suffixe à ajouter au nom du fichier .doctags résolu automatiquement. "
-            "Défaut : _url_vlm → <DOC_NAME>_url_vlm.doctags. "
-            "Ignoré si --input est fourni."
+            "Suffix to append to the auto-resolved .doctags filename. "
+            "Default: _url_vlm → <DOC_NAME>_url_vlm.doctags. "
+            "Ignored if --input is given."
         ),
     )
     parser.add_argument(
         "--dotenv",
         type=Path,
         default=None,
-        metavar="FICHIER",
-        help="Fichier .env à charger pour résoudre DOC_NAME (ex. : .env.test). Ignoré si --input est fourni.",
+        metavar="FILE",
+        help="Path to the .env file to resolve DOC_NAME (e.g. .env.test). Ignored if --input is given.",
     )
     return parser.parse_args()
 
 
-# Résolution des chemins
+# Path resolution
 def resolve_input(args: argparse.Namespace) -> Path:
     """
-    Docstring for resolve_input
-    Résout le chemin du fichier .doctags à convertir :
-    1. --input fourni → utilisé directement.
-    2. Sinon → lit DOC_NAME depuis l'environnement (le dotenv est déjà chargé dans main()).
+    Resolve the path of the .doctags file to convert:
+    1. --input given → used directly.
+    2. Otherwise → read DOC_NAME from the environment (dotenv already loaded in main()).
 
-    :param args: Description
+    :param args: Parsed CLI arguments
     :type args: argparse.Namespace
-    :return: Description
+    :return: Resolved path to the source .doctags file
     :rtype: Path
     """
     if args.input:
@@ -226,16 +226,15 @@ def resolve_input(args: argparse.Namespace) -> Path:
 
 def resolve_output(args: argparse.Namespace, input_path: Path) -> Path:
     """
-    Docstring for resolve_output
-    Résout le chemin du fichier Markdown de sortie :
-    1. --output fourni → utilisé directement.
-    2. Sinon → data/output_files_preprocessing/<stem>/<stem>.md
+    Resolve the output Markdown file path:
+    1. --output given → used directly.
+    2. Otherwise → data/output_files_preprocessing/<stem>/<stem>.md
 
-    :param args: Description
+    :param args: Parsed CLI arguments
     :type args: argparse.Namespace
-    :param input_path: Description
+    :param input_path: Path to the source .doctags file
     :type input_path: Path
-    :return: Description
+    :return: Resolved output Markdown path
     :rtype: Path
     """
     if args.output:
@@ -243,7 +242,7 @@ def resolve_output(args: argparse.Namespace, input_path: Path) -> Path:
     return input_path.parent / f"{input_path.stem}.md"
 
 
-# Point d'entrée
+# Entry point
 def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
@@ -258,22 +257,22 @@ def main() -> None:
 
     input_path = resolve_input(args)
     if not input_path.exists():
-        raise SystemExit(f"Erreur : fichier .doctags introuvable — {input_path}")
+        raise SystemExit(f"Error: .doctags file not found — {input_path}")
 
     output_path = resolve_output(args, input_path)
 
-    _log.info("Entrée  : %s", input_path)
-    _log.info("Sortie  : %s", output_path)
+    _log.info("Input   : %s", input_path)
+    _log.info("Output  : %s", output_path)
 
     try:
         markdown = convert_doctags_to_markdown(input_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(markdown, encoding="utf-8")
     except Exception:
-        _log.exception("Erreur lors de la conversion de %s", input_path.name)
+        _log.exception("Error while converting %s", input_path.name)
         sys.exit(1)
 
-    _log.info("Markdown généré : %s", output_path)
+    _log.info("Markdown generated: %s", output_path)
     sys.exit(0)
 
 

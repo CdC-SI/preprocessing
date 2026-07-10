@@ -1,13 +1,13 @@
 """
-reordered_doctags.py — Réordonnancement des blocs d'un fichier .doctags par coordonnées y0/x0.
+reordered_doctags.py — Reordering of blocks in a .doctags file by y0/x0 coordinates.
 
-Docling peut extraire les blocs dans un ordre incorrect quand des coordonnées y0 sont
-similaires ou absentes. Ce script les retrie par position verticale (y0) puis horizontale (x0),
-page par page, avant les étapes VLM aval.
+Docling can extract blocks in an incorrect order when y0 coordinates are
+similar or missing. This script re-sorts them by vertical position (y0) then
+horizontal position (x0), page by page, before the downstream VLM steps.
 
-Se lance après docling_extract.py (qui produit le .doctags source).
+Runs after docling_extract.py (which produces the source .doctags).
 
-Usage :
+Usage:
     uv run python reordered_doctags.py --input data/output_files_preprocessing/MonDoc/MonDoc.doctags
     uv run python reordered_doctags.py --dotenv .env.test
 """
@@ -25,10 +25,10 @@ _log = logging.getLogger(__name__)
 TAG_UL_CLOSE = "</unordered_list>"
 TAG_PAGE_FOOTER = "<page_footer>"
 TAG_PAGE_BREAK = "<page_break>"
-_NO_X0 = 10**9  # valeur arbitraire x0 pour les blocs sans coordonnée horizontale = placés en dernier
+_NO_X0 = 10**9  # arbitrary x0 value for blocks without a horizontal coordinate = placed last
 
 
-# Modèle de données
+# Data model
 @dataclass
 class Block:
     raw: str
@@ -37,15 +37,14 @@ class Block:
     is_list_item: bool = False
 
 
-# Logique métier (fonctions pures)
+# Business logic (pure functions)
 def extract_xy0(s: str) -> tuple[int | None, int | None]:
     """
-    Docstring for extract_xy0
-    Extrait (x0, y0) depuis la première paire <loc_x0><loc_y0> trouvée dans s.
+    Extract (x0, y0) from the first <loc_x0><loc_y0> pair found in s.
 
-    :param s: Description
+    :param s: Doctags-formatted string potentially containing <loc_x0><loc_y0> location tags.
     :type s: str
-    :return: Description
+    :return: A tuple (x0, y0) of the first coordinates found, or (None, None) if no location tag is present.
     :rtype: tuple[int | None, int | None]
     """
     match = re.search(r"<loc_(\d+)><loc_(\d+)>", s)
@@ -56,16 +55,15 @@ def extract_xy0(s: str) -> tuple[int | None, int | None]:
 
 def _collect_until(lines: list[str], start: int, closing_tag: str) -> tuple[list[str], int]:
     """
-    Docstring for _collect_until
-    Accumule les lignes de start jusqu'à closing_tag inclus. Retourne (parts, next_i).
+    Accumulate lines from start until closing_tag inclusive. Returns (parts, next_i).
 
-    :param lines: Description
+    :param lines: The list of doctags lines to scan.
     :type lines: list[str]
-    :param start: Description
+    :param start: Index of the line to start collecting from.
     :type start: int
-    :param closing_tag: Description
+    :param closing_tag: The tag string that marks the end of the block to collect.
     :type closing_tag: str
-    :return: Description
+    :return: A tuple of the collected lines and the index of the line following the closing tag.
     :rtype: tuple[list[str], int]
     """
     parts = [lines[start]]
@@ -81,14 +79,13 @@ def _collect_until(lines: list[str], start: int, closing_tag: str) -> tuple[list
 
 def _parse_ordered_list(lines: list[str], i: int) -> tuple[Block, int]:
     """
-    Docstring for _parse_ordered_list
-    Parse un bloc <ordered_list>…</ordered_list> comme un seul Block. Retourne (Block, next_i).
+    Parse an <ordered_list>…</ordered_list> block as a single Block. Returns (Block, next_i).
 
-    :param lines: Description
+    :param lines: The list of doctags lines being parsed.
     :type lines: list[str]
-    :param i: Description
+    :param i: Index of the line where the <ordered_list> tag starts.
     :type i: int
-    :return: Description
+    :return: A tuple of the resulting Block and the index of the line following the block.
     :rtype: tuple[Block, int]
     """
     parts, i = _collect_until(lines, i, "</ordered_list>")
@@ -99,14 +96,13 @@ def _parse_ordered_list(lines: list[str], i: int) -> tuple[Block, int]:
 
 def _parse_unordered_list(lines: list[str], i: int) -> tuple[list[Block], int]:
     """
-    Docstring for _parse_unordered_list
-    Parse un bloc <unordered_list>…</unordered_list> en Blocks individuels. Retourne (blocks, next_i).
+    Parse an <unordered_list>…</unordered_list> block into individual Blocks. Returns (blocks, next_i).
 
-    :param lines: Description
+    :param lines: The list of doctags lines being parsed.
     :type lines: list[str]
-    :param i: Description
+    :param i: Index of the line where the <unordered_list> tag starts.
     :type i: int
-    :return: Description
+    :return: A tuple of the list of parsed Blocks (one per list item) and the index of the line following the block.
     :rtype: tuple[list[Block], int]
     """
     parts, i = _collect_until(lines, i, TAG_UL_CLOSE)
@@ -120,13 +116,14 @@ def _parse_unordered_list(lines: list[str], i: int) -> tuple[list[Block], int]:
 
 def parse_blocks(content: str) -> list[Block]:
     """
-    Docstring for parse_blocks
-    - ordered_list  : traité comme un seul bloc pour éviter que </ordered_list> (y0=None) remonte avant ses items lors du tri.
-    - unordered_list: items extraits individuellement (is_list_item=True) pour être triés, render_blocks les réenveloppe ensuite.
+    - ordered_list  : treated as a single block so that </ordered_list> (y0=None) never gets
+      sorted ahead of its items during sorting.
+    - unordered_list: items are extracted individually (is_list_item=True) so they can be
+      sorted; render_blocks re-wraps them afterwards.
 
-    :param content: Description
+    :param content: The full .doctags file content (with the <doctag>/</doctag> wrapper already stripped).
     :type content: str
-    :return: Description
+    :return: The list of parsed Blocks in their original document order.
     :rtype: list[Block]
     """
     lines = [ln.strip() for ln in content.splitlines() if ln.strip()]
@@ -151,42 +148,42 @@ def parse_blocks(content: str) -> list[Block]:
 
 def split_pages(blocks: list[Block]) -> list[list[Block]]:
     """
-    Sépare une liste de blocs en pages. <page_footer> fait foi quand il est présent (au
-    moins une fois dans le document) : seule frontière fiable, <page_break> est alors
-    ignoré (ni conservé dans une page, ni utilisé comme déclencheur de coupure).
+    Splits a list of blocks into pages. <page_footer> is authoritative when present (at
+    least once in the document): it is the only reliable boundary, and <page_break> is
+    then ignored (neither kept in a page, nor used as a split trigger).
 
-    Docling insère parfois un <page_break> autonome mal placé (artefact d'extraction,
-    observé au milieu du contenu d'une page physique plutôt qu'à sa frontière réelle). Le
-    traiter comme déclencheur de coupure produirait alors une page supplémentaire
-    fantôme : la page physique concernée serait scindée en deux morceaux, et en aval
-    url_tuning_vlm.py (qui boucle sur range(1, n_pages+1) où n_pages vient du
-    compte réel de pages du PDF) ne traiterait jamais le morceau en trop — contenu de
-    page silencieusement perdu, et une autre page dupliquée sous deux numéros. D'où le
-    choix de ne compter que sur <page_footer> quand il existe.
+    Docling sometimes inserts a misplaced standalone <page_break> (an extraction
+    artifact, observed in the middle of a physical page's content rather than at its
+    actual boundary). Treating it as a split trigger would then produce an extra
+    phantom page: the physical page in question would be split into two chunks, and
+    downstream url_tuning_vlm.py (which loops over range(1, n_pages+1) where n_pages
+    comes from the actual PDF page count) would never process the extra chunk —
+    page content silently lost, and another page duplicated under two numbers. Hence
+    the choice to rely only on <page_footer> when it exists.
 
-    Mais certains documents Docling n'émettent aucun <page_footer> (aucune page n'en a),
-    auquel cas <page_break> est l'unique frontière disponible : l'ignorer purement et
-    simplement ferait fusionner tout le document en une seule page (observé sur "Liste
-    des représentations suisses à l'étranger" — 7 pages PDF, 6 <page_break>, 0
-    <page_footer> ; sans ce repli, split_pages() renvoyait une seule page contenant tout
-    le doctags). D'où le repli sur <page_break> comme déclencheur uniquement si le
-    document ne contient aucun <page_footer>.
+    But some Docling documents emit no <page_footer> at all (no page has one), in
+    which case <page_break> is the only available boundary: simply ignoring it would
+    merge the entire document into a single page (observed on "Liste des
+    représentations suisses à l'étranger" — 7 PDF pages, 6 <page_break>, 0
+    <page_footer>; without this fallback, split_pages() returned a single page
+    containing the entire doctags). Hence the fallback to <page_break> as a trigger
+    only if the document contains no <page_footer> at all.
 
-    Limite connue : la décision (footer vs break) est prise une seule fois pour tout le
-    document. Un document où SEULEMENT CERTAINES pages ont un <page_footer> (footer
-    manquant sur une page scannée/pivotée, par ex.) reste mal géré : has_footer=True
-    fusionnerait alors la page sans footer avec la suivante. Pas de correctif général ici
-    faute de vérité terrain fiable à ce stade (le nombre réel de pages du PDF n'est pas
-    passé à cette fonction) — on se contente de logger un avertissement quand des
-    <page_break> autonomes sont écartés alors qu'un <page_footer> existe ailleurs dans le
-    document, signal qu'une page a peut-être perdu son footer. Le contrôle downstream
-    (comparaison du nombre de pages réassemblées au nombre de pages du PDF, cf.
-    markdown_control_vlm.py) reste le filet de sécurité qui détecte un vrai
-    décalage.
+    Known limitation: the decision (footer vs break) is made once for the entire
+    document. A document where ONLY SOME pages have a <page_footer> (footer missing
+    on a scanned/rotated page, for example) is still mishandled: has_footer=True
+    would then merge the page without a footer into the next one. No general fix
+    here due to the lack of reliable ground truth at this stage (the actual PDF page
+    count is not passed to this function) — we simply log a warning when standalone
+    <page_break> tags are discarded while a <page_footer> exists elsewhere in the
+    document, a signal that a page may have lost its footer. The downstream check
+    (comparing the number of reassembled pages to the PDF page count, cf.
+    markdown_control_vlm.py) remains the safety net that catches an actual
+    mismatch.
 
-    :param blocks: Description
+    :param blocks: The list of parsed Blocks (in document order, spanning potentially multiple pages).
     :type blocks: list[Block]
-    :return: Description
+    :return: The list of pages, each page being a list of Blocks.
     :rtype: list[list[Block]]
     """
     has_footer = any(TAG_PAGE_FOOTER in b.raw for b in blocks)
@@ -203,7 +200,7 @@ def split_pages(blocks: list[Block]) -> list[list[Block]]:
                 current = []
             elif has_footer:
                 discarded_breaks += 1
-            continue  # jamais conservé : marqueur pur, jamais rajouté dans une page
+            continue  # never kept: pure marker, never re-added to a page
 
         current.append(block)
         if has_footer and TAG_PAGE_FOOTER in block.raw:
@@ -215,9 +212,9 @@ def split_pages(blocks: list[Block]) -> list[list[Block]]:
 
     if has_footer and discarded_breaks:
         _log.warning(
-            "%d <page_break> autonome(s) écarté(s) alors que le document contient des "
-            "<page_footer> — vérifier qu'aucune page n'a perdu son footer (cf. limite "
-            "connue de split_pages()).",
+            "%d standalone <page_break>(s) discarded while the document contains "
+            "<page_footer> tags — check that no page lost its footer (see known "
+            "limitation of split_pages()).",
             discarded_breaks,
         )
 
@@ -226,14 +223,13 @@ def split_pages(blocks: list[Block]) -> list[list[Block]]:
 
 def sort_page(blocks: list[Block]) -> list[Block]:
     """
-    Docstring for sort_page
-    Trie les blocs d'une page par y0 croissant, puis x0 croissant.
-    Les blocs sans coordonnées (y0=None) sont placés en tête dans leur ordre d'origine.
-    L'index d'origine sert de tiebreaker pour garantir un tri stable.
+    Sorts the blocks of a page by ascending y0, then ascending x0.
+    Blocks without coordinates (y0=None) are placed first, in their original order.
+    The original index serves as a tiebreaker to guarantee a stable sort.
 
-    :param blocks: Description
+    :param blocks: The list of Blocks belonging to a single page.
     :type blocks: list[Block]
-    :return: Description
+    :return: The list of Blocks sorted by position (y0, then x0), stable with respect to original order.
     :rtype: list[Block]
     """
     indexed = list(enumerate(blocks))
@@ -245,12 +241,11 @@ def sort_page(blocks: list[Block]) -> list[Block]:
 
 def render_blocks(blocks: list[Block]) -> str:
     """
-    Docstring for render_blocks
-    Convertit une liste de blocs triés en texte, en réenveloppant les list_item dans <unordered_list>.
+    Converts a list of sorted blocks into text, re-wrapping list_item blocks in <unordered_list>.
 
-    :param blocks: Description
+    :param blocks: The list of Blocks, already sorted, to render back into doctags text.
     :type blocks: list[Block]
-    :return: Description
+    :return: The rendered doctags text for the page.
     :rtype: str
     """
     out: list[str] = []
@@ -276,12 +271,11 @@ def render_blocks(blocks: list[Block]) -> str:
 
 def reorder_doctags(input_path: Path, output_path: Path) -> None:
     """
-    Docstring for reorder_doctags
-    Lit input_path, retrie les blocs par y0/x0 page par page, écrit le résultat dans output_path.
+    Reads input_path, re-sorts the blocks by y0/x0 page by page, writes the result to output_path.
 
-    :param input_path: Description
+    :param input_path: Path to the source .doctags file to reorder.
     :type input_path: Path
-    :param output_path: Description
+    :param output_path: Path where the reordered .doctags file will be written.
     :type output_path: Path
     """
 
@@ -299,19 +293,19 @@ def reorder_doctags(input_path: Path, output_path: Path) -> None:
 
     final = "<doctag>\n" + body + "\n</doctag>\n"
     output_path.write_text(final, encoding="utf-8")
-    _log.info("Doctags réordonné (%d page(s)) : %s", len(pages), output_path)
+    _log.info("Doctags reordered (%d page(s)): %s", len(pages), output_path)
 
 
 # CLI
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Réordonne les blocs d'un fichier .doctags par coordonnées y0/x0 (page par page). "
-            "À lancer après docling_extract.py."
+            "Reorders the blocks of a .doctags file by y0/x0 coordinates (page by page). "
+            "Run after docling_extract.py."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
-            "Exemples :\n"
+            "Examples:\n"
             "  uv run python reordered_doctags.py "
             "--input data/output_files_preprocessing/MonDoc/MonDoc.doctags\n"
             "  uv run python reordered_doctags.py "
@@ -325,8 +319,8 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=None,
         help=(
-            "Chemin vers le fichier .doctags source. "
-            "Si absent, résout data/output_files_preprocessing/<DOC_NAME>/<DOC_NAME>.doctags depuis l'environnement."
+            "Path to the source .doctags file. "
+            "If omitted, resolves data/output_files_preprocessing/<DOC_NAME>/<DOC_NAME>.doctags from the environment."
         ),
     )
     parser.add_argument(
@@ -334,28 +328,31 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=None,
         help=(
-            "Chemin du fichier .doctags réordonné en sortie. "
-            "Défaut : même dossier que --input, suffixe _reordered ajouté au nom."
+            "Path to the reordered output .doctags file. "
+            "Default: same folder as --input, with the suffix _reordered added to the name."
         ),
     )
     parser.add_argument(
         "--dotenv",
         type=Path,
         default=None,
-        metavar="FICHIER",
-        help="Fichier .env à charger pour résoudre DOC_NAME (ex. : .env.test). Ignoré si --input est fourni.",
+        metavar="FILE",
+        help="Path to a .env file to load in order to resolve DOC_NAME (e.g., .env.test). Ignored if --input is provided.",
     )
     return parser.parse_args()
 
 
-# Résolution des chemins
+# Path resolution
 def resolve_input(args: argparse.Namespace) -> Path:
     """
-    Docstring for resolve_input
+    Resolves the path to the source .doctags file.
 
-    :param args: Description
+    Uses args.input if provided; otherwise resolves it from DOC_NAME in the
+    environment, under data/output_files_preprocessing/<DOC_NAME>/<DOC_NAME>.doctags.
+
+    :param args: Parsed CLI arguments (namespace produced by parse_args()).
     :type args: argparse.Namespace
-    :return: Description
+    :return: The resolved absolute path to the source .doctags file.
     :rtype: Path
     """
     if args.input:
@@ -366,13 +363,16 @@ def resolve_input(args: argparse.Namespace) -> Path:
 
 def resolve_output(args: argparse.Namespace, input_path: Path) -> Path:
     """
-    Docstring for resolve_output
-    
-    :param args: Description
+    Resolves the path to the output .doctags file.
+
+    Uses args.output if provided; otherwise derives it from input_path by
+    appending the _reordered suffix to the file stem, in the same parent folder.
+
+    :param args: Parsed CLI arguments (namespace produced by parse_args()).
     :type args: argparse.Namespace
-    :param input_path: Description
+    :param input_path: The resolved path to the source .doctags file.
     :type input_path: Path
-    :return: Description
+    :return: The resolved path to the output .doctags file.
     :rtype: Path
     """
     if args.output:
@@ -380,7 +380,7 @@ def resolve_output(args: argparse.Namespace, input_path: Path) -> Path:
     return input_path.parent / f"{input_path.stem}_reordered.doctags"
 
 
-# Point d'entrée
+# Entry point
 def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
@@ -392,19 +392,19 @@ def main() -> None:
 
     input_path = resolve_input(args)
     if not input_path.exists():
-        raise SystemExit(f"Erreur : fichier .doctags introuvable — {input_path}")
+        raise SystemExit(f"Error: .doctags file not found — {input_path}")
 
     output_path = resolve_output(args, input_path)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    _log.info("Entrée  : %s", input_path)
-    _log.info("Sortie  : %s", output_path)
+    _log.info("Input : %s", input_path)
+    _log.info("Output: %s", output_path)
 
     try:
         reorder_doctags(input_path, output_path)
     except Exception:
-        _log.exception("Erreur lors du réordonnancement de %s", input_path.name)
+        _log.exception("Error while reordering %s", input_path.name)
         sys.exit(1)
 
     sys.exit(0)

@@ -24,7 +24,7 @@ from utils.vlm_client import (
 _log = logging.getLogger(__name__)
 
 
-# Constantes
+# Constants
 NORM = 500
 DPI_DEFAULT = 150
 N_BEFORE = 5
@@ -36,7 +36,7 @@ TEXT_TAGS = {
     "page_header", "page_footer",
 }
 
-# Modèles de données est classes
+# Data models and classes
 class PictureTag(TypedDict):
     page: int
     x0: int
@@ -81,15 +81,14 @@ class ImageTask:
     raw_tag: str
 
 
-# Logique métier (fonctions pures / sans état global)
+# Business logic (pure functions / no global state)
 def remove_picture_tags(content: str) -> str:
     """
-    Docstring for remove_picture_tags
-    Supprime les balises <picture> quand la description est désactivée.
+    Remove <picture> tags when image description is disabled.
 
-    :param content: Description
+    :param content: The doctags content to process.
     :type content: str
-    :return: Description
+    :return: The content with all <picture> tags removed.
     :rtype: str
     """
     return re.sub(r'<picture><loc_\d+><loc_\d+><loc_\d+><loc_\d+></picture>', '', content)
@@ -97,12 +96,11 @@ def remove_picture_tags(content: str) -> str:
 
 def parse_picture_tags(content: str) -> list[PictureTag]:
     """
-    Docstring for parse_picture_tags
-    Parse les balises <picture> depuis le contenu doctags. Retourne la liste des pics.
+    Parse <picture> tags from the doctags content. Returns the list of pictures found.
 
-    :param content: Description
+    :param content: The doctags content to parse.
     :type content: str
-    :return: Description
+    :return: The list of picture tags found, in document order.
     :rtype: list[PictureTag]
     """
     pictures = []
@@ -123,20 +121,19 @@ def parse_picture_tags(content: str) -> list[PictureTag]:
                 "page": page, "x0": x0, "y0": y0, "x1": x1, "y1": y1,
                 "raw_tag": m.group(1),
             })
-            _log.debug("<picture> trouvée page=%d loc=(%d,%d,%d,%d)", page, x0, y0, x1, y1)
+            _log.debug("<picture> found page=%d loc=(%d,%d,%d,%d)", page, x0, y0, x1, y1)
 
-    _log.info("%d balise(s) <picture> trouvée(s)", len(pictures))
+    _log.info("%d <picture> tag(s) found", len(pictures))
     return pictures
 
 
 def extract_document_elements(content: str) -> list[DocElement]:
     """
-    Docstring for extract_document_elements
-    Parse tous les éléments (textes + images) dans l'ordre d'apparition.
+    Parse all elements (text + images) in their order of appearance.
 
-    :param content: Description
+    :param content: The doctags content to parse.
     :type content: str
-    :return: Description
+    :return: The list of document elements, in document order.
     :rtype: list[DocElement]
     """
     elements = []
@@ -175,24 +172,23 @@ def extract_document_elements(content: str) -> list[DocElement]:
                 "x0": x0, "y0": y0, "x1": x1, "y1": y1, "text": "",
             })
 
-    _log.info("%d élément(s) total parsé(s) dans le doctags", len(elements))
+    _log.info("%d total element(s) parsed from the doctags", len(elements))
     return elements
 
 
 def build_context(pic: PictureTag, doc_elements: list[DocElement], n_before: int, n_after: int) -> tuple[str, str]:
     """
-    Docstring for build_context
-    Retourne le contexte textuel (ctx_before, ctx_after) autour d'une image.
+    Return the textual context (ctx_before, ctx_after) surrounding an image.
 
-    :param pic: Description
+    :param pic: The picture tag to build context for.
     :type pic: PictureTag
-    :param doc_elements: Description
+    :param doc_elements: The full list of document elements to search within.
     :type doc_elements: list[DocElement]
-    :param n_before: Description
+    :param n_before: Number of text elements to include before the image.
     :type n_before: int
-    :param n_after: Description
+    :param n_after: Number of text elements to include after the image.
     :type n_after: int
-    :return: Description
+    :return: A tuple of (context before, context after) as formatted strings.
     :rtype: tuple[str, str]
     """
     pic_index = next((
@@ -215,7 +211,7 @@ def build_context(pic: PictureTag, doc_elements: list[DocElement], n_before: int
 
 
 def _clip_rect(page: fitz.Page, pic: PictureTag, norm: int) -> fitz.Rect:
-    """Convertit les coordonnées DocTags normalisées en Rect PyMuPDF pour le crop."""
+    """Convert normalized DocTags coordinates into a PyMuPDF Rect for cropping."""
     pw, ph = page.rect.width, page.rect.height
     return fitz.Rect(
         pic["x0"] / norm * pw, pic["y0"] / norm * ph,
@@ -224,45 +220,44 @@ def _clip_rect(page: fitz.Page, pic: PictureTag, norm: int) -> fitz.Rect:
 
 
 def load_preextracted_b64(images_dir: Path, pic: PictureTag) -> str | None:
-    """Charge une image pré-extraite par Docling depuis le disque, matchée par coordonnées
-    (x0,y0,x1,y1) — jamais par index de position, pour rester correct même si
-    reordered_doctags.py a changé l'ordre relatif des images sur la page. Le nom de
-    fichier est produit par docling_extract.export_docling_images() avec les mêmes
-    coordonnées (cf. pic.get_location_tokens(doc), identique à ce qu'exporte le <picture> tag).
+    """Load an image pre-extracted by Docling from disk, matched by coordinates
+    (x0,y0,x1,y1) — never by positional index, so it stays correct even if
+    reordered_doctags.py has changed the relative order of images on the page. The
+    file name is produced by docling_extract.export_docling_images() with the same
+    coordinates (cf. pic.get_location_tokens(doc), identical to what the <picture> tag exports).
 
-    Rétro-compatibilité : un dossier used_images/ généré par une exécution antérieure à ce
-    nommage par coordonnées contient des fichiers `pic{i:03d}_page{p}.png` (par index de
-    position). Repli sur ce nommage uniquement si une seule image existe pour cette page dans
-    le dossier — au-delà, l'index de position ne peut pas être retrouvé de façon fiable ici
-    (c'est précisément l'ambiguïté que le nommage par coordonnées élimine), mieux vaut retomber
-    sur le crop fitz (cf. appelant) que risquer d'associer la mauvaise image."""
+    Backward compatibility: a used_images/ folder generated by a run predating this
+    coordinate-based naming contains files named `pic{i:03d}_page{p}.png` (by positional
+    index). Fall back to this naming only if a single image exists for this page in
+    the folder — beyond that, the positional index cannot be reliably recovered here
+    (this is precisely the ambiguity that coordinate-based naming eliminates); it's better to
+    fall back to the fitz crop (see caller) than risk matching the wrong image."""
     page = pic["page"] + 1
     path = images_dir / f"pic_page{page}_x{pic['x0']}_y{pic['y0']}_x{pic['x1']}_y{pic['y1']}.png"
     if not path.exists():
         legacy_matches = sorted(images_dir.glob(f"pic*_page{page}.png"))
         if len(legacy_matches) == 1:
-            _log.info("Image pré-extraite trouvée via l'ancien nommage (index) : %s", legacy_matches[0].name)
+            _log.info("Pre-extracted image found via legacy naming (index): %s", legacy_matches[0].name)
             path = legacy_matches[0]
         else:
-            _log.warning("Image pré-extraite introuvable : %s", path)
+            _log.warning("Pre-extracted image not found: %s", path)
             return None
     return base64.b64encode(path.read_bytes()).decode("utf-8")
 
 
 def crop_to_b64(pdf_doc: fitz.Document, pic: PictureTag, norm: int = NORM, dpi: int = DPI_DEFAULT) -> str:
     """
-    Docstring for crop_to_b64
-    Crop une image du PDF et retourne le base64 PNG en mémoire.
+    Crop an image out of the PDF and return the PNG as base64, in memory.
 
-    :param pdf_doc: Description
+    :param pdf_doc: The open PDF document to crop from.
     :type pdf_doc: fitz.Document
-    :param pic: Description
+    :param pic: The picture tag describing the crop region.
     :type pic: PictureTag
-    :param norm: Description
+    :param norm: Normalization factor for the DocTags coordinate system.
     :type norm: int
-    :param dpi: Description
+    :param dpi: DPI resolution used to render the crop.
     :type dpi: int
-    :return: Description
+    :return: The cropped image, PNG-encoded and base64-encoded.
     :rtype: str
     """
     page = pdf_doc[pic["page"]]
@@ -271,16 +266,16 @@ def crop_to_b64(pdf_doc: fitz.Document, pic: PictureTag, norm: int = NORM, dpi: 
 
 
 def describe_image_b64(image_b64: str, prompt: str, client: OpenAI, model_name: str) -> str:
-    """Envoie image (base64) + prompt au VLM et retourne la description.
+    """Send the image (base64) + prompt to the VLM and return the description.
 
-    Cache-first + retry intégré au SDK (cf. utils.vlm_client.vision_completion) — le retry
-    manuel et le payload construit à la main ont été retirés lors de la consolidation sur un
-    client OpenAI unique.
+    Cache-first + retry built into the SDK (cf. utils.vlm_client.vision_completion) — the manual
+    retry logic and hand-built payload were removed when consolidating onto a single
+    OpenAI client.
     """
     try:
         return vision_completion(client, model_name, prompt, image_b64, max_tokens=3000)
     except Exception:
-        _log.exception("Erreur API VLM")
+        _log.exception("VLM API error")
         return ""
 
 
@@ -293,23 +288,21 @@ def export_picture_images(
     dpi: int = DPI_DEFAULT,
 ) -> None:
     """
-    Docstring for export_picture_images
-    Export des PNG pour chaque balise <picture>, nommés par coordonnées doctags.
-    :param pdf_path: Description
+    Export a PNG for each <picture> tag, named after their doctags coordinates.
+    :param pdf_path: Path to the source PDF.
     :type pdf_path: Path
-    :param pictures: Description
+    :param pictures: The list of picture tags to export.
     :type pictures: list[PictureTag]
-    :param doc_name: Description
+    :param doc_name: Name of the document (used in the exported file names).
     :type doc_name: str
-    :param output_dir: Description
+    :param output_dir: Directory where the exported PNGs are written.
     :type output_dir: Path
-    :param norm: Description
+    :param norm: Normalization factor for the DocTags coordinate system.
     :type norm: int
-    :param dpi: Description
+    :param dpi: DPI resolution used to render the crops.
     :type dpi: int
     """
-    _log.info("Export des PNG dans : %s", output_dir)
-# tester avec docling pour skip la normalisation de fitz pymyPDF
+    _log.info("Exporting PNGs to: %s", output_dir)
     with fitz.open(str(pdf_path)) as doc:
         for i, pic in enumerate(pictures, start=1):
             page = doc[pic["page"]]
@@ -319,9 +312,9 @@ def export_picture_images(
                 f"x{pic['x0']}_y{pic['y0']}_x{pic['x1']}_y{pic['y1']}.png"
             )
             img_path.write_bytes(pix.tobytes("png"))
-            _log.info("[%d/%d] PNG exporté : %s", i, len(pictures), img_path.name)
+            _log.info("[%d/%d] PNG exported: %s", i, len(pictures), img_path.name)
 
-    _log.info("%d PNG exporté(s)", len(pictures))
+    _log.info("%d PNG(s) exported", len(pictures))
 
 
 def _vlm_worker(
@@ -331,10 +324,10 @@ def _vlm_worker(
     client: OpenAI,
     model_name: str,
 ) -> None:
-    """Thread consommateur : appelle le VLM et stocke les résultats dans results.
+    """Consumer thread: calls the VLM and stores the results in results.
 
-    Le client OpenAI sync est thread-safe pour un usage concurrent (pool de connexions
-    httpx.Client sous-jacent) — une seule instance est partagée par tous les workers.
+    The sync OpenAI client is thread-safe for concurrent use (it wraps an underlying
+    httpx.Client connection pool) — a single instance is shared across all workers.
     """
     while True:
         task: ImageTask | None = task_queue.get()
@@ -342,7 +335,7 @@ def _vlm_worker(
             break
 
         _log.info(
-            "[%d/%d] → VLM — Page %d loc=(%d,%d,%d,%d)",
+            "[%d/%d] -> VLM — Page %d loc=(%d,%d,%d,%d)",
             task.index, task.total, task.page + 1,
             task.x0, task.y0, task.x1, task.y1,
         )
@@ -358,9 +351,9 @@ def _vlm_worker(
             )
 
         if description:
-            _log.info("[%d/%d] Description reçue (%d chars)", task.index, task.total, len(description))
+            _log.info("[%d/%d] Description received (%d chars)", task.index, task.total, len(description))
         else:
-            _log.warning("[%d/%d] Aucune description retournée par le VLM", task.index, task.total)
+            _log.warning("[%d/%d] No description returned by the VLM", task.index, task.total)
 
         task_queue.task_done()
 
@@ -380,30 +373,30 @@ def describe_all_pictures(
     preextracted_images_dir: Path | None = None,
 ) -> dict[int, VLMResult]:
     """
-    Crop chaque image (ou charge depuis preextracted_images_dir), construit le prompt contextualisé, envoie au VLM.
-    Retourne un dict indexé (1-based) : {index: VLMResult}.
+    Crop each image (or load it from preextracted_images_dir), build the contextualized prompt, and send it to the VLM.
+    Returns a dict indexed 1-based: {index: VLMResult}.
 
-    :param pdf_path: Description
+    :param pdf_path: Path to the source PDF.
     :type pdf_path: Path
-    :param pictures: Description
+    :param pictures: The list of picture tags to describe.
     :type pictures: list[PictureTag]
-    :param doc_elements: Description
+    :param doc_elements: The full list of document elements, used to build context.
     :type doc_elements: list[DocElement]
-    :param client: Client OpenAI configuré (partagé entre tous les workers)
+    :param client: Configured OpenAI client (shared across all workers).
     :type client: OpenAI
-    :param model_name: Nom du modèle VLM
+    :param model_name: Name of the VLM model.
     :type model_name: str
-    :param language: Description
+    :param language: Language the VLM should respond in.
     :type language: str
-    :param n_before: Description
+    :param n_before: Number of text elements to include before each image for context.
     :type n_before: int
-    :param n_after: Description
+    :param n_after: Number of text elements to include after each image for context.
     :type n_after: int
-    :param n_workers: Description
+    :param n_workers: Number of parallel VLM worker threads.
     :type n_workers: int
-    :param preextracted_images_dir: Dossier contenant les PNGs pré-extraits par Docling (pic{i:03d}_page{p}.png).
+    :param preextracted_images_dir: Folder containing PNGs pre-extracted by Docling (pic{i:03d}_page{p}.png).
     :type preextracted_images_dir: Path | None
-    :return: Description
+    :return: A dict mapping each 1-based image index to its VLMResult.
     :rtype: dict[int, VLMResult]
     """
     results: dict[int, VLMResult] = {}
@@ -419,9 +412,9 @@ def describe_all_pictures(
         w.start()
 
     if preextracted_images_dir:
-        _log.info("Mise en queue de %d image(s) — source : %s — %d worker(s)", total, preextracted_images_dir, n_workers)
+        _log.info("Queuing %d image(s) — source: %s — %d worker(s)", total, preextracted_images_dir, n_workers)
     else:
-        _log.info("Mise en queue de %d image(s) — source : fitz crop — %d worker(s)", total, n_workers)
+        _log.info("Queuing %d image(s) — source: fitz crop — %d worker(s)", total, n_workers)
 
     with fitz.open(str(pdf_path)) as pdf_doc:
         for i, pic in enumerate(pictures, start=1):
@@ -434,7 +427,7 @@ def describe_all_pictures(
             if preextracted_images_dir:
                 image_b64 = load_preextracted_b64(preextracted_images_dir, pic)
                 if image_b64 is None:
-                    _log.warning("[%d/%d] Image pré-extraite manquante — fallback fitz crop", i, total)
+                    _log.warning("[%d/%d] Pre-extracted image missing — falling back to fitz crop", i, total)
                     image_b64 = crop_to_b64(pdf_doc, pic, norm=norm, dpi=dpi)
             else:
                 image_b64 = crop_to_b64(pdf_doc, pic, norm=norm, dpi=dpi)
@@ -448,40 +441,39 @@ def describe_all_pictures(
                 raw_tag=pic["raw_tag"],
             ))
 
-    task_q.join()          # attendre que toutes les tâches soient traitées
-    for _ in workers:      # puis envoyer les sentinels d'arrêt
+    task_q.join()          # wait until all tasks have been processed
+    for _ in workers:      # then send the stop sentinels
         task_q.put(None)
     for w in workers:
         w.join()
 
     described = sum(1 for r in results.values() if r["description"])
-    _log.info("%d/%d image(s) décrite(s) avec contexte", described, total)
+    _log.info("%d/%d image(s) described with context", described, total)
     return results
 
 
 def replace_picture_tags(content: str, results: dict[int, VLMResult]) -> str:
     """
-    Docstring for replace_picture_tags
-    Remplace les balises <picture> par des marqueurs [[[IMAGE_DESC:N]]] dans le contenu doctags.
-    Les descriptions réelles sont injectées après le contrôle VLM (stage 4) par
-    inject_image_descriptions.py, garantissant qu'elles ne peuvent pas être
-    supprimées ou altérées par les étapes VLM intermédiaires.
+    Replace <picture> tags with [[[IMAGE_DESC:N]]] markers in the doctags content.
+    The actual descriptions are injected after the VLM checkpoint (stage 4) by
+    inject_image_descriptions.py, guaranteeing they cannot be
+    removed or altered by intermediate VLM steps.
 
-    :param content: Description
+    :param content: The doctags content to process.
     :type content: str
-    :param results: Description
+    :param results: The VLM results indexed by 1-based image index.
     :type results: dict[int, VLMResult]
-    :return: Description
+    :return: The content with <picture> tags replaced by placeholders.
     :rtype: str
     """
     replaced = 0
     for idx in sorted(results.keys()):
         r = results[idx]
         if not r["description"]:
-            _log.warning("Pas de description pour <picture> idx=%d — tag conservé", idx)
+            _log.warning("No description for <picture> idx=%d — tag kept as-is", idx)
             continue
         if r["raw_tag"] not in content:
-            _log.error("raw_tag introuvable : %s", r["raw_tag"])
+            _log.error("raw_tag not found: %s", r["raw_tag"])
             continue
 
         placeholder = f"[[[IMAGE_DESC:{idx}]]]"
@@ -490,17 +482,17 @@ def replace_picture_tags(content: str, results: dict[int, VLMResult]) -> str:
         pattern_in_item = re.compile(r"<list_item>\s*" + raw_tag_escaped + r"\s*</list_item>", re.DOTALL)
         if pattern_in_item.search(content):
             content = pattern_in_item.sub(f"<list_item>{placeholder}</list_item>", content, count=1)
-            _log.info("[%d] <picture> dans <list_item> → placeholder inline", idx)
+            _log.info("[%d] <picture> inside <list_item> -> inline placeholder", idx)
         elif re.search(r"<list_item[^>]*>.*?</list_item>\s*" + raw_tag_escaped, content, re.DOTALL):
             content = content.replace(r["raw_tag"], f"<list_item>{placeholder}</list_item>", 1)
-            _log.info("[%d] <picture> entre list_items → <list_item> placeholder", idx)
+            _log.info("[%d] <picture> between list_items -> <list_item> placeholder", idx)
         else:
             content = content.replace(r["raw_tag"], f"<text>{placeholder}</text>", 1)
-            _log.info("[%d] <picture> standalone → <text> placeholder", idx)
+            _log.info("[%d] <picture> standalone -> <text> placeholder", idx)
 
         replaced += 1
 
-    _log.info("%d/%d balise(s) <picture> remplacée(s) par placeholder", replaced, len(results))
+    _log.info("%d/%d <picture> tag(s) replaced with a placeholder", replaced, len(results))
     return content
 
 
@@ -511,16 +503,15 @@ def export_descriptions_to_markdown(
     vlm_model_name: str,
 ) -> None:
     """
-    Docstring for export_descriptions_to_markdown
-    Exporte les descriptions VLM dans un fichier Markdown de référence.
+    Export the VLM descriptions to a reference Markdown file.
 
-    :param results: Description
+    :param results: The VLM results indexed by 1-based image index.
     :type results: dict[int, VLMResult]
-    :param doc_name: Description
+    :param doc_name: Name of the document (used in the Markdown title).
     :type doc_name: str
-    :param output_path: Description
+    :param output_path: Path to the Markdown file to write.
     :type output_path: Path
-    :param vlm_model_name: Description
+    :param vlm_model_name: Name of the VLM model used, shown in the report header.
     :type vlm_model_name: str
     """
     total = len(results)
@@ -539,40 +530,40 @@ def export_descriptions_to_markdown(
         else:
             sections.append(
                 f"## WARNING - Image {i}/{total} — {page_str} | `{loc_str}`\n\n"
-                f"> **Aucune description générée.**\n"
-                f"> *Vérifier les coordonnées ou la réponse du VLM.*\n"
+                f"> **No description generated.**\n"
+                f"> *Check the coordinates or the VLM response.*\n"
             )
 
     header = (
-        f"# Descriptions des images — *{doc_name}*\n\n"
-        f"> Généré automatiquement par le pipeline VLM  \n"
-        f"> Document source : `{doc_name}.pdf`  \n"
-        f"> Nombre d'images détectées : **{total}**  \n"
-        f"> Modèle VLM : `{vlm_model_name}`\n\n---\n\n"
+        f"# Image descriptions — *{doc_name}*\n\n"
+        f"> Automatically generated by the VLM pipeline  \n"
+        f"> Source document: `{doc_name}.pdf`  \n"
+        f"> Number of images detected: **{total}**  \n"
+        f"> VLM model: `{vlm_model_name}`\n\n---\n\n"
     )
     summary = (
-        f"## Résumé\n\n"
-        f"- Images détectées  : **{total}**\n"
-        f"- Images décrites   : **{nb_described}**\n"
-        f"- Images manquantes : **{nb_missing}**\n"
+        f"## Summary\n\n"
+        f"- Images detected  : **{total}**\n"
+        f"- Images described : **{nb_described}**\n"
+        f"- Images missing   : **{nb_missing}**\n"
     )
     output_path.write_text(
         header + "\n\n---\n\n".join(sections) + "\n\n---\n\n" + summary,
         encoding="utf-8",
     )
-    _log.info("Markdown exporté (%d/%d images décrites) : %s", nb_described, total, output_path)
+    _log.info("Markdown exported (%d/%d images described): %s", nb_described, total, output_path)
 
 
 # CLI
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Décrit les images d'un .doctags via VLM avec contexte textuel. "
-            "Remplace les balises <picture> par les descriptions générées."
+            "Describes the images in a .doctags file via VLM with textual context. "
+            "Replaces <picture> tags with the generated descriptions."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
-            "Exemples :\n"
+            "Examples:\n"
             "  uv run python description_image_context_modulaire.py \\\n"
             "      --doctags data/output_files_preprocessing/MonDoc/MonDoc_reordered_with_tables.doctags \\\n"
             "      --input   data/input_files/MonDoc.pdf \\\n"
@@ -585,132 +576,131 @@ def parse_args() -> argparse.Namespace:
         "--doctags", "-d",
         type=Path, default=None,
         help=(
-            "Fichier .doctags source (produit par load_jsonline_doctags_modulaire.py). "
-            "Si absent, résout data/output_files_preprocessing/<DOC_NAME>/<DOC_NAME>_reordered_with_tables.doctags."
+            "Source .doctags file (produced by load_jsonline_doctags_modulaire.py). "
+            "If omitted, resolves to data/output_files_preprocessing/<DOC_NAME>/<DOC_NAME>_reordered_with_tables.doctags."
         ),
     )
     parser.add_argument(
         "--input", "-i",
         type=Path, default=None,
-        help="Fichier PDF source pour le crop des images. Si absent, résout data/input_files/<DOC_NAME>.pdf.",
+        help="Source PDF file used to crop the images. If omitted, resolves to data/input_files/<DOC_NAME>.pdf.",
     )
     parser.add_argument(
         "--output", "-o",
         type=Path, default=None,
-        help="Fichier .doctags enrichi en sortie. Défaut : <stem>_pictures.doctags dans le même dossier.",
+        help="Output enriched .doctags file. Default: <stem>_pictures.doctags in the same folder.",
     )
     parser.add_argument(
         "--markdown", "-m",
         type=Path, default=None,
-        help="Fichier Markdown de sortie pour les descriptions. Défaut : <doc_name>_image_descriptions.md.",
+        help="Output Markdown file for the descriptions. Default: <doc_name>_image_descriptions.md.",
     )
     parser.add_argument(
         "--images-dir",
         type=Path, default=None,
-        help="Dossier de sortie pour les PNG exportés. Défaut : used_images/ dans le dossier du --doctags.",
+        help="Output folder for the exported PNGs. Default: used_images/ inside the --doctags folder.",
     )
     parser.add_argument(
         "--doc-name",
         type=str, default=None,
-        help="Nom du document (logs et Markdown). Si absent, déduit de DOC_NAME ou du nom du fichier --doctags.",
+        help="Document name (used in logs and Markdown). If omitted, inferred from DOC_NAME or from the --doctags file name.",
     )
     parser.add_argument(
         "--language",
         type=str, default="french",
-        help="Langue de la réponse VLM. Défaut : french.",
+        help="Language of the VLM response. Default: french.",
     )
     parser.add_argument(
         "--image-description",
         action=argparse.BooleanOptionalAction,
         default=None,
         help=(
-            "Active (--image-description) ou désactive (--no-image-description) la description VLM, "
-            "prioritaire sur ENABLE_IMAGE_DESCRIPTION du .env. Si omis, retombe sur "
-            "ENABLE_IMAGE_DESCRIPTION (false si absent du .env)."
+            "Enable (--image-description) or disable (--no-image-description) VLM description, "
+            "taking priority over ENABLE_IMAGE_DESCRIPTION from the .env. If omitted, falls back to "
+            "ENABLE_IMAGE_DESCRIPTION (false if absent from the .env)."
         ),
     )
     parser.add_argument(
         "--workers", "-w",
         type=int, default=1, metavar="N",
-        help="Nombre de threads VLM parallèles. Défaut : 1 (séquentiel, safe pour les API à rate-limit).",
+        help="Number of parallel VLM threads. Default: 1 (sequential, safe for rate-limited APIs).",
     )
     parser.add_argument(
         "--timeout",
         type=int, default=120, metavar="SEC",
-        help="Timeout en secondes pour chaque appel VLM. Défaut : 120.",
+        help="Timeout in seconds for each VLM call. Default: 120.",
     )
     parser.add_argument(
         "--dpi",
         type=int, default=DPI_DEFAULT, metavar="N",
-        help=f"Résolution DPI pour le crop des images PDF. Défaut : {DPI_DEFAULT}.",
+        help=f"DPI resolution used to crop PDF images. Default: {DPI_DEFAULT}.",
     )
     parser.add_argument(
         "--n-before",
         type=int, default=N_BEFORE, metavar="N",
-        help=f"Nombre d'éléments textuels avant l'image pour le contexte VLM. Défaut : {N_BEFORE}.",
+        help=f"Number of text elements before the image to include as VLM context. Default: {N_BEFORE}.",
     )
     parser.add_argument(
         "--n-after",
         type=int, default=N_AFTER, metavar="N",
-        help=f"Nombre d'éléments textuels après l'image pour le contexte VLM. Défaut : {N_AFTER}.",
+        help=f"Number of text elements after the image to include as VLM context. Default: {N_AFTER}.",
     )
     parser.add_argument(
         "--norm",
         type=int, default=NORM, metavar="N",
-        help=f"Facteur de normalisation des coordonnées DocTags (système de coordonnées du .doctags). Défaut : {NORM}.",
+        help=f"Normalization factor for DocTags coordinates (the .doctags coordinate system). Default: {NORM}.",
     )
     parser.add_argument(
         "--dotenv",
-        type=Path, default=None, metavar="FICHIER",
-        help="Fichier .env à charger (VLM_URL, VLM_CA_PEM, VLM_MODEL_NAME, DOC_NAME). Toujours chargé pour la config VLM ; si absent, les variables sont lues depuis l'environnement.",
+        type=Path, default=None, metavar="FILE",
+        help="The .env file to load (VLM_URL, VLM_CA_PEM, VLM_MODEL_NAME, DOC_NAME). Always loaded for VLM config; if absent, variables are read from the environment.",
     )
     parser.add_argument(
         "--preextracted-images-dir",
-        type=Path, default=None, metavar="DOSSIER",
+        type=Path, default=None, metavar="FOLDER",
         help=(
-            "Dossier contenant les PNGs pré-extraits par docling_extract.py --extract-images "
-            "(nommés pic{i:03d}_page{p}.png). Si fourni, remplace le crop fitz. "
-            "Défaut : None (fitz utilisé)."
+            "Folder containing PNGs pre-extracted by docling_extract.py --extract-images "
+            "(named pic{i:03d}_page{p}.png). If provided, replaces the fitz crop. "
+            "Default: None (fitz used)."
         ),
     )
     parser.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        help="Niveau de log. Défaut : INFO. Passer DEBUG pour diagnostiquer un step Tekton.",
+        help="Log level. Default: INFO. Pass DEBUG to diagnose a Tekton step.",
     )
     return parser.parse_args()
 
 
-# Résolution des chemins
+# Path resolution
 def _load_doc_name(args: argparse.Namespace) -> str:
     """
-    Docstring for _load_doc_name
-    Charge DOC_NAME depuis --dotenv ou l'environnement. Lève SystemExit si absent.
+    Load DOC_NAME from --dotenv or the environment. Raises SystemExit if absent.
 
-    :param args: Description
+    :param args: Parsed CLI arguments.
     :type args: argparse.Namespace
-    :return: Description
+    :return: The resolved document name.
     :rtype: str
     """
     if args.dotenv and not Path(args.dotenv).resolve().exists():
-        raise SystemExit(f"Erreur : fichier .env introuvable — {Path(args.dotenv).resolve()}")
+        raise SystemExit(f"Error: .env file not found — {Path(args.dotenv).resolve()}")
     doc_name = os.environ.get("DOC_NAME", "").strip()
     if not doc_name:
         raise SystemExit(
-            "Erreur : fournir --doctags et --pdf, ou --dotenv <fichier> avec DOC_NAME, "
-            "ou définir la variable DOC_NAME dans l'environnement."
+            "Error: provide --doctags and --pdf, or --dotenv <file> with DOC_NAME, "
+            "or set the DOC_NAME environment variable."
         )
     return doc_name
 
 
 def resolve_doctags(args: argparse.Namespace) -> Path:
     """
-    Docstring for resolve_doctags
+    Resolve the path to the source .doctags file.
 
-    :param args: Description
+    :param args: Parsed CLI arguments.
     :type args: argparse.Namespace
-    :return: Description
+    :return: The resolved .doctags path.
     :rtype: Path
     """
     if args.doctags:
@@ -721,13 +711,13 @@ def resolve_doctags(args: argparse.Namespace) -> Path:
 
 def resolve_pdf(args: argparse.Namespace, doctags_path: Path) -> Path:
     """
-    Docstring for resolve_pdf
+    Resolve the path to the source PDF file.
 
-    :param args: Description
+    :param args: Parsed CLI arguments.
     :type args: argparse.Namespace
-    :param doctags_path: Description
+    :param doctags_path: Path to the resolved .doctags file, used to infer the document name.
     :type doctags_path: Path
-    :return: Description
+    :return: The resolved PDF path.
     :rtype: Path
     """
     if args.input:
@@ -739,13 +729,13 @@ def resolve_pdf(args: argparse.Namespace, doctags_path: Path) -> Path:
 
 def _resolve_image_doc_name(args: argparse.Namespace, doctags_path: Path) -> str:
     """
-    Docstring for _resolve_image_doc_name
+    Resolve the document name used for logs and the Markdown output.
 
-    :param args: Description
+    :param args: Parsed CLI arguments.
     :type args: argparse.Namespace
-    :param doctags_path: Description
+    :param doctags_path: Path to the resolved .doctags file, used as a fallback source for the name.
     :type doctags_path: Path
-    :return: Description
+    :return: The resolved document name.
     :rtype: str
     """
     if args.doc_name:
@@ -758,13 +748,13 @@ def _resolve_image_doc_name(args: argparse.Namespace, doctags_path: Path) -> str
 
 def resolve_output(args: argparse.Namespace, doctags_path: Path) -> Path:
     """
-    Docstring for resolve_output
-    
-    :param args: Description
+    Resolve the path to the enriched output .doctags file.
+
+    :param args: Parsed CLI arguments.
     :type args: argparse.Namespace
-    :param doctags_path: Description
+    :param doctags_path: Path to the source .doctags file, used to derive the default output path.
     :type doctags_path: Path
-    :return: Description
+    :return: The resolved output path.
     :rtype: Path
     """
     if args.output:
@@ -774,15 +764,15 @@ def resolve_output(args: argparse.Namespace, doctags_path: Path) -> Path:
 
 def resolve_markdown(args: argparse.Namespace, doctags_path: Path, doc_name: str) -> Path:
     """
-    Docstring for resolve_markdown
-    
-    :param args: Description
+    Resolve the path to the output Markdown file for the descriptions.
+
+    :param args: Parsed CLI arguments.
     :type args: argparse.Namespace
-    :param doctags_path: Description
+    :param doctags_path: Path to the source .doctags file, used to derive the default output folder.
     :type doctags_path: Path
-    :param doc_name: Description
+    :param doc_name: Document name, used to build the default file name.
     :type doc_name: str
-    :return: Description
+    :return: The resolved Markdown path.
     :rtype: Path
     """
     if args.markdown:
@@ -792,13 +782,13 @@ def resolve_markdown(args: argparse.Namespace, doctags_path: Path, doc_name: str
 
 def resolve_images_dir(args: argparse.Namespace, doctags_path: Path) -> Path:
     """
-    Docstring for resolve_images_dir
-    
-    :param args: Description
+    Resolve the output folder for exported PNGs.
+
+    :param args: Parsed CLI arguments.
     :type args: argparse.Namespace
-    :param doctags_path: Description
+    :param doctags_path: Path to the source .doctags file, used to derive the default folder.
     :type doctags_path: Path
-    :return: Description
+    :return: The resolved images folder path.
     :rtype: Path
     """
     if args.images_dir:
@@ -806,7 +796,7 @@ def resolve_images_dir(args: argparse.Namespace, doctags_path: Path) -> Path:
     return doctags_path.parent / "used_images"
 
 
-# Point d'entrée
+# Entry point
 def main() -> None:
     args = parse_args()
 
@@ -816,20 +806,20 @@ def main() -> None:
         datefmt="%H:%M:%S",
     )
 
-    # Config VLM — chargée depuis build_vlm_config (dotenv + CA certifi)
-    # Le dotenv est chargé ICI, donc ENABLE_IMAGE_DESCRIPTION est lisible après.
+    # VLM config — loaded via build_vlm_config (dotenv + CA certifi)
+    # The dotenv is loaded HERE, so ENABLE_IMAGE_DESCRIPTION is readable afterwards.
     try:
         vlm_cfg = build_vlm_config(dotenv_path=args.dotenv)
     except RuntimeError as exc:
-        # dotenv chargé mais VLM_URL absent — vérifier si la description est requise
+        # dotenv loaded but VLM_URL missing — check whether description is actually required
         env_enabled = os.environ.get("ENABLE_IMAGE_DESCRIPTION", "false").strip().lower() == "true"
         needs_vlm = args.image_description if args.image_description is not None else env_enabled
         if needs_vlm:
             raise SystemExit(str(exc)) from exc
         vlm_cfg = None
 
-    # --image-description/--no-image-description est prioritaire ; sans flag explicite,
-    # retombe sur ENABLE_IMAGE_DESCRIPTION du .env (chargé ci-dessus).
+    # --image-description/--no-image-description takes priority; without an explicit flag,
+    # falls back to ENABLE_IMAGE_DESCRIPTION from the .env (loaded above).
     if args.image_description is not None:
         image_desc_enabled = args.image_description
     else:
@@ -838,14 +828,14 @@ def main() -> None:
     model_name = vlm_cfg.vlm_model_name if vlm_cfg else ""
     client = build_sync_client(vlm_cfg, timeout=args.timeout) if vlm_cfg else None
 
-    # Résolution des chemins (DOC_NAME déjà chargé via load_vlm_config)
+    # Path resolution (DOC_NAME already loaded via load_vlm_config)
     doctags_path = resolve_doctags(args)
     if not doctags_path.exists():
-        raise SystemExit(f"Erreur : fichier .doctags introuvable — {doctags_path}")
+        raise SystemExit(f"Error: .doctags file not found — {doctags_path}")
 
     pdf_path = resolve_pdf(args, doctags_path)
     if not pdf_path.exists():
-        raise SystemExit(f"Erreur : fichier PDF introuvable — {pdf_path}")
+        raise SystemExit(f"Error: PDF file not found — {pdf_path}")
 
     doc_name = _resolve_image_doc_name(args, doctags_path)
     output_path = resolve_output(args, doctags_path)
@@ -857,55 +847,55 @@ def main() -> None:
 
     _log.info("Doctags source   : %s", doctags_path)
     _log.info("PDF source       : %s", pdf_path)
-    _log.info("Sortie doctags   : %s", output_path)
+    _log.info("Doctags output   : %s", output_path)
     _log.info("Markdown         : %s", markdown_path)
-    _log.info("Images PNG       : %s", images_dir)
+    _log.info("PNG images       : %s", images_dir)
     _log.info(
-        "Descriptions VLM : %s pour '%s'",
-        "ACTIVÉES" if image_desc_enabled else "DÉSACTIVÉES",
+        "VLM descriptions : %s for '%s'",
+        "ENABLED" if image_desc_enabled else "DISABLED",
         doc_name,
     )
 
-    # Étape 1 — Parsing (lecture unique du fichier)
-    _log.info("ÉTAPE 1 — Parsing des balises <picture> + éléments du doctags")
+    # Step 1 — Parsing (single read of the file)
+    _log.info("STEP 1 — Parsing <picture> tags + doctags elements")
     content = doctags_path.read_text(encoding="utf-8")
     pictures = parse_picture_tags(content)
     doc_elements = extract_document_elements(content)
 
     if not pictures:
         _log.warning(
-            "Aucune balise <picture> trouvée — doctags copié sans modification, "
-            "pas de fichier descriptions créé."
+            "No <picture> tag found — doctags copied unmodified, "
+            "no descriptions file created."
         )
         output_path.write_text(content, encoding="utf-8")
         sys.exit(0)
 
-    # Étape 2 — Export PNG fitz (ignoré si des images pré-extraites sont disponibles)
-    # Résolution de preextracted_dir :
-    #   1. --preextracted-images-dir explicite
-    #   2. used_images/ dans le dossier doctags si le dossier existe (généré par pipeline_multietape --extract-images)
-    #   3. None → crop fitz
+    # Step 2 — Export PNGs via fitz (skipped if pre-extracted images are available)
+    # Resolution of preextracted_dir:
+    #   1. explicit --preextracted-images-dir
+    #   2. used_images/ inside the doctags folder if it exists (generated by pipeline_multietape --extract-images)
+    #   3. None -> fitz crop
     if args.preextracted_images_dir:
         preextracted_dir = args.preextracted_images_dir.resolve()
     elif images_dir.exists() and any(images_dir.glob("pic*.png")):
         preextracted_dir = images_dir
-        _log.info("Images pré-extraites détectées automatiquement : %s", preextracted_dir)
+        _log.info("Pre-extracted images automatically detected: %s", preextracted_dir)
     else:
         preextracted_dir = None
 
     if preextracted_dir:
-        _log.info("ÉTAPE 2 — Images pré-extraites : %s (crop fitz ignoré)", preextracted_dir)
+        _log.info("STEP 2 — Pre-extracted images: %s (fitz crop skipped)", preextracted_dir)
     else:
-        _log.info("ÉTAPE 2 — Export des images PNG (coordonnées doctags via fitz)")
+        _log.info("STEP 2 — Exporting PNG images (doctags coordinates via fitz)")
         images_dir.mkdir(parents=True, exist_ok=True)
         export_picture_images(pdf_path, pictures, doc_name, images_dir, dpi=args.dpi, norm=args.norm)
 
-    # Étape 3 — Description VLM (ou suppression si désactivée)
-    _log.info("ÉTAPE 3 — Description des images avec contexte textuel")
+    # Step 3 — VLM description (or removal if disabled)
+    _log.info("STEP 3 — Describing images with textual context")
     if not image_desc_enabled:
         _log.warning(
-            "Descriptions VLM désactivées pour '%s' — balises <picture> supprimées, "
-            "pas de fichier descriptions créé.",
+            "VLM descriptions disabled for '%s' — <picture> tags removed, "
+            "no descriptions file created.",
             doc_name,
         )
         output_path.write_text(remove_picture_tags(content), encoding="utf-8")
@@ -913,12 +903,12 @@ def main() -> None:
 
     if not model_name:
         raise SystemExit(
-            "Erreur : VLM_MODEL_NAME non défini. "
-            "Fournir --dotenv <fichier> ou définir VLM_MODEL_NAME dans l'environnement."
+            "Error: VLM_MODEL_NAME not set. "
+            "Provide --dotenv <file> or set VLM_MODEL_NAME in the environment."
         )
 
     if not check_vlm_connectivity(client, model_name):
-        _log.error("Arrêt — VLM non joignable. Vérifier VLM_URL et VLM_CA_PEM.")
+        _log.error("Aborting — VLM unreachable. Check VLM_URL and VLM_CA_PEM.")
         sys.exit(1)
 
     try:
@@ -933,16 +923,16 @@ def main() -> None:
             preextracted_images_dir=preextracted_dir,
         )
     except Exception:
-        _log.exception("Erreur lors de la description des images de '%s'", doc_name)
+        _log.exception("Error while describing images for '%s'", doc_name)
         sys.exit(1)
 
-    # Étape 4 — Remplacement des balises <picture>
-    _log.info("ÉTAPE 4 — Remplacement des balises <picture> dans le doctags")
+    # Step 4 — Replacing <picture> tags
+    _log.info("STEP 4 — Replacing <picture> tags in the doctags")
     output_path.write_text(replace_picture_tags(content, results), encoding="utf-8")
-    _log.info("Doctags enrichi sauvegardé : %s", output_path)
+    _log.info("Enriched doctags saved: %s", output_path)
 
-    # Étape 5 — Export Markdown
-    _log.info("ÉTAPE 5 — Export des descriptions en Markdown")
+    # Step 5 — Markdown export
+    _log.info("STEP 5 — Exporting descriptions to Markdown")
     export_descriptions_to_markdown(results, doc_name, markdown_path, model_name)
 
     sys.exit(0)

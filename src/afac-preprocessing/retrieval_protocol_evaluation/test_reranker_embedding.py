@@ -4,7 +4,7 @@ import requests
 from pathlib import Path
 import sys
 
-# Appel des fonctions de configuration pour récupérer les chemins et paramètres nécessaires
+# Call configuration functions to retrieve the necessary paths and parameters
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -17,15 +17,14 @@ EMBEDDING_URL = config["EMBEDDING_URL"]
 RERANKER_URL = config["RERANKER_URL"]
 RERANKER_MODEL_NAME = config["RERANKER_MODEL_NAME"]
 
-k = 5 # pour les métriques top-k
+k = 5 # for top-k metrics
 
 
 def test_embedding_connection() -> bool:
     """
-    Docstring for test_embedding_connection
-    - Teste la connexion à l'API d'embedding en envoyant une requête de test et en vérifiant la réponse.
+    - Tests the connection to the embedding API by sending a test request and checking the response.
 
-    :return: Description
+    :return: True if the embedding API responded successfully with data, False otherwise.
     :rtype: bool
     """
     try:
@@ -35,7 +34,7 @@ def test_embedding_connection() -> bool:
         }
         resp = requests.post(f"{EMBEDDING_URL}/v1/embeddings", 
                              json=payload, 
-                             verify=CA_PATH, # Necessaire si certificat auto-signé, sinon peut être omis
+                             verify=CA_PATH, # Necessary if self-signed certificate, otherwise can be omitted
                              timeout=10
                              )
         resp.raise_for_status()
@@ -52,15 +51,14 @@ def test_embedding_connection() -> bool:
     
 def test_reranker_with_prompt(query, relevant_idx, documents=None) -> tuple[float, float, float, float]:
     """
-    Docstring for test_reranker_with_prompt
-    - Teste la connexion à l'API de reranking en envoyant une requête de test avec un prompt formaté et en vérifiant la réponse.
-    - Formate le prompt pour le reranker en incluant une instruction claire, la requête de l'utilisateur et les documents à évaluer.
-    - Calcule les métriques de performance (MRR, précision, rappel, nDCG) en comparant les résultats du reranker avec les indices pertinents fournis.
+    - Tests the connection to the reranking API by sending a test request with a formatted prompt and checking the response.
+    - Formats the prompt for the reranker by including a clear instruction, the user's query, and the documents to evaluate.
+    - Computes performance metrics (MRR, precision, recall, nDCG) by comparing the reranker's results with the provided relevant indices.
 
-    :param query: Description
-    :param relevant_idx: Description
-    :param documents: Description
-    :return: Description
+    :param query: The user search query to evaluate against the documents.
+    :param relevant_idx: Iterable of indices (into ``documents``) that are considered relevant for this query.
+    :param documents: Optional list of candidate document strings to rerank. If None, a default set of test documents is used.
+    :return: A tuple of (reciprocal rank, precision@k, recall@k, nDCG@k) computed on the top-k reranked results.
     :rtype: tuple[float, float, float, float]
     """
     prefix = '<|im_start|>system\nJudge whether the Document meets the requirements based on the Query and the Instruct provided. Note that the answer can only be "yes" or "no".<|im_end|>\n<|im_start|>user\n'
@@ -99,7 +97,7 @@ def test_reranker_with_prompt(query, relevant_idx, documents=None) -> tuple[floa
                 "text_2": documents_formatted,
                 "truncate_prompt_tokens": -1,
             },
-            verify=CA_PATH, # Necessaire si certificat auto-signé, sinon peut être omis
+            verify=CA_PATH, # Necessary if self-signed certificate, otherwise can be omitted
             timeout=20,
         )
         response.raise_for_status()
@@ -120,7 +118,7 @@ def test_reranker_with_prompt(query, relevant_idx, documents=None) -> tuple[floa
         # Debug
         print("\n--- Debug Reranker Output ---")
         print("doc_ids topk:", all_doc_ids_topk)
-        print("pertinence topk:", [1 if doc_id in relevant else 0 for doc_id in all_doc_ids_topk])
+        print("relevance topk:", [1 if doc_id in relevant else 0 for doc_id in all_doc_ids_topk])
         print("scores topk:", [doc["score"] for doc in reranked_topk])
         print(f"RR={rr:.4f}, precision={prec:.4f}, recall={rec:.4f}, ndcg={ndcg:.4f}")
         return rr, prec, rec, ndcg
@@ -131,13 +129,12 @@ def test_reranker_with_prompt(query, relevant_idx, documents=None) -> tuple[floa
 
 def get_query_embedding(query) -> list[float]:
     """
-    Docstring for get_query_embedding
-    - Envoie une requête à l'API d'embedding pour obtenir l'embedding de la requête utilisateur.
-    - Formate la requête avec le nom du modèle d'embedding et le texte de la requête, puis envoie une requête POST à l'endpoint d'embedding.
-    - Traite la réponse pour extraire l'embedding de la requête, qui est retourné sous forme de liste de floats.
+    - Sends a request to the embedding API to obtain the embedding of the user query.
+    - Formats the request with the embedding model name and the query text, then sends a POST request to the embedding endpoint.
+    - Processes the response to extract the query embedding, which is returned as a list of floats.
 
-    :param query: Description
-    :return: Description
+    :param query: The user search query to embed.
+    :return: The embedding vector of the query.
     :rtype: list[float]
     """
     payload = {
@@ -151,15 +148,14 @@ def get_query_embedding(query) -> list[float]:
 
 def remote_rerank(query, docs, server_url) -> list[float]:
     """
-    Docstring for remote_rerank
-    - Envoie une requête à l'API de reranking pour obtenir les scores de pertinence des documents par rapport à la requête.
-    - Formate la requête avec la requête utilisateur et les documents à évaluer, puis envoie une requête POST à l'endpoint de reranking.
-    - Traite la réponse pour extraire les scores de pertinence, qui sont retournés sous forme de liste de floats.
+    - Sends a request to the reranking API to obtain the relevance scores of the documents with respect to the query.
+    - Formats the request with the user query and the documents to evaluate, then sends a POST request to the reranking endpoint.
+    - Processes the response to extract the relevance scores, which are returned as a list of floats.
 
-    :param query: Description
-    :param docs: Description
-    :param server_url: Description
-    :return: Description
+    :param query: The user search query.
+    :param docs: The list of candidate documents to score against the query.
+    :param server_url: The base URL of the reranking server to call.
+    :return: The list of relevance scores, one per document, in the same order as ``docs``.
     :rtype: list[float]
     """
     payload = {
@@ -173,14 +169,13 @@ def remote_rerank(query, docs, server_url) -> list[float]:
 
 def cosine_similarity(a, b) -> float:
     """
-    Docstring for cosine_similarity
-    - Calcule la similarité cosinus entre deux vecteurs d'embedding.
-    - Convertit les entrées en arrays numpy, puis utilise la formule de la similarité cosinus pour calculer la similarité entre les deux vecteurs, 
-    en ajoutant une petite valeur (1e-8) au dénominateur pour éviter la division par zéro.
+    - Computes the cosine similarity between two embedding vectors.
+    - Converts the inputs into numpy arrays, then uses the cosine similarity formula to compute the similarity between the two vectors,
+    adding a small value (1e-8) to the denominator to avoid division by zero.
 
-    :param a: Description
-    :param b: Description
-    :return: Description
+    :param a: The first embedding vector.
+    :param b: The second embedding vector.
+    :return: The cosine similarity between ``a`` and ``b``.
     :rtype: float
     """
     a = np.array(a)
@@ -190,18 +185,17 @@ def cosine_similarity(a, b) -> float:
 
 def make_label_vectors(retrieved, relevant, all_doc_ids, graded_relevance=None) -> tuple[list[int], list[float]]:
     """
-    Docstring for make_label_vectors
-    - Crée les vecteurs de labels (y_true) et de scores (y_score) pour le calcul des métriques d'évaluation.
-    - Parcourt tous les documents évalués (all_doc_ids) 
-    et construit y_true en indiquant si chaque document est pertinent (1) ou non (0) en fonction de l'ensemble des indices pertinents.
-    - Pour y_score, si des pertinences graduées sont fournies, utilise ces valeurs comme scores, 
-    sinon utilise les scores de pertinence retournés par le reranker.
+    - Creates the label vectors (y_true) and score vectors (y_score) used to compute the evaluation metrics.
+    - Iterates over all evaluated documents (all_doc_ids)
+    and builds y_true by indicating whether each document is relevant (1) or not (0) based on the set of relevant indices.
+    - For y_score, if graded relevance values are provided, uses those values as scores,
+    otherwise uses the relevance scores returned by the reranker.
 
-    :param retrieved: Description
-    :param relevant: Description
-    :param all_doc_ids: Description
-    :param graded_relevance: Description
-    :return: Description
+    :param retrieved: The list of reranked documents, each a dict with ``doc_id`` and ``score`` keys.
+    :param relevant: The set of document ids considered relevant.
+    :param all_doc_ids: The full list of document ids to build the label/score vectors for.
+    :param graded_relevance: Optional mapping from document id to a graded relevance score. If not provided, scores from ``retrieved`` are used instead.
+    :return: A tuple (y_true, y_score) where y_true holds binary relevance labels and y_score holds the corresponding scores.
     :rtype: tuple[list[int], list[float]]
     """
     y_true = []
@@ -285,7 +279,7 @@ def reciprocal_rank_at_k(reranked_topk, relevant) -> float:
 
     return 0.0
 
-# Appel dans le main
+# Call in main
 if __name__ == "__main__":
     embedding_ok = test_embedding_connection()
     all_rr = []
@@ -316,4 +310,4 @@ if __name__ == "__main__":
             print(f"Mean recall@{k}: {np.mean(all_rec):.4f}")
             print(f"Mean nDCG@{k}: {np.mean(all_ndcg):.4f}")
     else:
-        print("Problème de connexion à au moins un modèle.")
+        print("Connection problem with at least one model.")

@@ -1,47 +1,46 @@
 """
-Docstring for preprocessing.src.afac-preprocessing.single_retrieval_nopreprocessing.single_docling_baseline
+"Raw docling" retrieval baseline for the Adhésion subset (20 documents).
 
-Baseline de retrieval "docling brut" pour le sous-ensemble Adhésion (20 documents).
+Goal: measure the contribution of the preprocessing pipeline by comparing two
+document representations evaluated with exactly the same protocol (same HyQ
+questions, same corpus, same metrics):
+  - current pipeline: embedding of "<doc>_final.md" (enriched/preprocessed content)
+  - baseline        : embedding of "<doc>.md" (raw docling output, no preprocessing)
 
-Objectif : mesurer l'apport du pipeline de prétraitement en comparant deux
-représentations documentaires évaluées avec exactement le même protocole
-(mêmes questions HyQ, même corpus, mêmes métriques) :
-  - pipeline actuel : embedding de "<doc>_final.md" (contenu enrichi/prétraité)
-  - baseline        : embedding de "<doc>.md" (sortie docling brute, sans prétraitement)
+Only the document representation changes. The HyQ questions (text + embedding)
+are reused as-is from metadata/hyq_<doc>/question_N.csv: their embedding does
+not depend on the preprocessing pipeline (same model, same text), so
+recomputing them would waste API calls and add no extra information. Do not
+concatenate HyQ + content into a single vector: the reference protocol
+(retrieval_protocol_evaluation) always compares a question embedding to a
+document embedding via cosine similarity — merging them would produce a
+metric that isn't comparable to the pipeline.
 
-Seule la représentation du document change. Les questions HyQ (texte + embedding)
-sont réutilisées telles quelles depuis metadata/hyq_<doc>/question_N.csv : leur
-embedding ne dépend pas du pipeline de prétraitement (même modèle, même texte),
-les recalculer serait un gaspillage d'appels API et n'apporterait aucune
-information supplémentaire. Ne pas concaténer HyQ + contenu dans un même
-vecteur : le protocole de référence (retrieval_protocol_evaluation) compare
-toujours un embedding de question à un embedding de document via similarité
-cosinus — les fusionner produirait une métrique non comparable au pipeline.
+The metrics/aggregation comparison reuses evaluate_doc() from
+retrieval_protocol_evaluation/evaluate_all_docs.py (semantic pipeline, no
+reranker) to guarantee a Recall/Precision/nDCG/MRR@k computation strictly
+identical to the reference pipeline's.
 
-La comparaison metrics/aggregation réutilise evaluate_doc() de
-retrieval_protocol_evaluation/evaluate_all_docs.py (pipeline semantic, sans
-reranker) pour garantir un calcul de Recall/Precision/nDCG/MRR@k strictement
-identique à celui du pipeline de référence.
+Inputs:
+  data/output_files_preprocessing/<doc>/<doc>.md                          — raw docling markdown (20 docs)
+  data/output_files_preprocessing/<doc>/metadata/hyq.json                 — HyQ questions (text)
+  data/output_files_preprocessing/<doc>/metadata/hyq_<doc>/question_N.csv — HyQ embeddings (reused as-is)
 
-Entrées :
-  data/output_files_preprocessing/<doc>/<doc>.md                          — markdown docling brut (20 docs)
-  data/output_files_preprocessing/<doc>/metadata/hyq.json                 — questions HyQ (texte)
-  data/output_files_preprocessing/<doc>/metadata/hyq_<doc>/question_N.csv — embeddings HyQ (réutilisés tels quels)
+Outputs (--output-dir, default data/baseline_evaluation/):
+  baseline_metadata.csv — one row per document: CONTENT (raw docling md),
+                          METADATA (minimal dict, without the pipeline's
+                          enriched fields), HYQ (associated questions, for
+                          traceability), EMBEDDING (new embedding computed
+                          on CONTENT alone)
+  baseline_results.csv  — one row per (document, HyQ question): same columns
+                          as evaluation_results.csv (recall/precision/ndcg/mrr@k),
+                          computed with the baseline embeddings. Directly
+                          comparable to data/evaluation_results/<doc>/evaluation_results.csv.
 
-Sorties (--output-dir, défaut data/baseline_evaluation/) :
-  baseline_metadata.csv — une ligne par document : CONTENT (md docling brut),
-                          METADATA (dict minimal, sans les champs enrichis du
-                          pipeline), HYQ (questions associées, pour traçabilité),
-                          EMBEDDING (nouvel embedding calculé sur CONTENT seul)
-  baseline_results.csv  — une ligne par (document, question HyQ) : mêmes colonnes
-                          que evaluation_results.csv (recall/precision/ndcg/mrr@k),
-                          calculées avec les embeddings baseline. Comparable
-                          directement à data/evaluation_results/<doc>/evaluation_results.csv.
-
-Sorties documents (--docs-output-dir, défaut data/output_files_baseline/) :
-  <doc>/<doc>.md — copie du markdown docling brut réellement utilisé pour
-                   l'embedding baseline, pour inspection visuelle côte à côte
-                   avec data/output_files_preprocessing/<doc>/ et data/output_files_v3/<doc>/.
+Document outputs (--docs-output-dir, default data/output_files_baseline/):
+  <doc>/<doc>.md — copy of the raw docling markdown actually used for the
+                   baseline embedding, for side-by-side visual inspection
+                   with data/output_files_preprocessing/<doc>/ and data/output_files_v3/<doc>/.
 
 Usage:
 uv run python single_docling_baseline.py
@@ -124,7 +123,7 @@ def build_baseline_metadata(
     embedding_model_name: str,
     docs_output_dir: Path,
 ) -> list[dict]:
-    """One row per doc: raw docling CONTENT, minimal METADATA, associated HYQ (traçability only), new EMBEDDING."""
+    """One row per doc: raw docling CONTENT, minimal METADATA, associated HYQ (traceability only), new EMBEDDING."""
     rows = []
     for doc_name in doc_names:
         content = (stage5_dir / doc_name / f"{doc_name}.md").read_text(encoding="utf-8")
@@ -141,7 +140,7 @@ def build_baseline_metadata(
             "embedding_model": embedding_model_name,
         }
 
-        _log.info("Embedding baseline '%s' (%d caractères)", doc_name, len(content))
+        _log.info("Embedding baseline '%s' (%d chars)", doc_name, len(content))
         embedding = generate_embedding(content, client, embedding_model_name)
 
         rows.append({
@@ -190,7 +189,7 @@ def evaluate_baseline(
 # CLI
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Baseline de retrieval sur le markdown docling brut (sans prétraitement).",
+        description="Retrieval baseline on the raw docling markdown (no preprocessing).",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
@@ -223,9 +222,9 @@ def main() -> None:
 
     doc_names = discover_doc_names(args.stage5)
     if not doc_names:
-        _log.error("Aucun document trouvé dans %s", args.stage5)
+        _log.error("No document found in %s", args.stage5)
         sys.exit(1)
-    _log.info("Sous-ensemble baseline : %d document(s)", len(doc_names))
+    _log.info("Baseline subset: %d document(s)", len(doc_names))
 
     client, embedding_model_name = build_baseline_embedding_client(args.dotenv)
 
@@ -238,14 +237,14 @@ def main() -> None:
 
     results_rows = evaluate_baseline(doc_names, doc_embeddings, args.stage5, top_ks)
     if not results_rows:
-        _log.error("Aucun résultat d'évaluation généré.")
+        _log.error("No evaluation result generated.")
         sys.exit(1)
 
     results_path = args.output_dir / "baseline_results.csv"
     pd.DataFrame(results_rows).to_csv(results_path, index=False)
     _log.info("Baseline results saved → %s", results_path)
 
-    _log.info("Terminé. %d document(s), %d question(s) évaluée(s).", len(doc_names), len(results_rows))
+    _log.info("Done. %d document(s), %d question(s) evaluated.", len(doc_names), len(results_rows))
 
 
 if __name__ == "__main__":

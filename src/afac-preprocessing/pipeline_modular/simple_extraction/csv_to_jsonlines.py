@@ -1,10 +1,10 @@
 """
-csv_to_jsonlines_modulaire.py — Conversion des tables CSV (Docling) en fichiers JSONL.
+csv_to_jsonlines_modulaire.py — Convert CSV tables (Docling) into JSONL files.
 
-Pour chaque CSV trouvé dans le dossier d'entrée, produit un fichier .jsonl
-contenant une ligne JSON par ligne du tableau.
+For each CSV found in the input folder, produces a .jsonl file
+containing one JSON line per row of the table.
 
-Usage :
+Usage:
     uv run python csv_to_jsonlines_modulaire.py --input-dir data/output_files_preprocessing/MonDoc/tables
     uv run python csv_to_jsonlines_modulaire.py --dotenv .env.test
 """
@@ -21,15 +21,14 @@ from utils.paths import project_root, resolve_doc_name
 _log = logging.getLogger(__name__)
 
 
-# Utilitaires CSV → JSONL
+# CSV → JSONL utilities
 def deduplicate_columns(columns: list[str]) -> list[str]:
     """
-    Docstring for deduplicate_columns
-    Ajoute un suffixe numérique aux colonnes dupliquées (col, col_2, col_3…).
+    Add a numeric suffix to duplicate column names (col, col_2, col_3...).
 
-    :param columns: Description
+    :param columns: List of column names, possibly containing duplicates.
     :type columns: list[str]
-    :return: Description
+    :return: List of column names with duplicates renamed to be unique.
     :rtype: list[str]
     """
     counts: dict[str, int] = {}
@@ -46,25 +45,24 @@ def deduplicate_columns(columns: list[str]) -> list[str]:
 
 def safe_row_dict(row: pd.Series) -> dict:
     """
-    Docstring for safe_row_dict
-    Convertit une ligne en dict JSON-safe : NaN → None, toutes valeurs → str.
+    Convert a row into a JSON-safe dict: NaN becomes None, all values become str.
 
-    :param row: Description
+    :param row: A pandas Series representing one row of the table.
     :type row: pd.Series
-    :return: Description
+    :return: Dict mapping each column name to its JSON-safe value.
     :rtype: dict
     """
     return {k: (None if pd.isna(v) else str(v)) for k, v in row.items()}
 
 
 def _detect_header_row(csv_path: Path) -> int:
-    """Détermine si le vrai header est en ligne 0 ou en ligne 1.
+    """Determine whether the real header is on row 0 or row 1.
 
-    Docling peut produire des colonnes numériques (0, 1, 2…) quand le header
-    réel se trouve dans la première ligne de données. On lit nrows=1 une seule
-    fois pour couvrir les deux vérifications (évite la triple lecture originale).
+    Docling can produce numeric column names (0, 1, 2...) when the actual
+    header is located in the first data row. We read nrows=1 only once to
+    cover both checks (avoids the original triple read).
 
-    Retourne 0 (header en row 0) ou 1 (header en row 1).
+    Returns 0 (header on row 0) or 1 (header on row 1).
     """
     df_peek = pd.read_csv(csv_path, nrows=1)
     if df_peek.empty:
@@ -75,7 +73,7 @@ def _detect_header_row(csv_path: Path) -> int:
         return 0
 
     first_row = df_peek.iloc[0]
-    values = [v for v in first_row if not pd.isna(v)] # on ignore les NaN, qui peuvent fausser la détection
+    values = [v for v in first_row if not pd.isna(v)] # ignore NaN values, which could skew the detection
     first_row_is_text = bool(values) and all(
         isinstance(v, str) and not str(v).replace(".", "").replace("-", "").isdigit()
         for v in values
@@ -85,14 +83,13 @@ def _detect_header_row(csv_path: Path) -> int:
 
 def process_csv(csv_path: Path, output_dir: Path) -> bool:
     """
-    Docstring for process_csv
-    Convertit un CSV en JSONL dans output_dir. Retourne True si un fichier a été écrit.
+    Convert a CSV file into JSONL inside output_dir. Returns True if a file was written.
 
-    :param csv_path: Description
+    :param csv_path: Path to the source CSV file.
     :type csv_path: Path
-    :param output_dir: Description
+    :param output_dir: Directory in which the JSONL file will be written.
     :type output_dir: Path
-    :return: Description
+    :return: True if a JSONL file was written, False if the table was empty and skipped.
     :rtype: bool
     """
     header_row = _detect_header_row(csv_path)
@@ -100,7 +97,7 @@ def process_csv(csv_path: Path, output_dir: Path) -> bool:
     df.columns = deduplicate_columns([str(col) for col in df.columns])
 
     if df.empty:
-        _log.warning("%s — ignoré (tableau vide)", csv_path.name)
+        _log.warning("%s — skipped (empty table)", csv_path.name)
         return False
 
     jsonl_path = output_dir / csv_path.with_suffix(".jsonl").name
@@ -115,19 +112,19 @@ def process_csv(csv_path: Path, output_dir: Path) -> bool:
 # CLI
 def parse_args() -> argparse.Namespace:
     """
-    Docstring for parse_args
-    
-    :return: Description
+    Parse command-line arguments.
+
+    :return: Parsed command-line arguments.
     :rtype: Namespace
     """
     parser = argparse.ArgumentParser(
         description=(
-            "Convertit les tables CSV extraites par Docling en fichiers JSONL. "
-            "Un .jsonl par CSV, une ligne JSON par ligne du tableau."
+            "Convert CSV tables extracted by Docling into JSONL files. "
+            "One .jsonl per CSV, one JSON line per row of the table."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
-            "Exemples :\n"
+            "Examples:\n"
             "  uv run python csv_to_jsonlines_modulaire.py "
             "--input-dir data/output_files_preprocessing/MonDoc/tables\n"
             "  uv run python csv_to_jsonlines_modulaire.py "
@@ -141,8 +138,8 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=None,
         help=(
-            "Dossier contenant les fichiers CSV à convertir. "
-            "Si absent, résout data/output_files_preprocessing/<DOC_NAME>/tables/ depuis l'environnement."
+            "Folder containing the CSV files to convert. "
+            "If omitted, resolves data/output_files_preprocessing/<DOC_NAME>/tables/ from the environment."
         ),
     )
     parser.add_argument(
@@ -150,28 +147,28 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=None,
         help=(
-            "Dossier de sortie pour les fichiers JSONL. "
-            "Défaut : même dossier que --input-dir."
+            "Output folder for the JSONL files. "
+            "Default: same folder as --input-dir."
         ),
     )
     parser.add_argument(
         "--dotenv",
         type=Path,
         default=None,
-        metavar="FICHIER",
-        help="Fichier .env à charger pour résoudre DOC_NAME (ex. : .env.test). Ignoré si --input-dir est fourni.",
+        metavar="FILE",
+        help="A .env file to load in order to resolve DOC_NAME (e.g. .env.test). Ignored if --input-dir is provided.",
     )
     return parser.parse_args()
 
 
-# Résolution des chemins
+# Path resolution
 def resolve_input_dir(args: argparse.Namespace) -> Path:
     """
-    Docstring for resolve_input_dir
+    Resolve the input directory containing the CSV files.
 
-    :param args: Description
+    :param args: Parsed command-line arguments.
     :type args: argparse.Namespace
-    :return: Description
+    :return: Resolved absolute path to the input directory.
     :rtype: Path
     """
     if args.input_dir:
@@ -182,21 +179,21 @@ def resolve_input_dir(args: argparse.Namespace) -> Path:
 
 def resolve_output_dir(args: argparse.Namespace, input_dir: Path) -> Path:
     """
-    Docstring for resolve_output_dir
-    
-    :param args: Description
+    Resolve the output directory for the JSONL files.
+
+    :param args: Parsed command-line arguments.
     :type args: argparse.Namespace
-    :param input_dir: Description
+    :param input_dir: Resolved input directory, used as the default output location.
     :type input_dir: Path
-    :return: Description
+    :return: Resolved absolute path to the output directory.
     :rtype: Path
     """
     if args.output_dir:
         return args.output_dir.resolve()
-    return input_dir  # par défaut : JSONL à côté des CSV
+    return input_dir  # default: JSONL next to the CSVs
 
 
-# Point d'entrée
+# Entry point
 def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
@@ -208,17 +205,17 @@ def main() -> None:
 
     input_dir = resolve_input_dir(args)
     if not input_dir.exists():
-        raise SystemExit(f"Erreur : dossier introuvable — {input_dir}")
+        raise SystemExit(f"Error: directory not found — {input_dir}")
 
     output_dir = resolve_output_dir(args, input_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     csv_files = sorted(input_dir.glob("*.csv"))
     if not csv_files:
-        raise SystemExit(f"Aucun fichier CSV trouvé dans : {input_dir}")
+        raise SystemExit(f"No CSV files found in: {input_dir}")
 
-    _log.info("%d fichier(s) CSV trouvé(s) dans : %s", len(csv_files), input_dir)
-    _log.info("Sortie JSONL dans : %s", output_dir)
+    _log.info("%d CSV file(s) found in: %s", len(csv_files), input_dir)
+    _log.info("JSONL output in: %s", output_dir)
 
     n_ok = n_skip = n_err = 0
     for csv_path in csv_files:
@@ -228,11 +225,11 @@ def main() -> None:
             else:
                 n_skip += 1
         except Exception as e:
-            _log.exception("%s → erreur : %s", csv_path.name, e)
+            _log.exception("%s → error: %s", csv_path.name, e)
             n_err += 1
 
     _log.info(
-        "Terminé — %d converti(s), %d ignoré(s) (vide), %d erreur(s).",
+        "Done — %d converted, %d skipped (empty), %d error(s).",
         n_ok, n_skip, n_err,
     )
     sys.exit(1 if n_err > 0 else 0)

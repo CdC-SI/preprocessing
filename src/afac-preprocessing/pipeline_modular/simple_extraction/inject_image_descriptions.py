@@ -1,14 +1,14 @@
 """
-Stage 4b - Injection des descriptions d'images dans le Markdown final.
-Script : inject_image_descriptions.py
+Step 11 - Inject image descriptions into the final Markdown.
+Script: inject_image_descriptions.py
 
-Remplace les marqueurs [[[IMAGE_DESC:N]]] laissés par description_image_context.py
-avec les descriptions VLM issues du fichier _image_descriptions.md.
+Replaces the [[[IMAGE_DESC:N]]] markers left by description_image_context.py
+with the VLM descriptions from the _image_descriptions.md file.
 
-Les descriptions sont injectées APRÈS markdown_control_vlm.py (stage 10),
-garantissant qu'elles ne peuvent pas être supprimées par les étapes VLM précédentes.
+Descriptions are injected AFTER markdown_control_vlm.py (step 10), guaranteeing
+they cannot be dropped by earlier VLM steps.
 
-Usage :
+Usage:
     uv run python inject_image_descriptions.py --input data/input_files/MonDoc.pdf
     uv run python inject_image_descriptions.py --dotenv .env.test
     uv run python inject_image_descriptions.py \\
@@ -33,15 +33,13 @@ PLACEHOLDER_RE = re.compile(r"\[\[\[IMAGE(?:\\)?_DESC:(\d+)\]\]\]")
 
 def parse_image_descriptions_md(descriptions_path: Path) -> dict[int, str]:
     """
-    Docstring for parse_image_descriptions_md
-    Parse le fichier _image_descriptions.md et retourne {index: description}.
-    Seules les entrées avec statut OK sont extraites.
+    Parse the _image_descriptions.md file and return {index: description}.
+    Only entries with an OK status are extracted.
 
-    :param descriptions_path: Description
+    :param descriptions_path: Path to the _image_descriptions.md file
     :type descriptions_path: Path
-    :return: Description
+    :return: Mapping of image index to its description text
     :rtype: dict[int, str]
-    
     """
     content = descriptions_path.read_text(encoding="utf-8")
     descriptions: dict[int, str] = {}
@@ -54,24 +52,22 @@ def parse_image_descriptions_md(descriptions_path: Path) -> dict[int, str]:
             desc = m.group(2).strip()
             if desc:
                 descriptions[idx] = desc
-                _log.debug("Description chargée pour IMAGE_DESC:%d (%d chars)", idx, len(desc))
+                _log.debug("Description loaded for IMAGE_DESC:%d (%d chars)", idx, len(desc))
 
-    _log.info("%d description(s) chargée(s) depuis %s", len(descriptions), descriptions_path.name)
+    _log.info("%d description(s) loaded from %s", len(descriptions), descriptions_path.name)
     return descriptions
 
 
 def inject_descriptions(markdown_content: str, descriptions: dict[int, str]) -> tuple[str, int, int]:
     """
-    Docstring for inject_descriptions
-    Remplace les marqueurs [[[IMAGE_DESC:N]]] par les descriptions correspondantes.
-    Les marqueurs dans un élément de liste sont inlinés (sans sauts de ligne).
-    :return: (markdown mis à jour, nombre injectés, nombre manquants)
+    Replace the [[[IMAGE_DESC:N]]] markers with their matching descriptions.
+    Markers inside a list item are inlined (no line breaks).
 
-    :param markdown_content: Description
+    :param markdown_content: Markdown content with [[[IMAGE_DESC:N]]] markers
     :type markdown_content: str
-    :param descriptions: Description
+    :param descriptions: Mapping of image index to its description text
     :type descriptions: dict[int, str]
-    :return: Description
+    :return: (updated markdown, number injected, number missing)
     :rtype: tuple[str, int, int]
     """
     injected = 0
@@ -88,7 +84,7 @@ def inject_descriptions(markdown_content: str, descriptions: dict[int, str]) -> 
         desc = descriptions.get(idx)
 
         if not desc:
-            _log.warning("Aucune description pour IMAGE_DESC:%d — marqueur conservé", idx)
+            _log.warning("No description for IMAGE_DESC:%d — marker kept as-is", idx)
             result.append(line)
             missing += 1
             continue
@@ -107,36 +103,35 @@ def inject_descriptions(markdown_content: str, descriptions: dict[int, str]) -> 
 
         result.append(new_line)
         injected += 1
-        _log.info("IMAGE_DESC:%d injecté (%d chars)", idx, len(desc))
+        _log.info("IMAGE_DESC:%d injected (%d chars)", idx, len(desc))
 
     return "".join(result), injected, missing
 
 
 def run(markdown_path: Path, descriptions_path: Path, output_path: Path) -> None:
     """
-    Docstring for run
-    Injecte les descriptions dans le Markdown et sauvegarde le résultat.
-    
-    :param markdown_path: Description
+    Inject the descriptions into the Markdown and save the result.
+
+    :param markdown_path: Markdown file to process
     :type markdown_path: Path
-    :param descriptions_path: Description
+    :param descriptions_path: _image_descriptions.md file produced at step 06
     :type descriptions_path: Path
-    :param output_path: Description
+    :param output_path: Final Markdown output path
     :type output_path: Path
     """
     if not markdown_path.exists():
-        raise FileNotFoundError(f"Markdown introuvable : {markdown_path}")
+        raise FileNotFoundError(f"Markdown not found: {markdown_path}")
 
-    _log.info("Markdown source  : %s", markdown_path)
-    _log.info("Sortie           : %s", output_path)
+    _log.info("Source markdown  : %s", markdown_path)
+    _log.info("Output           : %s", output_path)
 
     if descriptions_path.exists():
         _log.info("Descriptions     : %s", descriptions_path)
         descriptions = parse_image_descriptions_md(descriptions_path)
     else:
-        # Absent == pas d'images ou descriptions désactivées à l'étape 06
-        # (description_image_context.py ne crée plus ce fichier dans ce cas).
-        _log.info("Descriptions     : %s (absent — pas d'images ou désactivées)", descriptions_path)
+        # Absent == no images, or descriptions disabled at step 06
+        # (description_image_context.py no longer creates this file in that case).
+        _log.info("Descriptions     : %s (absent — no images or disabled)", descriptions_path)
         descriptions = {}
     content = markdown_path.read_text(encoding="utf-8")
 
@@ -146,25 +141,25 @@ def run(markdown_path: Path, descriptions_path: Path, output_path: Path) -> None
 
     if no_placeholders and no_descriptions:
         # Normal case: image description was disabled at step 06.
-        _log.info("Aucune description ni marqueur — descriptions désactivées. Fichier copié tel quel.")
+        _log.info("No description and no marker — descriptions disabled. File copied as-is.")
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(content, encoding="utf-8")
         return
 
     if no_placeholders:
         _log.warning(
-            "Descriptions disponibles mais aucun marqueur [[[IMAGE_DESC:N]]] trouvé dans %s. "
-            "Vérifier que description_image_context.py utilise bien les placeholders.",
+            "Descriptions available but no [[[IMAGE_DESC:N]]] marker found in %s. "
+            "Check that description_image_context.py is emitting the placeholders.",
             markdown_path.name,
         )
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(content, encoding="utf-8")
         return
 
-    _log.info("%d marqueur(s) trouvé(s) : %s", len(found), [int(i) for i in found])
+    _log.info("%d marker(s) found: %s", len(found), [int(i) for i in found])
 
     if no_descriptions:
-        _log.warning("Marqueurs présents mais aucune description disponible — fichier copié sans injection.")
+        _log.warning("Markers present but no description available — file copied without injection.")
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(content, encoding="utf-8")
         return
@@ -173,13 +168,13 @@ def run(markdown_path: Path, descriptions_path: Path, output_path: Path) -> None
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(updated, encoding="utf-8")
-    _log.info("Injection terminée : %d injecté(s), %d manquant(s)", injected, missing)
-    _log.info("Markdown final sauvegardé : %s", output_path)
+    _log.info("Injection done: %d injected, %d missing", injected, missing)
+    _log.info("Final markdown saved: %s", output_path)
 
     if missing:
         _log.warning(
-            "%d description(s) manquante(s). "
-            "Vérifier _image_descriptions.md ou relancer description_image_context.py.",
+            "%d description(s) missing. "
+            "Check _image_descriptions.md or rerun description_image_context.py.",
             missing,
         )
 
@@ -187,13 +182,13 @@ def run(markdown_path: Path, descriptions_path: Path, output_path: Path) -> None
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Injecte les descriptions VLM dans le Markdown final en remplaçant "
-            "les marqueurs [[[IMAGE_DESC:N]]]. "
-            "À exécuter après markdown_control_vlm.py (stage 10)."
+            "Injects VLM descriptions into the final Markdown, replacing the "
+            "[[[IMAGE_DESC:N]]] markers. "
+            "Run after markdown_control_vlm.py (step 10)."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
-            "Exemples :\n"
+            "Examples:\n"
             "  uv run python inject_image_descriptions.py --input data/input_files/MonDoc.pdf\n"
             "  uv run python inject_image_descriptions.py --dotenv .env.test\n"
             "  uv run python inject_image_descriptions.py \\\n"
@@ -206,38 +201,38 @@ def parse_args() -> argparse.Namespace:
         "--input", "-i",
         type=Path,
         default=None,
-        help="Chemin vers le PDF source (pour résoudre le stem du document).",
+        help="Path to the source PDF (used to resolve the document stem).",
     )
     parser.add_argument(
         "--markdown", "-m",
         type=Path,
         default=None,
-        help="Markdown à traiter. Défaut : data/output_files_preprocessing/<stem>/<stem>_vlm_check.md",
+        help="Markdown to process. Default: data/output_files_preprocessing/<stem>/<stem>_vlm_check.md",
     )
     parser.add_argument(
         "--descriptions", "-d",
         type=Path,
         default=None,
-        help="Fichier _image_descriptions.md. Défaut : data/output_files_preprocessing/<stem>/<stem>_image_descriptions.md",
+        help="_image_descriptions.md file. Default: data/output_files_preprocessing/<stem>/<stem>_image_descriptions.md",
     )
     parser.add_argument(
         "--output", "-o",
         type=Path,
         default=None,
-        help="Markdown de sortie. Défaut : data/output_files_preprocessing/<stem>/<stem>_final.md",
+        help="Output markdown. Default: data/output_files_preprocessing/<stem>/<stem>_final.md",
     )
     parser.add_argument(
         "--dotenv",
         type=Path,
         default=None,
-        metavar="FICHIER",
-        help="Fichier .env à charger pour résoudre DOC_NAME.",
+        metavar="FILE",
+        help="Path to the .env file to resolve DOC_NAME.",
     )
     parser.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        help="Niveau de journalisation. Défaut : INFO.",
+        help="Logging level. Default: INFO.",
     )
     return parser.parse_args()
 
@@ -288,7 +283,7 @@ def main() -> None:
         _log.exception("%s", e)
         sys.exit(1)
     except Exception:
-        _log.exception("Erreur inattendue lors de l'injection.")
+        _log.exception("Unexpected error during injection.")
         sys.exit(1)
 
     sys.exit(0)

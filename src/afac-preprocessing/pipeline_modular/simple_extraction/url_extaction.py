@@ -1,13 +1,13 @@
 """
-url_extaction.py — Extraction des liens hypertextes (URL, mailto) depuis un PDF.
+url_extaction.py — Extraction of hyperlinks (URL, mailto) from a PDF.
 
-Utilise PyMuPDF pour extraire les liens externes de chaque page et associe
-le texte des mots dont le centre se trouve dans le rectangle du lien.
-Produit un fichier JSONL — une ligne par lien trouvé.
+Uses PyMuPDF to extract the external links of each page and associates
+the text of the words whose center lies within the link's rectangle.
+Produces a JSONL file — one line per link found.
 
-Se lance indépendamment ou après docling_extract.py.
+Runs independently or after docling_extract.py.
 
-Usage :
+Usage:
     uv run python url_extaction.py --input data/input_files/MonDoc.pdf
     uv run python url_extaction.py --dotenv .env.test
 """
@@ -23,15 +23,14 @@ from utils.paths import project_root, resolve_doc_name, resolve_input_pdf
 _log = logging.getLogger(__name__)
 
 
-# Logique métier (fonctions pures)
+# Business logic (pure functions)
 def is_external_link(uri: str | None) -> bool:
     """
-    Docstring for is_external_link
-    Retourne True si l'URI est un lien externe (http, https, mailto).
+    Return True if the URI is an external link (http, https, mailto).
 
-    :param uri: Description
+    :param uri: The URI to check.
     :type uri: str | None
-    :return: Description
+    :return: True if the URI starts with "http://", "https://" or "mailto:".
     :rtype: bool
     """
     return bool(uri and uri.startswith(("http://", "https://", "mailto:")))
@@ -39,14 +38,13 @@ def is_external_link(uri: str | None) -> bool:
 
 def get_link_text(link: dict, words: list[tuple]) -> str:
     """
-    Docstring for get_link_text
-    Retourne le texte des mots dont le centre se trouve dans le rectangle du lien.
+    Return the text of the words whose center lies within the link's rectangle.
 
-    :param link: Description
+    :param link: The link dict (as returned by PyMuPDF's get_links()), containing a "from" rectangle.
     :type link: dict
-    :param words: Description
+    :param words: The list of words on the page, as returned by PyMuPDF's get_text("words").
     :type words: list[tuple]
-    :return: Description
+    :return: The concatenated text of the words inside the link's rectangle, or "No text" if none.
     :rtype: str
     """
     rect = link.get("from")
@@ -62,12 +60,11 @@ def get_link_text(link: dict, words: list[tuple]) -> str:
 
 def serialize_link(link: dict) -> dict:
     """
-    Docstring for serialize_link
-    Convertit fitz.Rect en liste pour la sérialisation JSON.
+    Convert fitz.Rect to a list for JSON serialization.
 
-    :param link: Description
+    :param link: The link dict to serialize.
     :type link: dict
-    :return: Description
+    :return: A copy of the link dict with the "from" rectangle converted to a list.
     :rtype: dict
     """
     link_serializable = link.copy()
@@ -78,13 +75,12 @@ def serialize_link(link: dict) -> dict:
 
 def extract_url_links(pdf_path: Path) -> list[dict]:
     """
-    Docstring for extract_url_links
-    Extrait tous les liens externes du PDF page par page.
-    Retourne une liste de dicts avec page_number, text, hyperlink, type, details.
+    Extract all external links from the PDF, page by page.
+    Returns a list of dicts with page_number, text, hyperlink, type, details.
 
-    :param pdf_path: Description
+    :param pdf_path: Path to the PDF file to process.
     :type pdf_path: Path
-    :return: Description
+    :return: A list of dicts describing each external link found.
     :rtype: list[dict]
     """
     results = []
@@ -105,19 +101,18 @@ def extract_url_links(pdf_path: Path) -> list[dict]:
                 if is_external_link(link.get("uri"))
             ]
             if page_links:
-                _log.info("  Page %d : %d lien(s)", page_num + 1, len(page_links))
+                _log.info("  Page %d: %d link(s)", page_num + 1, len(page_links))
             results.extend(page_links)
     return results
 
 
 def save_links(links: list[dict], output_path: Path) -> None:
     """
-    Docstring for save_links
-    Écrit la liste de liens dans un fichier JSONL.
+    Write the list of links to a JSONL file.
 
-    :param links: Description
+    :param links: The list of link dicts to write.
     :type links: list[dict]
-    :param output_path: Description
+    :param output_path: The path of the output JSONL file.
     :type output_path: Path
     """
     with jsonlines.open(output_path, mode="w") as writer:
@@ -129,12 +124,12 @@ def save_links(links: list[dict], output_path: Path) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Extrait les liens hypertextes (http, https, mailto) d'un PDF "
-            "et les sauvegarde dans un fichier JSONL."
+            "Extracts the hyperlinks (http, https, mailto) from a PDF "
+            "and saves them to a JSONL file."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
-            "Exemples :\n"
+            "Examples:\n"
             "  uv run python url_extaction.py --input data/input_files/MonDoc.pdf\n"
             "  uv run python url_extaction.py "
             "--input data/input_files/MonDoc.pdf "
@@ -147,8 +142,8 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=None,
         help=(
-            "Chemin vers le PDF source. "
-            "Si absent, résout data/input_files/<DOC_NAME>.pdf depuis l'environnement."
+            "Path to the source PDF. "
+            "If absent, resolves data/input_files/<DOC_NAME>.pdf from the environment."
         ),
     )
     parser.add_argument(
@@ -156,33 +151,32 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=None,
         help=(
-            "Fichier JSONL de sortie. "
-            "Défaut : data/output_files_preprocessing/<nom_pdf>/hyperlinks_data_<nom_pdf>.jsonl"
+            "Output JSONL file. "
+            "Default: data/output_files_preprocessing/<pdf_name>/hyperlinks_data_<pdf_name>.jsonl"
         ),
     )
     parser.add_argument(
         "--dotenv",
         type=Path,
         default=None,
-        metavar="FICHIER",
-        help="Fichier .env à charger pour résoudre DOC_NAME (ex. : .env.test). Ignoré si --input est fourni.",
+        metavar="FILE",
+        help="The .env file to load to resolve DOC_NAME (e.g.: .env.test). Ignored if --input is provided.",
     )
     return parser.parse_args()
 
 
-# Résolution des chemins
+# Path resolution
 def resolve_pdf(args: argparse.Namespace) -> Path:
     """
-    Docstring for resolve_pdf
-    Résout le chemin du PDF à traiter selon la logique suivante :
-    1. Si --pdf est fourni, utilise ce chemin.
-    2. Sinon, si --dotenv est fourni, charge ce fichier .env et lit DOC_NAME pour construire le chemin data/input_files/<DOC_NAME>.pdf.
-    3. Sinon, lit DOC_NAME depuis l'environnement et construit le chemin data/input_files/<DOC_NAME>.pdf.
-    4. Si DOC_NAME n'est pas défini ou vide, affiche une erreur et quitte.
+    Resolve the path of the PDF to process according to the following logic:
+    1. If --pdf is provided, use that path.
+    2. Otherwise, if --dotenv is provided, load that .env file and read DOC_NAME to build the path data/input_files/<DOC_NAME>.pdf.
+    3. Otherwise, read DOC_NAME from the environment and build the path data/input_files/<DOC_NAME>.pdf.
+    4. If DOC_NAME is not defined or empty, print an error and exit.
 
-    :param args: Description
+    :param args: The parsed CLI arguments.
     :type args: argparse.Namespace
-    :return: Description
+    :return: The resolved path to the PDF file.
     :rtype: Path
     """
     if args.input:
@@ -193,16 +187,15 @@ def resolve_pdf(args: argparse.Namespace) -> Path:
 
 def resolve_output(args: argparse.Namespace, pdf_path: Path) -> Path:
     """
-    Docstring for resolve_output
-    Résout le chemin du fichier de sortie JSONL selon la logique suivante :
-    1. Si --output est fourni, utilise ce chemin.
-    2. Sinon, construit le chemin par défaut : data/output_files_preprocessing/<nom_pdf>/hyperlinks_data_<nom_pdf>.jsonl
+    Resolve the path of the output JSONL file according to the following logic:
+    1. If --output is provided, use that path.
+    2. Otherwise, build the default path: data/output_files_preprocessing/<pdf_name>/hyperlinks_data_<pdf_name>.jsonl
 
-    :param args: Description
+    :param args: The parsed CLI arguments.
     :type args: argparse.Namespace
-    :param pdf_path: Description
+    :param pdf_path: The path of the PDF file being processed.
     :type pdf_path: Path
-    :return: Description
+    :return: The resolved path of the output JSONL file.
     :rtype: Path
     """
     if args.output:
@@ -211,7 +204,7 @@ def resolve_output(args: argparse.Namespace, pdf_path: Path) -> Path:
     return project_root() / "data" / "output_files_preprocessing" / stem / f"hyperlinks_data_{stem}.jsonl"
 
 
-# Point d'entrée
+# Entry point
 def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
@@ -223,25 +216,25 @@ def main() -> None:
 
     pdf_path = resolve_pdf(args)
     if not pdf_path.exists():
-        raise SystemExit(f"Erreur : fichier PDF introuvable — {pdf_path}")
+        raise SystemExit(f"Error: PDF file not found — {pdf_path}")
 
     output_path = resolve_output(args, pdf_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    _log.info("PDF source : %s", pdf_path)
-    _log.info("Sortie     : %s", output_path)
+    _log.info("Source PDF: %s", pdf_path)
+    _log.info("Output    : %s", output_path)
 
     try:
         links = extract_url_links(pdf_path)
         save_links(links, output_path)
     except Exception:
-        _log.exception("Erreur lors de l'extraction des liens de %s", pdf_path.name)
+        _log.exception("Error while extracting links from %s", pdf_path.name)
         sys.exit(1)
 
     if links:
-        _log.info("Terminé — %d lien(s) extrait(s) → %s", len(links), output_path)
+        _log.info("Done — %d link(s) extracted → %s", len(links), output_path)
     else:
-        _log.info("Terminé — aucun lien externe trouvé dans %s", pdf_path.name)
+        _log.info("Done — no external link found in %s", pdf_path.name)
 
     sys.exit(0)
 
