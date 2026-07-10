@@ -1,10 +1,10 @@
 """Full pipeline — runs all modular steps in sequence (extraction + metadata).
 
 Usage:
-    uv run python fullpipeline_modular_v2.py --dotenv .env.test
-    uv run python fullpipeline_modular_v2.py --dotenv .env.test --from-step 8
-    uv run python fullpipeline_modular_v2.py --dotenv .env.test --from-step 11 --to-step 12
-    uv run python fullpipeline_modular_v2.py --dotenv .env.test --skip-steps 3,6
+    uv run python pipeline_extraction.py --dotenv .env.test
+    uv run python pipeline_extraction.py --dotenv .env.test --from-step 8
+    uv run python pipeline_extraction.py --dotenv .env.test --from-step 11 --to-step 12
+    uv run python pipeline_extraction.py --dotenv .env.test --skip-steps 3,6
 
 Each step receives the resolved --dotenv path so DOC_NAME is picked up
 consistently from the same .env file throughout the run.
@@ -12,7 +12,7 @@ consistently from the same .env file throughout the run.
 Steps:
   01  pipeline_multietape_modular.py           # doctags via Docling
   02  reordered_doctags_modular.py             # réordonnement des balises
-  03  opencv_checker_modular.py                # contrôle qualité images (validation only)
+  03  opencv_checker_modular.py                # QA visuelle only, ne produit rien en aval — skipped par défaut, --with-opencv-check pour l'activer
   04  csv_to_jsonlines_modular.py              # CSV → JSONL
   05  load_jsonline_doctags_modular.py         # chargement doctags enrichi
   06  description_image_context_modular.py     # descriptions images VLM  (slow)
@@ -62,10 +62,10 @@ def parse_args() -> argparse.Namespace:
         description=f"Full modular pipeline ({_N} steps : extraction + metadata).",
         epilog=(
             "Examples:\n"
-            "  uv run python fullpipeline_modular_v2.py --dotenv .env.test\n"
-            "  uv run python fullpipeline_modular_v2.py --dotenv .env.test --from-step 8\n"
-            "  uv run python fullpipeline_modular_v2.py --dotenv .env.test --from-step 11 --to-step 12\n"
-            "  uv run python fullpipeline_modular_v2.py --dotenv .env.test --skip-steps 3,6\n"
+            "  uv run python pipeline_extraction.py --dotenv .env.test\n"
+            "  uv run python pipeline_extraction.py --dotenv .env.test --from-step 8\n"
+            "  uv run python pipeline_extraction.py --dotenv .env.test --from-step 11 --to-step 12\n"
+            "  uv run python pipeline_extraction.py --dotenv .env.test --skip-steps 3,6\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -116,6 +116,14 @@ def parse_args() -> argparse.Namespace:
             "3-4x faster than the default forced EasyOCR pass."
         ),
     )
+    parser.add_argument(
+        "--with-opencv-check",
+        action="store_true",
+        help=(
+            "Run step 03 (opencv_checker_modular.py) — visual QA only, produces no output "
+            "consumed by later steps. Skipped by default."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -153,6 +161,8 @@ def main() -> None:
             os.environ["DOC_PATH"] = str(input_path)
 
     skip: set[int] = {int(s) for s in args.skip_steps.split(",") if s.strip()}
+    if not args.with_opencv_check:
+        skip.add(3)
     from_step = max(1, args.from_step)
     to_step = min(_N, args.to_step)
 

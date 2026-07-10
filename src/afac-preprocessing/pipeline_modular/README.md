@@ -49,7 +49,7 @@ data/output_files_preprocessing/<doc_name>/
 
 ---
 
-# fullpipeline_modular_v2.py — Orchestrateur du pipeline complet
+# pipeline_extraction.py — Orchestrateur du pipeline complet
 
 Lance les 13 étapes en séquence. Chaque étape reçoit le `--dotenv` résolu pour que `DOC_NAME` soit cohérent sur toute la durée du run.
 
@@ -57,19 +57,19 @@ Lance les 13 étapes en séquence. Chaque étape reçoit le `--dotenv` résolu p
 
 ```bash
 # Pipeline complet
-uv run python pipeline_modular/automate_pipeline_example/fullpipeline_modular_v2.py --dotenv .env.test
+uv run python pipeline_modular/automate_pipeline_example/pipeline_extraction.py --dotenv .env.test
 
 # Reprendre après un échec à l'étape 8
-uv run python pipeline_modular/automate_pipeline_example/fullpipeline_modular_v2.py --dotenv .env.test --from-step 8
+uv run python pipeline_modular/automate_pipeline_example/pipeline_extraction.py --dotenv .env.test --from-step 8
 
 # Seulement les métadonnées (étapes 12–13)
-uv run python pipeline_modular/automate_pipeline_example/fullpipeline_modular_v2.py --dotenv .env.test --from-step 12
+uv run python pipeline_modular/automate_pipeline_example/pipeline_extraction.py --dotenv .env.test --from-step 12
 
 # Extraction seulement, sans injection ni métadonnées
-uv run python pipeline_modular/automate_pipeline_example/fullpipeline_modular_v2.py --dotenv .env.test --to-step 10
+uv run python pipeline_modular/automate_pipeline_example/pipeline_extraction.py --dotenv .env.test --to-step 10
 
 # Ignorer opencv (étape 3) et descriptions images (étape 6, lente)
-uv run python pipeline_modular/automate_pipeline_example/fullpipeline_modular_v2.py --dotenv .env.test --skip-steps 3,6
+uv run python pipeline_modular/automate_pipeline_example/pipeline_extraction.py --dotenv .env.test --skip-steps 3,6
 ```
 
 ## Paramètres
@@ -92,7 +92,7 @@ uv run python pipeline_modular/automate_pipeline_example/fullpipeline_modular_v2
 
 # batch_pipeline_all_pdfs.py — Traitement automatique de tous les PDFs
 
-Parcourt récursivement `data/input_files/` et lance `fullpipeline_modular_v2.py` sur chaque PDF trouvé, y compris dans les sous-dossiers. Les PDFs sont traités **séquentiellement**. En cas d'échec sur un document, le batch continue sur les suivants et liste tous les échecs en fin d'exécution.
+Parcourt récursivement `data/input_files/` et lance `pipeline_extraction.py` sur chaque PDF trouvé, y compris dans les sous-dossiers. Les PDFs sont traités **séquentiellement**. En cas d'échec sur un document, le batch continue sur les suivants et liste tous les échecs en fin d'exécution.
 
 ## Commandes types
 
@@ -116,9 +116,9 @@ uv run python pipeline_modular/automate_pipeline_example/batch_pipeline_all_pdfs
 |-----------|--------|-------------|
 | `--dotenv` | `.env.test` | Fichier `.env` transmis à chaque étape de chaque document. |
 | `--dry-run` | *(désactivé)* | Affiche la liste des PDFs détectés sans lancer le pipeline. |
-| `--from-step` | `1` | Forwarded à `fullpipeline_modular_v2.py` — première étape à exécuter. |
-| `--to-step` | `13` | Forwarded à `fullpipeline_modular_v2.py` — dernière étape à exécuter. |
-| `--skip-steps` | *(aucun)* | Forwarded à `fullpipeline_modular_v2.py` — étapes à ignorer. |
+| `--from-step` | `1` | Forwarded à `pipeline_extraction.py` — première étape à exécuter. |
+| `--to-step` | `13` | Forwarded à `pipeline_extraction.py` — dernière étape à exécuter. |
+| `--skip-steps` | *(aucun)* | Forwarded à `pipeline_extraction.py` — étapes à ignorer. |
 
 **Résilience :** un échec sur un PDF n'interrompt pas le batch. Le script retourne `exit 1` uniquement si au moins un PDF a échoué, avec la liste des documents concernés.
 

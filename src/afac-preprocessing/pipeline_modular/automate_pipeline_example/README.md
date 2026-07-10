@@ -10,7 +10,7 @@ Ce dossier contient les scripts d'automatisation de haut niveau. Ils ne font auc
 
 | Script | Cas d'usage |
 |--------|-------------|
-| `fullpipeline_modular_v2.py` | **Recommandé** — pipeline complet (13 étapes), un document, contrôle fin |
+| `pipeline_extraction.py` | **Recommandé** — pipeline complet (13 étapes), un document, contrôle fin |
 | `fullpipeline_modular_v3.py` | Variante v2 : tables markdown natives (pas de conversion JSON-lines), descriptions d'images activées par défaut. Sort dans `data/output_files_v3/`, jamais `data/output_files_preprocessing/`. Réutilise les questions HyQ déjà générées par v2 (v2 doit avoir tourné au préalable pour le document). |
 | `fullpipeline_modular.py` | Version simplifiée (12 étapes) — maintenu pour compatibilité, préférer v2 |
 | `batch_pipeline_all_pdfs.py` | Traitement automatique de **tous les PDFs** sous `data/input_files/` ou un sous-dossier ciblé (`--input-dir`) — v2 uniquement, pas de batch runner dédié pour v3 (boucle shell, cf. son fichier). |
@@ -21,7 +21,7 @@ Ce dossier contient les scripts d'automatisation de haut niveau. Ils ne font auc
 
 ```bash
 # 1 document — pipeline complet
-uv run python pipeline_modular/automate_pipeline_example/fullpipeline_modular_v2.py \
+uv run python pipeline_modular/automate_pipeline_example/pipeline_extraction.py \
     --dotenv .env.test \
     --input "data/input_files/afac/Adhésion/Adhésion traitement.pdf"
 
@@ -43,7 +43,7 @@ uv run python pipeline_modular/automate_pipeline_example/batch_pipeline_all_pdfs
 
 ---
 
-# fullpipeline_modular_v2.py — Orchestrateur principal
+# pipeline_extraction.py — Orchestrateur principal
 
 Lance les 13 étapes du pipeline en séquence pour un seul document. Chaque étape reçoit le `--dotenv` résolu, ce qui garantit que `DOC_NAME` est cohérent tout au long du run.
 
@@ -69,32 +69,32 @@ Lance les 13 étapes du pipeline en séquence pour un seul document. Chaque éta
 
 ```bash
 # Pipeline complet — document défini dans le .env (DOC_NAME + DOC_PATH)
-uv run python pipeline_modular/automate_pipeline_example/fullpipeline_modular_v2.py \
+uv run python pipeline_modular/automate_pipeline_example/pipeline_extraction.py \
     --dotenv .env.test
 
 # Pipeline complet — document passé directement en argument
-uv run python pipeline_modular/automate_pipeline_example/fullpipeline_modular_v2.py \
+uv run python pipeline_modular/automate_pipeline_example/pipeline_extraction.py \
     --dotenv .env.test \
     --input "data/input_files/Adhésion/Ahésion traitement.pdf"
 
 # Reprendre après un échec à l'étape 8
-uv run python pipeline_modular/automate_pipeline_example/fullpipeline_modular_v2.py \
+uv run python pipeline_modular/automate_pipeline_example/pipeline_extraction.py \
     --dotenv .env.test --input "data/input_files/MonDoc.pdf" --from-step 8
 
 # Seulement le contrôle markdown + injection + métadonnées (étapes 10 → 13)
-uv run python pipeline_modular/automate_pipeline_example/fullpipeline_modular_v2.py \
+uv run python pipeline_modular/automate_pipeline_example/pipeline_extraction.py \
     --dotenv .env.test --input "data/input_files/MonDoc.pdf" --from-step 10
 
 # Extraction seulement, sans métadonnées (étapes 1 → 11)
-uv run python pipeline_modular/automate_pipeline_example/fullpipeline_modular_v2.py \
+uv run python pipeline_modular/automate_pipeline_example/pipeline_extraction.py \
     --dotenv .env.test --input "data/input_files/MonDoc.pdf" --to-step 11
 
 # Ignorer opencv (lent/optionnel) et descriptions images (très lent) — étapes 3 et 6
-uv run python pipeline_modular/automate_pipeline_example/fullpipeline_modular_v2.py \
+uv run python pipeline_modular/automate_pipeline_example/pipeline_extraction.py \
     --dotenv .env.test --input "data/input_files/MonDoc.pdf" --skip-steps 3,6
 
 # Rejouer uniquement les métadonnées
-uv run python pipeline_modular/automate_pipeline_example/fullpipeline_modular_v2.py \
+uv run python pipeline_modular/automate_pipeline_example/pipeline_extraction.py \
     --dotenv .env.test --input "data/input_files/MonDoc.pdf" --from-step 12 --to-step 13
 ```
 
@@ -118,7 +118,7 @@ uv run python pipeline_modular/automate_pipeline_example/fullpipeline_modular_v2
 
 # fullpipeline_modular.py — Version simplifiée *(compatibilité)*
 
-Version antérieure de l'orchestrateur — 12 étapes, sans `--input`, sans contrôle des étapes (`--from-step`, `--to-step`, `--skip-steps`). Maintenu pour la compatibilité avec d'anciens scripts. **Préférer `fullpipeline_modular_v2.py`** pour tout nouveau run.
+Version antérieure de l'orchestrateur — 12 étapes, sans `--input`, sans contrôle des étapes (`--from-step`, `--to-step`, `--skip-steps`). Maintenu pour la compatibilité avec d'anciens scripts. **Préférer `pipeline_extraction.py`** pour tout nouveau run.
 
 ## Commande
 
@@ -138,7 +138,7 @@ uv run python pipeline_modular/automate_pipeline_example/fullpipeline_modular.py
 
 # batch_pipeline_all_pdfs.py — Traitement de tous les PDFs
 
-Parcourt récursivement `data/input_files/` (ou un sous-dossier ciblé via `--input-dir`) et lance `fullpipeline_modular_v2.py` sur chaque PDF trouvé. Les PDFs sont traités **séquentiellement**.
+Parcourt récursivement `data/input_files/` (ou un sous-dossier ciblé via `--input-dir`) et lance `pipeline_extraction.py` sur chaque PDF trouvé. Les PDFs sont traités **séquentiellement**.
 
 En cas d'échec sur un document, le batch **continue** sur les suivants et liste tous les échecs en fin d'exécution.
 
@@ -182,9 +182,9 @@ uv run python pipeline_modular/automate_pipeline_example/batch_pipeline_all_pdfs
 | `--dotenv` | `.env.test` | Fichier `.env` transmis à chaque étape de chaque document. |
 | `--input-dir` | `data/input_files/` | Dossier racine à scanner pour les PDFs. Accepte un chemin absolu ou relatif à la racine du projet. |
 | `--dry-run` | *(désactivé)* | Affiche la liste des PDFs détectés sans lancer le pipeline. |
-| `--from-step` | `1` | Forwarded à `fullpipeline_modular_v2.py` — première étape à exécuter. |
-| `--to-step` | `13` | Forwarded à `fullpipeline_modular_v2.py` — dernière étape à exécuter. |
-| `--skip-steps` | *(aucun)* | Forwarded à `fullpipeline_modular_v2.py` — étapes à ignorer. |
+| `--from-step` | `1` | Forwarded à `pipeline_extraction.py` — première étape à exécuter. |
+| `--to-step` | `13` | Forwarded à `pipeline_extraction.py` — dernière étape à exécuter. |
+| `--skip-steps` | *(aucun)* | Forwarded à `pipeline_extraction.py` — étapes à ignorer. |
 
 ## Comportement de `--input-dir`
 
@@ -209,7 +209,7 @@ data/input_files/
 
 # multi_gen_consistency_test.py — Test de cohérence multi-générations
 
-Lance `fullpipeline_modular_v2.py` **N fois de suite** sur le même document, en incrémentant `GEN_ID` à chaque passe (GEN_ID = 1, 2, …, N). Après chaque run, les fichiers de sortie sont copiés dans un sous-dossier dédié, ce qui permet de comparer les sorties entre générations et de mesurer la variabilité du VLM sur un même document.
+Lance `pipeline_extraction.py` **N fois de suite** sur le même document, en incrémentant `GEN_ID` à chaque passe (GEN_ID = 1, 2, …, N). Après chaque run, les fichiers de sortie sont copiés dans un sous-dossier dédié, ce qui permet de comparer les sorties entre générations et de mesurer la variabilité du VLM sur un même document.
 
 **Cas d'usage typique :** vérifier que `_vlm_check.md` ou `_final.md` sont stables d'une génération à l'autre, ou au contraire mesurer l'amplitude des variations.
 
@@ -218,7 +218,7 @@ Lance `fullpipeline_modular_v2.py` **N fois de suite** sur le même document, en
 Pour chaque génération `N` :
 1. `GEN_ID="N"` est écrit dans le fichier `.env` (remplace la valeur existante).
 2. `GEN_ID=N` est injecté dans l'environnement du sous-processus — `load_dotenv` ne l'écrasera pas.
-3. `fullpipeline_modular_v2.py` est lancé avec tous les paramètres forwarded.
+3. `pipeline_extraction.py` est lancé avec tous les paramètres forwarded.
 4. Les fichiers produits dans `data/output_files_preprocessing/<DOC_NAME>/` sont copiés dans `gen_runs/gen_<N>/`.
 
 ## Structure des sorties
@@ -278,11 +278,11 @@ uv run python pipeline_modular/automate_pipeline_example/multi_gen_consistency_t
 | Paramètre | Défaut | Description |
 |-----------|--------|-------------|
 | `--dotenv` | `.env.test` | Fichier `.env` transmis à chaque étape. Mis à jour avec `GEN_ID` avant chaque run. |
-| `--input` / `-i` | *(depuis .env)* | Chemin vers le PDF à traiter. Forwarded à `fullpipeline_modular_v2.py`. |
+| `--input` / `-i` | *(depuis .env)* | Chemin vers le PDF à traiter. Forwarded à `pipeline_extraction.py`. |
 | `--runs` | `5` | Nombre de générations à exécuter (GEN_ID va de 1 à N). |
-| `--from-step` | `1` | Première étape à exécuter par génération. Forwarded à `fullpipeline_modular_v2.py`. |
-| `--to-step` | `13` | Dernière étape à exécuter par génération. Forwarded à `fullpipeline_modular_v2.py`. |
-| `--skip-steps` | *(aucun)* | Étapes à ignorer par génération. Forwarded à `fullpipeline_modular_v2.py`. |
+| `--from-step` | `1` | Première étape à exécuter par génération. Forwarded à `pipeline_extraction.py`. |
+| `--to-step` | `13` | Dernière étape à exécuter par génération. Forwarded à `pipeline_extraction.py`. |
+| `--skip-steps` | *(aucun)* | Étapes à ignorer par génération. Forwarded à `pipeline_extraction.py`. |
 | `--no-snapshot` | *(désactivé)* | Ne copie pas les sorties après chaque run. Les fichiers sont écrasés à chaque génération. |
 | `--continue-on-error` | *(désactivé)* | Continue les générations suivantes même si une génération échoue. Par défaut, le script s'arrête au premier échec. |
 

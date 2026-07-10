@@ -576,7 +576,7 @@ def parse_args() -> argparse.Namespace:
         help=(
             "Chemin relatif du document dans folder_source (data/input_files/) pour la "
             "hiérarchie (ex: \"afac/Taxation/DISPENSE/MonDoc.pdf\"). "
-            "Si absent, réutilise DOC_PATH (déjà résolu par --input dans fullpipeline_modular_v2/v3.py). "
+            "Si absent, réutilise DOC_PATH (déjà résolu par --input dans pipeline_extraction.py/fullpipeline_modular_v3.py). "
             "Si DOC_PATH est aussi absent, construit <DOC_NAME>.pdf (structure plate, sans sous-dossier)."
         ),
     )
@@ -614,7 +614,7 @@ def main() -> None:
 
         # --doc-path définit la position dans la hiérarchie folder_source (data/input_files/).
         # Résolution : 1. --doc-path explicite  2. DOC_PATH (déjà résolu par --input dans
-        # fullpipeline_modular_v2/v3.py, ou défini dans le .env chargé par resolve_doc_name
+        # pipeline_extraction.py/fullpipeline_modular_v3.py, ou défini dans le .env chargé par resolve_doc_name
         # ci-dessus — propagé aux sous-processus par héritage d'environnement)  3. DOC_NAME.pdf
         # à plat (aucune hiérarchie disponible → parent/children/sibling resteront vides).
         relative_doc_path = args.doc_path or os.environ.get("DOC_PATH", "").strip() or f"{doc_name}.pdf"

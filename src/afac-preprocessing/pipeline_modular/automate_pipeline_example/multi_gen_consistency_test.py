@@ -35,8 +35,8 @@ _HERE = Path(__file__).resolve().parent        # automate_pipeline_example/
 _PIPELINE_ROOT = _HERE.parent                  # pipeline_modular/
 _PROJECT_ROOT = _PIPELINE_ROOT.parent          # afac-preprocessing/
 
-PIPELINE_SCRIPT = _HERE / "fullpipeline_modular_v2.py"
-_N_STEPS = 13  # total steps in fullpipeline_modular_v2.py
+PIPELINE_SCRIPT = _HERE / "pipeline_extraction.py"
+_N_STEPS = 13  # total steps in pipeline_extraction.py
 
 
 def update_gen_id_in_env(env_file: Path, gen_id: int) -> None:
@@ -141,7 +141,7 @@ def snapshot_outputs(output_dir: Path, gen_id: int) -> Path:
 
 
 def build_pipeline_cmd(args: argparse.Namespace) -> list[str]:
-    """Build the subprocess command for fullpipeline_modular_v2.py."""
+    """Build the subprocess command for pipeline_extraction.py."""
     cmd = [sys.executable, str(PIPELINE_SCRIPT), "--dotenv", str(args.dotenv)]
     if args.input:
         cmd += ["--input", str(args.input)]
