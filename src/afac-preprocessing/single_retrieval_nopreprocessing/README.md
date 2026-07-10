@@ -21,6 +21,8 @@ régénérées, pour garantir une comparaison à questions identiques d'un bout 
 | `compare_baseline_report.py` | Fusionne `baseline_results.csv` et `data/evaluation_results/global_summary.csv` (produit par `evaluate_all_docs.py`), calcule le delta par métrique@k, génère un rapport markdown + graphiques. Verdict VLM optionnel en tête du rapport. |
 | `single_doc_preview_report.py` | Aperçu rapide **un seul document**, avant de relancer tout le corpus : compare baseline/v2/v3(-embed/-noembed) en longueur de contenu et en self-similarité (embedding du document vs. ses propres questions HyQ). **Ne calcule pas** de Recall@k/nDCG@k réels — nécessite plusieurs documents pour classer, cf. docstring du fichier. |
 
+> **Le reranker (`retrieval_protocol_evaluation/reranker.py`) n'est jamais comparé sur la baseline** — `single_docling_baseline.py` appelle toujours `evaluate_doc(..., use_reranker=False)`, et même activé ça ne fonctionnerait pas : le reranker lit `resume.md`, qui n'existe que côté pipeline (généré par `enhancement_metadata.py`), jamais pour le markdown docling brut. La comparaison baseline vs pipeline repose donc uniquement sur la colonne "semantic" des deux côtés.
+
 ## Workflow type (corpus complet)
 
 Prérequis : le pipeline de prétraitement (v2 et/ou v3) a déjà tourné sur le corpus cible

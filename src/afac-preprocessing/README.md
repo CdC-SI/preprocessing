@@ -142,11 +142,3 @@ activées par défaut — voir `pipeline_modular/automate_pipeline_example/READM
 un seul document avant de relancer tout le corpus, voir
 `single_retrieval_nopreprocessing/README.md`.
 
----
-
-## Pense-bête
-
-- `Ctrl + §` — commenter multi-ligne dans VS Code
-- Faire un `git pull` le matin pour éviter les conflits entre branches
-
-

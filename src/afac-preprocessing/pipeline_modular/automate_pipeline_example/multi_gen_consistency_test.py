@@ -13,8 +13,9 @@ Usage:
         --input "data/input_files/Adhésion/Ahésion traitement.pdf" \\
         --runs 5
 
-    # Run only specific steps for each generation (faster targeted testing):
+    # Run only specific steps for each generation (faster targeted testing) — number or name:
     uv run python ... --runs 3 --from-step 10 --to-step 10
+    uv run python ... --runs 3 --from-step markdown-control --to-step markdown-control
 
     # Don't snapshot outputs after each run:
     uv run python ... --runs 5 --no-snapshot
@@ -61,7 +62,7 @@ def parse_args() -> argparse.Namespace:
             "  uv run python multi_gen_consistency_test.py --dotenv .env.test \\\n"
             '      --input "data/input_files/Adhésion/Ahésion traitement.pdf" --runs 5\n'
             "  uv run python multi_gen_consistency_test.py --dotenv .env.test \\\n"
-            '      --input "data/input_files/..." --runs 3 --from-step 10 --to-step 10\n'
+            '      --input "data/input_files/..." --runs 3 --from-step markdown-control --to-step markdown-control\n'
         ),
     )
     parser.add_argument(
@@ -86,24 +87,30 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--from-step",
-        type=int,
-        default=1,
-        metavar="N",
-        help=f"First step to run per generation (1–{_N_STEPS}, default: 1).",
+        type=str,
+        default=None,
+        metavar="N_OR_NAME",
+        help=(
+            f"First step to run per generation, inclusive — number (1–{_N_STEPS}) or name "
+            "(see pipeline_extraction.py --list-steps). Default: 1."
+        ),
     )
     parser.add_argument(
         "--to-step",
-        type=int,
-        default=_N_STEPS,
-        metavar="N",
-        help=f"Last step to run per generation (1–{_N_STEPS}, default: {_N_STEPS}).",
+        type=str,
+        default=None,
+        metavar="N_OR_NAME",
+        help=(
+            f"Last step to run per generation, inclusive — number (1–{_N_STEPS}) or name "
+            f"(see pipeline_extraction.py --list-steps). Default: {_N_STEPS}."
+        ),
     )
     parser.add_argument(
         "--skip-steps",
         type=str,
         default="",
-        metavar="N[,N...]",
-        help="Comma-separated step numbers to skip per generation.",
+        metavar="N_OR_NAME[,...]",
+        help="Comma-separated step numbers or names to skip per generation.",
     )
     parser.add_argument(
         "--no-snapshot",
@@ -145,10 +152,10 @@ def build_pipeline_cmd(args: argparse.Namespace) -> list[str]:
     cmd = [sys.executable, str(PIPELINE_SCRIPT), "--dotenv", str(args.dotenv)]
     if args.input:
         cmd += ["--input", str(args.input)]
-    if args.from_step != 1:
-        cmd += ["--from-step", str(args.from_step)]
-    if args.to_step != _N_STEPS:
-        cmd += ["--to-step", str(args.to_step)]
+    if args.from_step is not None:
+        cmd += ["--from-step", args.from_step]
+    if args.to_step is not None:
+        cmd += ["--to-step", args.to_step]
     if args.skip_steps:
         cmd += ["--skip-steps", args.skip_steps]
     return cmd
@@ -200,7 +207,7 @@ def main() -> None:
     cmd = build_pipeline_cmd(args)
 
     step_range = (
-        f"steps {args.from_step}→{args.to_step}"
+        f"steps {args.from_step or 1}→{args.to_step or _N_STEPS}"
         + (f" (skip {args.skip_steps})" if args.skip_steps else "")
     )
     print(f"\nMulti-gen test — document: {doc_name!r}")
