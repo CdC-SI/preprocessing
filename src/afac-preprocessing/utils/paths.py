@@ -34,9 +34,9 @@ def load_env(dotenv_path: Path) -> None:
     """
     resolved = dotenv_path.resolve()
     if not resolved.exists():
-        raise SystemExit(f"Erreur : fichier .env introuvable — {resolved}")
+        raise SystemExit(f"Error: .env file not found — {resolved}")
     load_dotenv(dotenv_path=resolved)
-    _log.info("Environnement chargé depuis : %s", resolved)
+    _log.info("Environment loaded from: %s", resolved)
 
 
 def resolve_input_pdf(doc_name: str) -> Path:
@@ -90,6 +90,6 @@ def resolve_doc_name(
         return doc_name
 
     raise SystemExit(
-        f"Erreur : fournir {primary_flag} <valeur>, ou --dotenv <fichier> avec DOC_NAME, "
-        "ou définir la variable DOC_NAME dans l'environnement."
+        f"Error: provide {primary_flag} <value>, or --dotenv <file> with DOC_NAME, "
+        "or set the DOC_NAME variable in the environment."
     )

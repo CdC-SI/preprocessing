@@ -1,23 +1,23 @@
 """
-Compare baseline_results.csv (docling brut, sans prétraitement) aux résultats du
-pipeline de prétraitement (data/evaluation_results/global_summary.csv, colonnes
-sem_mean_* — pipeline sémantique, sans reranker) et génère un rapport markdown.
+Compares baseline_results.csv (raw docling, no preprocessing) against the results of the
+preprocessing pipeline (data/evaluation_results/global_summary.csv, sem_mean_*
+columns — semantic pipeline, no reranker) and generates a markdown report.
 
-Les deux jeux de résultats évaluent le même corpus de 20 documents avec les
-mêmes questions HyQ (voir single_docling_baseline.py) — seule la
-représentation du document diffère (markdown docling brut vs markdown
-prétraité). Le delta par métrique@k mesure donc directement l'apport du
-pipeline de prétraitement.
+Both result sets evaluate the same 20-document corpus with the
+same HyQ questions (see single_docling_baseline.py) — only the
+document representation differs (raw docling markdown vs preprocessed
+markdown). The delta per metric@k therefore directly measures the
+contribution of the preprocessing pipeline.
 
-Entrées :
-  data/baseline_evaluation/baseline_results.csv   — une ligne par (doc, question HyQ), baseline
-  data/evaluation_results/global_summary.csv      — une ligne par doc, moyennes pipeline (sem_mean_*)
+Inputs:
+  data/baseline_evaluation/baseline_results.csv   — one row per (doc, HyQ question), baseline
+  data/evaluation_results/global_summary.csv      — one row per doc, pipeline averages (sem_mean_*)
 
-Un appel VLM (texte, structured output) analyse ensuite le rapport chiffré et
-rend un verdict explicite (baseline / pipeline / équivalent) + justification,
-inséré en tête du rapport. Désactivable avec --no-vlm-analysis.
+A VLM call (text, structured output) then analyzes the numeric report and
+produces an explicit verdict (baseline / pipeline / equivalent) + justification,
+inserted at the top of the report. Can be disabled with --no-vlm-analysis.
 
-Sortie :
+Output:
   data/baseline_evaluation/comparison_report.md
 
 Usage:
@@ -117,9 +117,9 @@ def build_comparison(
     missing_baseline = set(pipeline_means["doc_name"]) - set(baseline_means["doc_name"])
     missing_pipeline = set(baseline_means["doc_name"]) - set(pipeline_means["doc_name"])
     if missing_baseline:
-        _log.warning("Docs absents de la baseline : %s", sorted(missing_baseline))
+        _log.warning("Docs missing from baseline: %s", sorted(missing_baseline))
     if missing_pipeline:
-        _log.warning("Docs absents du pipeline : %s", sorted(missing_pipeline))
+        _log.warning("Docs missing from pipeline: %s", sorted(missing_pipeline))
 
     for m in _METRICS:
         for k in top_ks:
@@ -176,7 +176,7 @@ def render_per_doc_section(comparison: pd.DataFrame, canonical_k: int) -> list[s
 
 # Charts
 def plot_global_bars_at_k(comparison: pd.DataFrame, canonical_k: int, output_dir: Path) -> Path:
-    """4 sous-graphiques (un par métrique) : Pipeline vs Baseline au k canonique."""
+    """4 subplots (one per metric): Pipeline vs Baseline at the canonical k."""
     fig, axes = plt.subplots(2, 2, figsize=(9, 7))
     for ax, m in zip(axes.flat, _METRICS):
         pipe_val = comparison[f"{m}@{canonical_k}_pipeline"].mean()
@@ -197,7 +197,7 @@ def plot_global_bars_at_k(comparison: pd.DataFrame, canonical_k: int, output_dir
 
 
 def plot_metrics_by_k(comparison: pd.DataFrame, top_ks: list[int], output_dir: Path) -> Path:
-    """4 sous-graphiques : évolution Pipeline vs Baseline selon k, un par métrique."""
+    """4 subplots: Pipeline vs Baseline trend across k, one per metric."""
     fig, axes = plt.subplots(2, 2, figsize=(10, 7))
     for ax, m in zip(axes.flat, _METRICS):
         pipe_means = [comparison[f"{m}@{k}_pipeline"].mean() for k in top_ks]
@@ -225,7 +225,7 @@ def plot_metrics_by_k(comparison: pd.DataFrame, top_ks: list[int], output_dir: P
 
 
 def plot_per_doc_ndcg(comparison: pd.DataFrame, canonical_k: int, output_dir: Path) -> Path:
-    """Barres horizontales par document (Pipeline vs Baseline), triées par delta nDCG croissant."""
+    """Horizontal bars per document (Pipeline vs Baseline), sorted by ascending nDCG delta."""
     df = comparison.sort_values(f"ndcg@{canonical_k}_delta")
     n = len(df)
     y = np.arange(n)
@@ -271,7 +271,7 @@ def render_charts_section(chart_paths: list[Path], report_dir: Path) -> str:
 
 
 def render_body(comparison: pd.DataFrame, top_ks: list[int], canonical_k: int) -> str:
-    """Rapport chiffré (sans verdict VLM) — c'est ce texte qui est envoyé au VLM pour analyse."""
+    """Numeric report (without VLM verdict) — this is the text sent to the VLM for analysis."""
     lines = [
         "# Rapport de comparaison — Baseline docling brut vs Pipeline de prétraitement",
         "",
@@ -316,7 +316,7 @@ def analyze_with_vlm(report_body: str, dotenv_path: Path | None) -> ComparisonVe
 # CLI
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Compare baseline docling brut vs pipeline de prétraitement, génère un rapport markdown.",
+        description="Compare raw docling baseline vs preprocessing pipeline, generate a markdown report.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
@@ -333,18 +333,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--no-vlm-analysis",
         action="store_true",
-        help="Ne pas appeler le VLM pour analyser le rapport (juste les tableaux chiffrés).",
+        help="Do not call the VLM to analyze the report (numeric tables only).",
     )
     parser.add_argument(
         "--charts-dir",
         type=Path,
         default=None,
-        help=f"Dossier de sortie des graphiques. Défaut : <dossier de --output>/{DEFAULT_CHARTS_DIRNAME}",
+        help=f"Charts output directory. Default: <--output directory>/{DEFAULT_CHARTS_DIRNAME}",
     )
     parser.add_argument(
         "--no-charts",
         action="store_true",
-        help="Ne pas générer les graphiques.",
+        help="Do not generate charts.",
     )
     parser.add_argument(
         "--log-level",
@@ -365,10 +365,10 @@ def main() -> None:
     top_ks = [int(k) for k in args.top_ks.split(",")]
 
     if not args.baseline_results.exists():
-        _log.error("Fichier introuvable : %s (lancer single_docling_baseline.py d'abord)", args.baseline_results)
+        _log.error("File not found: %s (run single_docling_baseline.py first)", args.baseline_results)
         sys.exit(1)
     if not args.pipeline_summary.exists():
-        _log.error("Fichier introuvable : %s (lancer evaluate_all_docs.py d'abord)", args.pipeline_summary)
+        _log.error("File not found: %s (run evaluate_all_docs.py first)", args.pipeline_summary)
         sys.exit(1)
 
     baseline_means = load_baseline_means(args.baseline_results, top_ks)
@@ -380,12 +380,12 @@ def main() -> None:
     verdict_section = ""
     if not args.no_vlm_analysis:
         try:
-            _log.info("Analyse du rapport par le VLM...")
+            _log.info("Analyzing the report with the VLM...")
             verdict = analyze_with_vlm(body, args.dotenv)
             verdict_section = render_verdict_section(verdict) + "\n"
-            _log.info("Verdict VLM : %s", verdict.verdict)
+            _log.info("VLM verdict: %s", verdict.verdict)
         except Exception:
-            _log.exception("Analyse VLM indisponible — rapport généré sans verdict.")
+            _log.exception("VLM analysis unavailable — report generated without a verdict.")
 
     charts_section = ""
     if not args.no_charts:
@@ -398,7 +398,7 @@ def main() -> None:
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(report, encoding="utf-8")
-    _log.info("Rapport généré → %s", args.output)
+    _log.info("Report generated → %s", args.output)
 
 
 if __name__ == "__main__":
