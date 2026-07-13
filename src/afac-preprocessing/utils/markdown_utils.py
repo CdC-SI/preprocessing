@@ -1,15 +1,15 @@
 """
-markdown_utils.py — Post-traitements Markdown partagés.
+markdown_utils.py — Shared Markdown post-processing.
 """
 
 
 def apply_markdown_transforms(text: str) -> str:
     """
-    Point d'entrée conservé pour compatibilité avec les appels existants dans le pipeline.
-    Les transformations de balises personnalisées (couleur, soulignement) sont désormais
-    gérées directement par le VLM en stage 10.
+    Entry point kept for compatibility with existing calls in the pipeline.
+    Custom tag transformations (color, underline) are now handled
+    directly by the VLM in stage 10.
 
-    :param text: texte Markdown
-    :return: texte inchangé
+    :param text: Markdown text
+    :return: unchanged text
     """
     return text

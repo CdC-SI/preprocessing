@@ -27,7 +27,7 @@ These documents are trivially retrievable — their content is unique enough tha
 |---|---|---|---|
 | Adhésion traitement | 0.399 | 0.798 | +0.399 |
 | Pas immatriculé | 0.527 | 0.824 | +0.297 |
-| NON adhésion - Refuser | 0.521	|0.663 | +0.142 |
+| NON adhésion - Refuser | 0.521 | 0.663 | +0.142 |
 | Liste pays UE-AELE | 0.850 | 1.000 | +0.150 |
 | Demande prématurée | 0.829 | 0.954 | +0.125 |
 
@@ -40,8 +40,8 @@ These are the semantically ambiguous documents — their questions use vocabular
 | Doc | sem nDCG@5 | rer nDCG@5 | Δ |
 |---|---|---|---|
 | Domicilié dans les DOM-TOM, UE | 0.938 | 0.866 | -0.072 |
-| Étudiant au tarif de l'AO | 0.963 |0.852	| -0.111 |
-| Demande de justificatifs | 0.731|	0.674| -0.057 |
+| Étudiant au tarif de l'AO | 0.963 | 0.852 | -0.111 |
+| Demande de justificatifs | 0.731 | 0.674 | -0.057 |
 | NON adhésion - Annulation | 1.000 | 0.950 | -0.050 |
 
 When the embedding already perfectly separates a document from its neighbours, the reranker introduces noise. This happens because the reranker reads the resume.md summaries (~700 chars), which are less discriminative than the full document embeddings for documents with already distinctive content. In a real RAG setup you'd only rerank when semantic confidence is low.

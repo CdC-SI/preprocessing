@@ -1,75 +1,75 @@
 RESUME_PROMPT = """
-Tu es un expert en assurance sociale suisse (AFAC - Assurance Facultative).
-Tu reçois le contenu markdown complet d'un document opérationnel interne.
-Ta tâche : rédige un résumé factuel et concis du document en 3 à 5 phrases maximum.
+You are an expert in Swiss social insurance (AFAC - Assurance Facultative).
+You receive the full markdown content of an internal operational document.
+Your task: write a factual, concise summary of the document in 3 to 5 sentences maximum.
 
-Règles :
-- Reste strictement fidèle au contenu du document, sans inférence ni ajout
-- Mentionne le sujet principal, le contexte réglementaire si présent, et les points opérationnels clés
-- Utilise un langage professionnel et neutre
-- Réponds en français
-- Ne commence jamais par "Ce document" ou "Le document"
+Rules:
+- Stay strictly faithful to the document content, no inference or addition
+- Mention the main subject, the regulatory context if present, and the key operational points
+- Use professional, neutral language
+- Answer in French
+- Never start with "Ce document" or "Le document"
 
-Retourne uniquement le champ "resume" (une chaîne de texte).
+Return only the "resume" field (a text string).
 """
 
 
 INTENT_PROMPT_1 = """
-Tu es un expert métier en assurance sociale suisse (AFAC - Assurance Facultative).
-Tu reçois le contenu markdown complet d'un document opérationnel interne.
-Ta tâche : identifie les intentions métier portées par ce document — c'est-à-dire les objectifs, processus ou décisions que ce document est conçu à soutenir.
+You are a business expert in Swiss social insurance (AFAC - Assurance Facultative).
+You receive the full markdown content of an internal operational document.
+Your task: identify the business intents carried by this document — i.e. the goals, processes, or decisions this document is designed to support.
 
-Règles :
-- Chaque intent est une phrase courte à l'infinitif (ex : "Traiter une demande d'adhésion tardive")
-- Limite-toi aux intentions explicitement couvertes par le document
-- Entre 3 et 8 intents maximum
-- Réponds en français
+Rules:
+- Each intent is a short sentence in the infinitive form (e.g. "Traiter une demande d'adhésion tardive")
+- Limit yourself to intents explicitly covered by the document
+- Between 3 and 8 intents maximum
+- Answer in French
 
-Retourne uniquement le champ "intent" (liste de chaînes).
+Return only the "intent" field (list of strings).
 """
 
 
 INTENT_PROMPT_2 = """
-Tu es un expert en gestion des connaissances et documentation opérationnelle.
-Tu reçois le contenu markdown complet d'un document interne relatif à l'assurance sociale suisse.
-Ta tâche : identifie les cas d'usage et situations professionnelles pour lesquels un collaborateur consulterait ce document.
+You are an expert in knowledge management and operational documentation.
+You receive the full markdown content of an internal document related to Swiss social insurance.
+Your task: identify the use cases and professional situations for which a staff member would consult this document.
 
-Règles :
-- Formule chaque intent comme un besoin utilisateur (ex : "Savoir comment modifier une date d'adhésion")
-- Couvre les cas principaux et les cas limites si le document les traite explicitement
-- Entre 3 et 8 intents maximum
-- Réponds en français
+Rules:
+- Phrase each intent as a user need (e.g. "Savoir comment modifier une date d'adhésion")
+- Cover the main cases and edge cases if the document explicitly addresses them
+- Between 3 and 8 intents maximum
+- Answer in French
 
-Retourne uniquement le champ "intent" (liste de chaînes).
+Return only the "intent" field (list of strings).
 """
 
 
 INTENT_PROMPT_3 = """
-Tu es un expert juridique et réglementaire en droit des assurances sociales suisses.
-Tu reçois le contenu markdown complet d'un document opérationnel interne.
-Ta tâche : identifie les obligations légales, droits, conditions et règles réglementaires que ce document expose ou applique.
+You are a legal and regulatory expert in Swiss social insurance law.
+You receive the full markdown content of an internal operational document.
+Your task: identify the legal obligations, rights, conditions, and regulatory rules that this document exposes or applies.
 
-Règles :
-- Formule chaque intent comme une règle ou obligation (ex : "Appliquer le délai légal d'adhésion selon l'art. X")
-- Limite-toi aux éléments explicitement mentionnés dans le document
-- Entre 2 et 6 intents maximum
-- Réponds en français
+Rules:
+- Phrase each intent as a rule or obligation (e.g. "Appliquer le délai légal d'adhésion selon l'art. X")
+- Limit yourself to elements explicitly mentioned in the document
+- Between 2 and 6 intents maximum
+- Answer in French
 
-Retourne uniquement le champ "intent" (liste de chaînes).
+Return only the "intent" field (list of strings).
 """
 
 
 HYQ_PROMPT = """
-Tu es un expert en recherche d'information et en ingénierie RAG (Retrieval-Augmented Generation).
-Tu reçois le contenu markdown complet d'un document opérationnel interne relatif à l'assurance sociale suisse.
-Ta tâche : génère une liste de questions hypothétiques auxquelles ce document peut répondre de manière directe et factuelle.
+You are an expert in information retrieval and RAG (Retrieval-Augmented Generation) engineering.
+You receive the full markdown content of an internal operational document related to Swiss social insurance.
+Your task: generate a list of hypothetical questions that this document can answer directly and factually.
 
-Règles :
-- Chaque question doit être autonome, claire et précise
-- Formule les questions comme le ferait un collaborateur ou un agent cherchant une réponse concrète
-- Les questions doivent couvrir les sujets principaux ET les cas particuliers traités dans le document
-- Entre 5 et 12 questions maximum
-- Réponds en français
+Rules:
+- Each question must be self-contained, clear, and precise
+- Phrase the questions as a staff member or agent looking for a concrete answer would
+- The questions must cover both the main topics AND the specific cases addressed in the document
+- Between 5 and 12 questions maximum
+- Answer in French
 
-Retourne uniquement le champ "hyq" (liste de chaînes).
+Return only the "hyq" field (list of strings).
 """

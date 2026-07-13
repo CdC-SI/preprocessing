@@ -67,19 +67,23 @@ dossier parent, documents frères) — pas de dossier miroir séparé à mainten
 
 ```bash
 # Pipeline complet sur un PDF (y compris dans un sous-dossier de data/input_files/)
-uv run python pipeline_modular/automate_pipeline_example/pipeline_extraction.py \
+uv run python pipeline_preprocessing/orchestrators/pipeline_extraction.py \
   --dotenv .env.test --input "data/input_files/afac/Adhésion/Demande prématurée.pdf"
 
+# Pipeline complet sur TOUS les PDFs du sous dossier "Adhésion" de data/input_files/Adhésion (sous-dossiers inclus)
+uv run python pipeline_preprocessing/orchestrators/batch_pipeline_all_pdfs.py \
+  --dotenv .env.test --input-dir "data/input_files/afac/Adhésion"
+
 # Pipeline complet sur TOUS les PDFs de data/input_files/ (sous-dossiers inclus)
-uv run python pipeline_modular/automate_pipeline_example/batch_pipeline_all_pdfs.py \
+uv run python pipeline_preprocessing/orchestrators/batch_pipeline_all_pdfs.py \
   --dotenv .env.test
 
 # Aperçu des PDFs qui seraient traités (sans exécution)
-uv run python pipeline_modular/automate_pipeline_example/batch_pipeline_all_pdfs.py \
+uv run python pipeline_preprocessing/orchestrators/batch_pipeline_all_pdfs.py \
   --dotenv .env.test --dry-run
 ```
 
-Consulter `pipeline_modular/README.md` pour la référence complète des paramètres et de chaque étape.
+Consulter `pipeline_preprocessing/README.md` pour la référence complète des paramètres et de chaque étape.
 
 ---
 
@@ -98,7 +102,7 @@ configuré (cf. Configuration ci-dessus).
 ### 1. Générer le pipeline de prétraitement sur un corpus
 
 ```bash
-uv run python pipeline_modular/automate_pipeline_example/batch_pipeline_all_pdfs.py \
+uv run python pipeline_preprocessing/orchestrators/batch_pipeline_all_pdfs.py \
   --dotenv .env.test --input-dir "data/input_files/afac/Adhésion"
 ```
 
@@ -109,7 +113,7 @@ après correction avec `--input <pdf> --from-step N` (numéro de la première é
 ### 2. Générer la baseline (docling brut) à partir des mêmes documents
 
 ```bash
-uv run python single_retrieval_nopreprocessing/single_docling_baseline.py --dotenv .env.test
+uv run python pipeline_baseline/single_docling_baseline.py --dotenv .env.test
 ```
 
 Embedde le markdown brut de chaque document déjà traité à l'étape 1 ; réutilise telles
@@ -123,12 +127,12 @@ identiques). Sorties : `data/baseline_evaluation/baseline_metadata.csv` et
 uv run python retrieval_protocol_evaluation/evaluate_all_docs.py
 ```
 
-Sortie : `data/evaluation_results/global_summary.csv`.
+Sortie : `data/pipeline_evaluation/global_summary.csv`.
 
 ### 4. Générer le rapport de comparaison
 
 ```bash
-uv run python single_retrieval_nopreprocessing/compare_baseline_report.py --dotenv .env.test
+uv run python pipeline_baseline/compare_baseline_report.py --dotenv .env.test
 ```
 
 Fusionne les deux évaluations, calcule le delta par métrique@k (`delta = baseline −
@@ -138,15 +142,7 @@ graphiques. Un verdict VLM optionnel (désactivable avec `--no-vlm-analysis`) r�
 rapport en tête de fichier.
 
 Pour comparer aussi la variante v3 (tables markdown natives, descriptions d'images
-activées par défaut — voir `pipeline_modular/automate_pipeline_example/README.md`) ou tester
+activées par défaut — voir `pipeline_preprocessing/orchestrators/README.md`) ou tester
 un seul document avant de relancer tout le corpus, voir
-`single_retrieval_nopreprocessing/README.md`.
-
----
-
-## Pense-bête
-
-- `Ctrl + §` — commenter multi-ligne dans VS Code
-- Faire un `git pull` le matin pour éviter les conflits entre branches
-
+`pipeline_baseline/README.md`.
 

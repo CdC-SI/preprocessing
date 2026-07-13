@@ -17,18 +17,18 @@ def load_vlm_config(dotenv_path: Path | None = None):
     resolved_path = Path(dotenv_path).resolve() if dotenv_path else project_root / ".env.test"
     if resolved_path.exists():
         load_dotenv(dotenv_path=resolved_path)
-        _log.info("Environnement chargé depuis : %s", resolved_path)
+        _log.info("Environment loaded from: %s", resolved_path)
     else:
-        _log.debug("Fichier .env absent (%s) — variables lues depuis l'environnement.", resolved_path)
+        _log.debug(".env file missing (%s) — variables read from the environment.", resolved_path)
 
-    # CA path — VLM_CA_PEM ou fallback certifi
+    # CA path — VLM_CA_PEM or certifi fallback
     custom_ca = os.environ.get("VLM_CA_PEM")
     if custom_ca and Path(custom_ca).exists():
         ca_path = custom_ca
-        _log.info("CA utilisée : %s (VLM_CA_PEM)", ca_path)
+        _log.info("CA used: %s (VLM_CA_PEM)", ca_path)
     else:
         ca_path = certifi.where()
-        _log.info("CA utilisée : %s (certifi fallback)", ca_path)
+        _log.info("CA used: %s (certifi fallback)", ca_path)
 
     vlm_url = os.environ.get("VLM_URL", "")
     if not vlm_url:
