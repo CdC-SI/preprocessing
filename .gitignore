@@ -1,44 +1,38 @@
-.env
-RUNBOOK.md
+# Virtual environment and secrets example of nomenclature
 .env.example
+
+# Virtual environment and secrets production
+.env
+
+# Virtual environment and secrets test/dev
 .env.test
-.globalvenvmatt
-.retrievalvenvmatt
+
+# Virtual environnemt for preprocessing pipeline/baseline pipeline
+.venv 
+
+# Python cache files remove
 *.pyc
-# Data folder — ignore all content, track folder skeleton via .gitkeep
+
+# Removing all sources of data files, except for the input/output/evaluation directories and their .gitkeep files
 src/afac-preprocessing/data/**
+
 !src/afac-preprocessing/data/input_files/
 !src/afac-preprocessing/data/input_files/.gitkeep
-!src/afac-preprocessing/data/output_files_v2/
-!src/afac-preprocessing/data/output_files_v2/.gitkeep
-!src/afac-preprocessing/data/output_files_v3/
-!src/afac-preprocessing/data/output_files_v3/.gitkeep
+
 !src/afac-preprocessing/data/output_files_baseline/
 !src/afac-preprocessing/data/output_files_baseline/.gitkeep
-!src/afac-preprocessing/data/output_files_v3_noimg/
-!src/afac-preprocessing/data/output_files_v3_noimg/.gitkeep
+
 !src/afac-preprocessing/data/output_files_preprocessing/
 !src/afac-preprocessing/data/output_files_preprocessing/.gitkeep
+
 !src/afac-preprocessing/data/evaluation_results/
 !src/afac-preprocessing/data/evaluation_results/.gitkeep
-!src/afac-preprocessing/data/evaluation_results_v3_noimg/
-!src/afac-preprocessing/data/evaluation_results_v3_noimg/.gitkeep
+
+# Not showing those repo repo (local test)
 src/afac-preprocessing/graph_url/
-src/afac-preprocessing/prompts/__pycache__
-src/afac-preprocessing/prompts/prompts_test_playground.py
-src/afac-preprocessing/pipeline_modular/automate_pipeline_example/fullpipeline_modular_v3.py
-src/afac-preprocessing/utils/__pycache__
-src/afac-preprocessing/stage5_metadata/folder_source
-src/afac-preprocessing/stage5_metadata/__pycache__
 graphify-out
-src/afac-preprocessing/readme_comparasison.md
-src/afac-preprocessing/readme_simplification.md
-# KG export — données dérivées de documents AFAC sensibles, ne pas publier
+
+# KG export, control not sensitive data published
 src/afac-preprocessing/neo4j_graphrag_ontology/examples
 src/afac-preprocessing/neo4j_graphrag_ontology/export/
-src/afac-preprocessing/trash
-resultat_claude_audit.md
-src/afac-preprocessing/pipeline_modular/docling_image_png
-table_control_vlm_modular.py
-unread_file
-.venv
+src/afac-preprocessing/pipeline_preprocessing/docling_image_png
