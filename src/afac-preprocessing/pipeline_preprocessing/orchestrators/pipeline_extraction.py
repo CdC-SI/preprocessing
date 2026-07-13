@@ -236,6 +236,68 @@ def _select_steps(args: argparse.Namespace) -> tuple[list[tuple[int, Step]], str
     return selected, display
 
 
+def _run_batch_mode(
+    input_root: Path,
+    selected: list[tuple[int, Step]],
+    dotenv: Path,
+    no_ocr: bool,
+    selection_display: str,
+) -> None:
+    """--input pointing at a directory: run the selected steps for every PDF found under it."""
+    pdfs = sorted(input_root.rglob("*.pdf"))
+    if not pdfs:
+        raise SystemExit(f"[ERROR] No PDF files found under {input_root}")
+
+    print(f"Found {len(pdfs)} PDF(s) under {input_root}/\n")
+    for pdf in pdfs:
+        print(f"  {pdf.relative_to(input_root)}")
+    print(f"\nPipeline starting — {selection_display} — dotenv: {dotenv}")
+
+    failed: list[tuple[Path, int]] = []
+    for idx, pdf in enumerate(pdfs, start=1):
+        print(f"\n{'#' * 60}")
+        print(f"  PDF {idx}/{len(pdfs)}: {pdf.relative_to(input_root)}")
+        print(f"{'#' * 60}")
+        _set_doc_env(pdf)
+        code = _run_selected_steps(selected, dotenv, no_ocr)
+        if code != 0:
+            failed.append((pdf, code))
+
+    print(f"\n{'#' * 60}")
+    if failed:
+        print(f"  Batch finished with {len(failed)} failure(s):")
+        for pdf, code in failed:
+            print(f"    - {pdf.relative_to(input_root)}  (exit {code})")
+        sys.exit(1)
+    print(f"  Batch finished — all {len(pdfs)} PDF(s) processed successfully.")
+    print(f"{'#' * 60}")
+
+
+def _run_single_mode(
+    input_arg: Path | None,
+    selected: list[tuple[int, Step]],
+    dotenv: Path,
+    no_ocr: bool,
+    selection_display: str,
+) -> None:
+    """--input pointing at a single file, or no --input → DOC_NAME comes from the .env file."""
+    if input_arg:
+        input_path = input_arg.resolve()
+        if not input_path.exists():
+            raise SystemExit(f"[ERROR] Input PDF not found: {input_path}")
+        _set_doc_env(input_path)
+
+    print(f"Pipeline starting — {selection_display} — dotenv: {dotenv}")
+
+    code = _run_selected_steps(selected, dotenv, no_ocr)
+    if code != 0:
+        sys.exit(code)
+
+    print(f"\n{'=' * 60}")
+    print("  All steps completed successfully.")
+    print(f"{'=' * 60}")
+
+
 def main() -> None:
     args = parse_args()
 
@@ -252,54 +314,11 @@ def main() -> None:
     if not selected:
         raise SystemExit("[ERROR] No steps selected — check --from-step, --to-step, --skip-steps, --only.")
 
-    # --input pointing at a directory → batch mode: run the selected steps for every PDF found.
     if args.input and args.input.resolve().is_dir():
-        input_root = args.input.resolve()
-        pdfs = sorted(input_root.rglob("*.pdf"))
-        if not pdfs:
-            raise SystemExit(f"[ERROR] No PDF files found under {input_root}")
-
-        print(f"Found {len(pdfs)} PDF(s) under {input_root}/\n")
-        for pdf in pdfs:
-            print(f"  {pdf.relative_to(input_root)}")
-        print(f"\nPipeline starting — {selection_display} — dotenv: {dotenv}")
-
-        failed: list[tuple[Path, int]] = []
-        for idx, pdf in enumerate(pdfs, start=1):
-            print(f"\n{'#' * 60}")
-            print(f"  PDF {idx}/{len(pdfs)}: {pdf.relative_to(input_root)}")
-            print(f"{'#' * 60}")
-            _set_doc_env(pdf)
-            code = _run_selected_steps(selected, dotenv, args.no_ocr)
-            if code != 0:
-                failed.append((pdf, code))
-
-        print(f"\n{'#' * 60}")
-        if failed:
-            print(f"  Batch finished with {len(failed)} failure(s):")
-            for pdf, code in failed:
-                print(f"    - {pdf.relative_to(input_root)}  (exit {code})")
-            sys.exit(1)
-        print(f"  Batch finished — all {len(pdfs)} PDF(s) processed successfully.")
-        print(f"{'#' * 60}")
+        _run_batch_mode(args.input.resolve(), selected, dotenv, args.no_ocr, selection_display)
         return
 
-    # --input pointing at a single file (or no --input → DOC_NAME comes from the .env file).
-    if args.input:
-        input_path = args.input.resolve()
-        if not input_path.exists():
-            raise SystemExit(f"[ERROR] Input PDF not found: {input_path}")
-        _set_doc_env(input_path)
-
-    print(f"Pipeline starting — {selection_display} — dotenv: {dotenv}")
-
-    code = _run_selected_steps(selected, dotenv, args.no_ocr)
-    if code != 0:
-        sys.exit(code)
-
-    print(f"\n{'=' * 60}")
-    print("  All steps completed successfully.")
-    print(f"{'=' * 60}")
+    _run_single_mode(args.input, selected, dotenv, args.no_ocr, selection_display)
 
 
 if __name__ == "__main__":
