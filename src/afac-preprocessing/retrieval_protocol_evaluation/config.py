@@ -9,7 +9,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_STAGE5 = PROJECT_ROOT / "data" / "output_files_preprocessing"
-DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "data" / "evaluation_results"
+DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "data" / "pipeline_evaluation"
 
 TOP_KS: list[int] = [1, 3, 5, 10, 20]
 CANONICAL_K: int = 5 # Valeur de k canonique pour les rapports synthétiques (ex. : nDCG@5, MRR@5)

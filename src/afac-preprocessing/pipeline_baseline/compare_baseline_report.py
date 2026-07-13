@@ -1,6 +1,6 @@
 """
 Compares baseline_results.csv (raw docling, no preprocessing) against the results of the
-preprocessing pipeline (data/evaluation_results/global_summary.csv, sem_mean_*
+preprocessing pipeline (data/pipeline_evaluation/global_summary.csv, sem_mean_*
 columns — semantic pipeline, no reranker) and generates a markdown report.
 
 Both result sets evaluate the same 20-document corpus with the
@@ -11,7 +11,7 @@ contribution of the preprocessing pipeline.
 
 Inputs:
   data/baseline_evaluation/baseline_results.csv   — one row per (doc, HyQ question), baseline
-  data/evaluation_results/global_summary.csv      — one row per doc, pipeline averages (sem_mean_*)
+  data/pipeline_evaluation/global_summary.csv      — one row per doc, pipeline averages (sem_mean_*)
 
 A VLM call (text, structured output) then analyzes the numeric report and
 produces an explicit verdict (baseline / pipeline / equivalent) + justification,
@@ -76,7 +76,7 @@ class ComparisonVerdict(BaseModel):
     justification: str
 
 DEFAULT_BASELINE_RESULTS = project_root() / "data" / "baseline_evaluation" / "baseline_results.csv"
-DEFAULT_PIPELINE_SUMMARY = project_root() / "data" / "evaluation_results" / "global_summary.csv"
+DEFAULT_PIPELINE_SUMMARY = project_root() / "data" / "pipeline_evaluation" / "global_summary.csv"
 DEFAULT_OUTPUT_MD = project_root() / "data" / "baseline_evaluation" / "comparison_report.md"
 DEFAULT_CHARTS_DIRNAME = "charts"
 

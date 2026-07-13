@@ -18,7 +18,7 @@ régénérées, pour garantir une comparaison à questions identiques d'un bout 
 | Script | Rôle |
 |---|---|
 | `single_docling_baseline.py` | Génère `baseline_metadata.csv` (CONTENT/METADATA/HYQ/EMBEDDING par doc, embeddé sur le markdown docling brut) + `baseline_results.csv` (métriques par question HyQ, réutilise `evaluate_doc()` de `retrieval_protocol_evaluation/`). |
-| `compare_baseline_report.py` | Fusionne `baseline_results.csv` et `data/evaluation_results/global_summary.csv` (produit par `evaluate_all_docs.py`), calcule le delta par métrique@k, génère un rapport markdown + graphiques. Verdict VLM optionnel en tête du rapport. |
+| `compare_baseline_report.py` | Fusionne `baseline_results.csv` et `data/pipeline_evaluation/global_summary.csv` (produit par `evaluate_all_docs.py`), calcule le delta par métrique@k, génère un rapport markdown + graphiques. Verdict VLM optionnel en tête du rapport. |
 | `single_doc_preview_report.py` | Aperçu rapide **un seul document**, avant de relancer tout le corpus : compare baseline/pipeline en longueur de contenu et en self-similarité (embedding du document vs. ses propres questions HyQ). **Ne calcule pas** de Recall@k/nDCG@k réels — nécessite plusieurs documents pour classer, cf. docstring du fichier. |
 
 > **Le reranker (`retrieval_protocol_evaluation/reranker.py`) n'est jamais comparé sur la baseline** — `single_docling_baseline.py` appelle toujours `evaluate_doc(..., use_reranker=False)`, et même activé ça ne fonctionnerait pas : le reranker lit `resume.md`, qui n'existe que côté pipeline (généré par `enhancement_metadata.py`), jamais pour le markdown docling brut. La comparaison baseline vs pipeline repose donc uniquement sur la colonne "semantic" des deux côtés.
@@ -34,7 +34,7 @@ document a un `<doc>.md` (brut), un `metadata/hyq.json` + `metadata/hyq_<doc>/qu
 # 1. Baseline (docling brut) — CSV + résultats
 uv run python pipeline_baseline/single_docling_baseline.py --dotenv .env.test
 
-# 2. Évaluation du pipeline avec les mêmes métriques (sortie : data/evaluation_results/global_summary.csv)
+# 2. Évaluation du pipeline avec les mêmes métriques (sortie : data/pipeline_evaluation/global_summary.csv)
 uv run python retrieval_protocol_evaluation/evaluate_all_docs.py
 
 # 3. Rapport de comparaison (sortie : data/baseline_evaluation/comparison_report.md)

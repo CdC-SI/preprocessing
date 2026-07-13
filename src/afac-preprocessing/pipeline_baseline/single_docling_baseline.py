@@ -35,7 +35,7 @@ Outputs (--output-dir, default data/baseline_evaluation/):
   baseline_results.csv  — one row per (document, HyQ question): same columns
                           as evaluation_results.csv (recall/precision/ndcg/mrr@k),
                           computed with the baseline embeddings. Directly
-                          comparable to data/evaluation_results/<doc>/evaluation_results.csv.
+                          comparable to data/pipeline_evaluation/<doc>/evaluation_results.csv.
 
 Document outputs (--docs-output-dir, default data/output_files_baseline/):
   <doc>/<doc>.md — copy of the raw docling markdown actually used for the

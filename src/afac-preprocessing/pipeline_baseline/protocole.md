@@ -91,7 +91,7 @@ uv run python retrieval_protocol_evaluation/evaluate_all_docs.py
 
 Calcule Recall/Precision/nDCG/MRR@k pour chaque document du pipeline (pipeline sémantique
 seul + pipeline avec reranker), sur les mêmes questions HyQ. Sorties dans
-`data/evaluation_results/` : `global_summary.csv` (moyennes par doc, colonnes
+`data/pipeline_evaluation/` : `global_summary.csv` (moyennes par doc, colonnes
 `sem_mean_<métrique>@<k>`) + CSV/graphiques par document.
 
 ## 4. Générer le rapport de comparaison

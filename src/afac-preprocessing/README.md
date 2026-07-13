@@ -70,6 +70,10 @@ dossier parent, documents frères) — pas de dossier miroir séparé à mainten
 uv run python pipeline_preprocessing/orchestrators/pipeline_extraction.py \
   --dotenv .env.test --input "data/input_files/afac/Adhésion/Demande prématurée.pdf"
 
+# Pipeline complet sur TOUS les PDFs du sous dossier "Adhésion" de data/input_files/Adhésion (sous-dossiers inclus)
+uv run python pipeline_preprocessing/orchestrators/batch_pipeline_all_pdfs.py \
+  --dotenv .env.test --input-dir "data/input_files/afac/Adhésion"
+
 # Pipeline complet sur TOUS les PDFs de data/input_files/ (sous-dossiers inclus)
 uv run python pipeline_preprocessing/orchestrators/batch_pipeline_all_pdfs.py \
   --dotenv .env.test
@@ -123,7 +127,7 @@ identiques). Sorties : `data/baseline_evaluation/baseline_metadata.csv` et
 uv run python retrieval_protocol_evaluation/evaluate_all_docs.py
 ```
 
-Sortie : `data/evaluation_results/global_summary.csv`.
+Sortie : `data/pipeline_evaluation/global_summary.csv`.
 
 ### 4. Générer le rapport de comparaison
 
