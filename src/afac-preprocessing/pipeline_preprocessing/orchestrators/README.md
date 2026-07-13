@@ -1,7 +1,7 @@
-# automate_pipeline_example — Orchestrateurs du pipeline
+# orchestrators — Orchestrateurs du pipeline
 
 Scripts d'automatisation de haut niveau : ils ne font aucun traitement eux-mêmes, ils
-coordonnent l'exécution des scripts individuels de `pipeline_modular/` (voir
+coordonnent l'exécution des scripts individuels de `pipeline_preprocessing/` (voir
 [../README.md](../README.md) pour la liste des 13 étapes).
 
 > Tous les exemples supposent que vous êtes positionné à la racine `afac-preprocessing/`.
@@ -25,19 +25,19 @@ Lance les 13 étapes en séquence pour un document, ou pour tous les PDFs d'un d
 
 ```bash
 # Un document
-uv run python pipeline_modular/automate_pipeline_example/pipeline_extraction.py \
+uv run python pipeline_preprocessing/orchestrators/pipeline_extraction.py \
     --dotenv .env.test --input "data/input_files/afac/Adhésion/Adhésion traitement.pdf"
 
 # Tout un dossier
-uv run python pipeline_modular/automate_pipeline_example/pipeline_extraction.py \
+uv run python pipeline_preprocessing/orchestrators/pipeline_extraction.py \
     --dotenv .env.test --input "data/input_files/afac/Adhésion"
 
 # Reprendre après un échec, sélection par nom ou numéro
-uv run python pipeline_modular/automate_pipeline_example/pipeline_extraction.py \
+uv run python pipeline_preprocessing/orchestrators/pipeline_extraction.py \
     --dotenv .env.test --input "data/input_files/MonDoc.pdf" --from-step markdown-control
 
 # Table des étapes (nom ↔ numéro)
-uv run python pipeline_modular/automate_pipeline_example/pipeline_extraction.py --list-steps
+uv run python pipeline_preprocessing/orchestrators/pipeline_extraction.py --list-steps
 ```
 
 `--help` liste tous les paramètres (`--from-step`, `--to-step`, `--skip-steps`, `--only`,
@@ -54,11 +54,11 @@ n'interrompt pas le batch ; les échecs sont listés en fin d'exécution (`exit 
 
 ```bash
 # Aperçu sans exécution — toujours vérifier avant un run complet
-uv run python pipeline_modular/automate_pipeline_example/batch_pipeline_all_pdfs.py \
+uv run python pipeline_preprocessing/orchestrators/batch_pipeline_all_pdfs.py \
     --dotenv .env.test --input-dir data/input_files/afac/Adhésion --dry-run
 
 # Traiter tout un thème
-uv run python pipeline_modular/automate_pipeline_example/batch_pipeline_all_pdfs.py \
+uv run python pipeline_preprocessing/orchestrators/batch_pipeline_all_pdfs.py \
     --dotenv .env.test --input-dir data/input_files/afac/Adhésion
 ```
 
@@ -74,11 +74,11 @@ sorties dans `gen_runs/gen_<N>/` après chaque run — utile pour mesurer la var
 d'une génération à l'autre.
 
 ```bash
-uv run python pipeline_modular/automate_pipeline_example/multi_gen_consistency_test.py \
+uv run python pipeline_preprocessing/orchestrators/multi_gen_consistency_test.py \
     --dotenv .env.test --input "data/input_files/Adhésion/Adhésion traitement.pdf" --runs 5
 
 # Tester uniquement une étape VLM (plus rapide)
-uv run python pipeline_modular/automate_pipeline_example/multi_gen_consistency_test.py \
+uv run python pipeline_preprocessing/orchestrators/multi_gen_consistency_test.py \
     --dotenv .env.test --input "data/input_files/Adhésion/Adhésion traitement.pdf" \
     --runs 5 --from-step markdown-control --to-step markdown-control
 ```

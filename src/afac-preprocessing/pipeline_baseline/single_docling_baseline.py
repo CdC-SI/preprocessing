@@ -40,7 +40,7 @@ Outputs (--output-dir, default data/baseline_evaluation/):
 Document outputs (--docs-output-dir, default data/output_files_baseline/):
   <doc>/<doc>.md — copy of the raw docling markdown actually used for the
                    baseline embedding, for side-by-side visual inspection
-                   with data/output_files_preprocessing/<doc>/ and data/output_files_v3/<doc>/.
+                   with data/output_files_preprocessing/<doc>/.
 
 Usage:
 uv run python single_docling_baseline.py
@@ -64,7 +64,7 @@ from openai import OpenAI
 _HERE = Path(__file__).resolve().parent
 _SRC_ROOT = _HERE.parent
 _RETRIEVAL_EVAL_DIR = _SRC_ROOT / "retrieval_protocol_evaluation"
-_EMBEDDING_MODULE_DIR = _SRC_ROOT / "pipeline_modular" / "metadata"
+_EMBEDDING_MODULE_DIR = _SRC_ROOT / "pipeline_preprocessing" / "metadata"
 
 for _path in (_SRC_ROOT, _RETRIEVAL_EVAL_DIR, _EMBEDDING_MODULE_DIR):
     if str(_path) not in sys.path:
@@ -108,7 +108,7 @@ def build_baseline_embedding_client(dotenv_path: Path | None) -> tuple[OpenAI, s
 
 def copy_raw_markdown(doc_name: str, stage5_dir: Path, docs_output_dir: Path) -> None:
     """Copy <stage5_dir>/<doc>/<doc>.md (raw docling, source of the baseline embedding) into
-    <docs_output_dir>/<doc>/<doc>.md, so it can be browsed the same way as output_files_preprocessing/v3."""
+    <docs_output_dir>/<doc>/<doc>.md, so it can be browsed the same way as output_files_preprocessing."""
     src = stage5_dir / doc_name / f"{doc_name}.md"
     dst = docs_output_dir / doc_name / f"{doc_name}.md"
     dst.parent.mkdir(parents=True, exist_ok=True)

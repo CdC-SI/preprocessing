@@ -1,9 +1,9 @@
-# Pipeline Modular — Référence
+# Pipeline Preprocessing — Référence
 
 Pipeline de prétraitement PDF en 13 étapes : extraction Docling, enrichissement VLM,
 génération de métadonnées et embeddings. Chaque étape est un script autonome exécutable
 seul (`--help` pour la liste complète de ses paramètres) ou via l'orchestrateur
-[`pipeline_extraction.py`](automate_pipeline_example/README.md).
+[`pipeline_extraction.py`](orchestrators/README.md).
 
 ## Les 13 étapes
 
@@ -38,15 +38,15 @@ opencv_validation/             ← 03        metadata/                     ← 1
 
 ## Lancer le pipeline
 
-Voir [automate_pipeline_example/README.md](automate_pipeline_example/README.md) pour
+Voir [orchestrators/README.md](orchestrators/README.md) pour
 `pipeline_extraction.py` (orchestrateur — un doc ou un dossier entier) et les autres
 runners. Résumé rapide :
 
 ```bash
-uv run python pipeline_modular/automate_pipeline_example/pipeline_extraction.py --dotenv .env.test
-uv run python pipeline_modular/automate_pipeline_example/pipeline_extraction.py --dotenv .env.test --from-step markdown-convert
-uv run python pipeline_modular/automate_pipeline_example/pipeline_extraction.py --dotenv .env.test --skip-steps opencv-check,image-description
-uv run python pipeline_modular/automate_pipeline_example/pipeline_extraction.py --list-steps
+uv run python pipeline_preprocessing/orchestrators/pipeline_extraction.py --dotenv .env.test
+uv run python pipeline_preprocessing/orchestrators/pipeline_extraction.py --dotenv .env.test --from-step markdown-convert
+uv run python pipeline_preprocessing/orchestrators/pipeline_extraction.py --dotenv .env.test --skip-steps opencv-check,image-description
+uv run python pipeline_preprocessing/orchestrators/pipeline_extraction.py --list-steps
 ```
 
 `--opencv-check` est désactivée par défaut (QA visuelle uniquement, ne produit rien en aval)
@@ -58,8 +58,8 @@ Chaque script résout `DOC_NAME`/les chemins d'entrée-sortie automatiquement de
 `--dotenv`, ou accepte des chemins explicites. Exemple :
 
 ```bash
-uv run python pipeline_modular/simple_extraction/docling_extract.py --dotenv .env.test --extract-images
-uv run python pipeline_modular/metadata/metadata_generation.py --dotenv .env.test
+uv run python pipeline_preprocessing/simple_extraction/docling_extract.py --dotenv .env.test --extract-images
+uv run python pipeline_preprocessing/metadata/metadata_generation.py --dotenv .env.test
 ```
 
 `--help` sur n'importe quel script liste ses paramètres et leurs défauts.
@@ -82,5 +82,5 @@ uv run python pipeline_modular/metadata/metadata_generation.py --dotenv .env.tes
 ## Scripts hors pipeline principal
 
 - `metadata/enhancement_metadata.py`, `metadata/embedding_metadata.py` — appelés automatiquement par `metadata-generation`, exécutables seuls pour debug.
-- `simple_extraction/markdown_tables_to_jsonl.py` — utilisé par le profil `fullpipeline_modular_v3.py` (local, non suivi par git), sans équivalent dans ce pipeline.
+- `simple_extraction/markdown_tables_to_jsonl.py` — exporte les tables Markdown d'un `_final.md` en JSONL pour traçabilité ; pas d'étape équivalente dans `pipeline_extraction.py`, à lancer séparément si besoin.
 - `docling_image_png/compare_image_extraction.py` — outil de comparaison visuelle Docling vs fitz, ne fait pas partie du pipeline.

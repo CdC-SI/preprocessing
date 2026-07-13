@@ -33,8 +33,8 @@ class Step(NamedTuple):
     script: Path
 
 
-_HERE = Path(__file__).resolve().parent        # automate_pipeline_example/
-_PIPELINE_ROOT = _HERE.parent                  # pipeline_modular/
+_HERE = Path(__file__).resolve().parent        # orchestrators/
+_PIPELINE_ROOT = _HERE.parent                  # pipeline_preprocessing/
 _PROJECT_ROOT = _PIPELINE_ROOT.parent          # afac-preprocessing/
 _SIMPLE  = _PIPELINE_ROOT / "simple_extraction"
 _DESCIMG = _PIPELINE_ROOT / "description_image"

@@ -42,7 +42,7 @@ au moins une question HyQ), calcule les métriques avec les deux pipelines (sém
 puis sémantique + reranker), et écrit :
 - `<doc>/evaluation_results.csv` + `_reranked.csv` — détail par document, `<métrique>_at_k.png`
 - `global_summary.csv` — moyennes par doc (`sem_mean_*`, `rer_mean_*`) — consommé par
-  `single_retrieval_nopreprocessing/compare_baseline_report.py` pour comparer au docling brut
+  `pipeline_baseline/compare_baseline_report.py` pour comparer au docling brut
 - `global_*_comparison.png` — graphiques agrégés
 
 ## Points d'attention / TODO
@@ -50,4 +50,4 @@ puis sémantique + reranker), et écrit :
 - [ ] Valider la qualité des questions HyQ générées (revue avec Kieran)
 - [ ] Confirmer la méthode de validation du dataset "Golden"
 - [ ] Comparer d'autres variantes : chunking, metadata enrichi, modèles d'embedding différents
-      (cf. `single_retrieval_nopreprocessing/` pour la comparaison baseline vs pipeline déjà en place)
+      (cf. `pipeline_baseline/` pour la comparaison baseline vs pipeline déjà en place)

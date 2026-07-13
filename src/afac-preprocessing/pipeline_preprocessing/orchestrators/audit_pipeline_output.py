@@ -1,7 +1,7 @@
 """
 audit_pipeline_output.py — Post-run health check for a pipeline output tree.
 
-Scans a --stage5 root (data/output_files_preprocessing, data/output_files_v3, ...) and flags documents
+Scans a --stage5 root (data/output_files_preprocessing) and flags documents
 where a step likely failed silently — several scripts in this pipeline fall back to
 passthrough/original content on VLM error rather than raising, so a batch run can finish
 with exit code 0 while individual documents are missing corrections. This script does not
@@ -26,7 +26,7 @@ Checks per document:
 
 Usage:
     uv run python audit_pipeline_output.py --stage5 data/output_files_preprocessing
-    uv run python audit_pipeline_output.py --stage5 data/output_files_v3 --json
+    uv run python audit_pipeline_output.py --stage5 data/output_files_preprocessing --json
 """
 import argparse
 import json
@@ -190,12 +190,12 @@ def audit_doc(stage5_dir: Path, doc_name: str) -> dict:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Read-only health check for a pipeline output tree (data/output_files_preprocessing, _v3, ...).",
+        description="Read-only health check for a pipeline output tree (data/output_files_preprocessing).",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Exemples :\n"
             "  uv run python audit_pipeline_output.py --stage5 data/output_files_preprocessing\n"
-            "  uv run python audit_pipeline_output.py --stage5 data/output_files_v3 --json\n"
+            "  uv run python audit_pipeline_output.py --stage5 data/output_files_preprocessing --json\n"
         ),
     )
     parser.add_argument("--stage5", type=Path, required=True, help="Racine de sortie du pipeline à auditer.")

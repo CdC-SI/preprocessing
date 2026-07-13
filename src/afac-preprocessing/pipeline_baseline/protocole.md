@@ -31,7 +31,7 @@ compter plusieurs dizaines de minutes pour l'étape 1.
 ## 1. Générer le pipeline de prétraitement sur tout le corpus
 
 ```bash
-uv run python pipeline_modular/automate_pipeline_example/batch_pipeline_all_pdfs.py \
+uv run python pipeline_preprocessing/orchestrators/batch_pipeline_all_pdfs.py \
   --dotenv .env.test \
   --input-dir "data/input_files/afac/Adhésion"
 ```
@@ -48,7 +48,7 @@ embeddings).
 fin (`Batch finished with N failure(s)`). Pour rejouer un seul document après
 correction :
 ```bash
-uv run python pipeline_modular/automate_pipeline_example/pipeline_extraction.py \
+uv run python pipeline_preprocessing/orchestrators/pipeline_extraction.py \
   --dotenv .env.test --input "data/input_files/afac/Adhésion/<doc>.pdf" --from-step N
 ```
 (`--from-step` = numéro de la première étape en échec, cf. l'en-tête de
@@ -70,7 +70,7 @@ done
 ## 2. Générer la baseline (docling brut) à partir des mêmes documents
 
 ```bash
-uv run python single_retrieval_nopreprocessing/single_docling_baseline.py --dotenv .env.test
+uv run python pipeline_baseline/single_docling_baseline.py --dotenv .env.test
 ```
 
 Ce script découvre automatiquement tous les documents sous
@@ -97,7 +97,7 @@ seul + pipeline avec reranker), sur les mêmes questions HyQ. Sorties dans
 ## 4. Générer le rapport de comparaison
 
 ```bash
-uv run python single_retrieval_nopreprocessing/compare_baseline_report.py --dotenv .env.test
+uv run python pipeline_baseline/compare_baseline_report.py --dotenv .env.test
 ```
 
 Fusionne `baseline_results.csv` (étape 2) et `global_summary.csv` (étape 3), calcule le
@@ -128,70 +128,11 @@ bon) pour un document donné :
   en-têtes institutionnels) — elles rapprochent artificiellement les embeddings des
   documents entre eux, ce qui nuit au retrieval (les documents courts sont les plus
   pénalisés, la description représente alors une plus grande part du texte embeddé).
-- Vérifier les tables : le pipeline v2 les convertit en JSON-lines (une ligne = un objet
+- Vérifier les tables : le pipeline les convertit en JSON-lines (une ligne = un objet
   avec toutes les clés répétées), ce qui peut ajouter beaucoup de bruit tokenisé pour peu
-  de contenu utile à l'embedding (le pipeline v3, cf. §6, garde les tables en markdown
-  natif pour éviter ça).
+  de contenu utile à l'embedding.
 
-## 6. (Optionnel) Comparer aussi les variantes v3
-
-`fullpipeline_modular_v3.py` diffère de v2 : tables markdown natives (pas de conversion
-JSON-lines pour le doctags/`_final.md`), descriptions d'images activées par défaut,
-prompts VLM adaptés (`--prompt-variant v3`). Il réutilise automatiquement les questions
-HyQ déjà générées par v2 (comparabilité garantie) — v2 doit donc avoir tourné au
-préalable pour chaque document (étape 1).
-
-Pas de batch runner dédié pour v3 : boucle shell sur les PDF du corpus.
-```bash
-find "data/input_files/afac/Adhésion" -name "*.pdf" | while IFS= read -r pdf; do
-    echo "### $pdf ###"
-    uv run python pipeline_modular/automate_pipeline_example/fullpipeline_modular_v3.py \
-      --dotenv .env.test --input "$pdf"
-done
-```
-Sortie : `data/output_files_v3/` (jamais `data/output_files_preprocessing/`, pour ne
-rien écraser).
-
-### 6bis. Variante v3 sans descriptions d'images (v3-noimg)
-
-Pour isoler l'effet des descriptions d'images (cf. §5 — elles peuvent rapprocher
-artificiellement les embeddings des documents entre eux), variante v3 avec descriptions
-désactivées et tables gardées en markdown même pour l'embedding (`--skip-steps 9` évite
-la conversion JSON-lines de `markdown_tables_to_jsonl_modular.py`, qui ne sert qu'à
-produire `_final_embed.md` — sans lui, `metadata_generation_modular.py` retombe sur
-`_final.md`, markdown natif corrigé par VLM à l'étape 07) :
-```bash
-find "data/input_files/afac/Adhésion" -name "*.pdf" | while IFS= read -r pdf; do
-    echo "### $pdf ###"
-    uv run python pipeline_modular/automate_pipeline_example/fullpipeline_modular_v3.py \
-      --dotenv .env.test --input "$pdf" \
-      --no-image-description --skip-steps 9 \
-      --output-root data/output_files_v3_noimg
-done
-```
-Sortie dans `data/output_files_v3_noimg/` (dédiée, pour ne jamais écraser
-`data/output_files_v3/`).
-
-### Évaluer et comparer une variante v3 (ou v3-noimg)
-
-```bash
-uv run python retrieval_protocol_evaluation/evaluate_all_docs.py \
-  --stage5 data/output_files_v3 --output-dir data/evaluation_results_v3
-  # (ou --stage5 data/output_files_v3_noimg --output-dir data/evaluation_results_v3_noimg)
-
-uv run python single_retrieval_nopreprocessing/compare_baseline_report.py --dotenv .env.test \
-  --pipeline-summary data/evaluation_results_v3/global_summary.csv \
-  --output data/baseline_evaluation/comparison_report_v3.md
-  # (ou --pipeline-summary data/evaluation_results_v3_noimg/global_summary.csv
-  #     --output data/baseline_evaluation/comparison_report_v3_noimg.md)
-```
-`compare_baseline_report.py` ne lit qu'un seul `global_summary.csv` à la fois
-(`--pipeline-summary`) : chaque variante (v2/v3/v3-noimg) a son propre `--output` dédié,
-comparée séparément à la même baseline (`baseline_results.csv`, inchangée quelle que
-soit la variante testée — seules les questions HyQ et le markdown brut comptent, pas la
-variante du pipeline).
-
-## 7. Pièges déjà rencontrés (corrigés, mais bon à savoir)
+## 6. Pièges déjà rencontrés (corrigés, mais bon à savoir)
 
 - **`Incohérence : N page(s) dans le markdown mais M page(s) dans le PDF`** (étape 07 ou
   10) : Docling insère parfois un `<page_break>` mal placé (au milieu d'une page plutôt
@@ -204,29 +145,29 @@ variante du pipeline).
 - **`ENABLE_IMAGE_DESCRIPTION`** dans `.env.test` est un défaut global (actuellement
   `false`) lu par `description_image_context_modular.py`. Un flag CLI explicite
   (`--image-description` / `--no-image-description`) est toujours prioritaire sur cette
-  variable — mais seulement si le script est appelé avec ce flag explicitement (v2 ne le
-  passe jamais, il dépend donc entièrement de la variable ; v3 le passe toujours en dur).
+  variable — mais seulement si le script est appelé avec ce flag explicitement (le pipeline
+  ne le passe jamais, il dépend donc entièrement de la variable).
 - **`--from-step N`** suppose que les fichiers produits par les étapes précédentes sont
   encore sur disque. Si le dossier `data/output_files_.../<doc>/` a été nettoyé ou
   reconstruit entre deux essais, relancer sans `--from-step` (l'étape 01, extraction
   Docling, est déterministe et sans coût VLM).
 
-## Résumé des commandes (v2 vs baseline, corpus Adhésion)
+## Résumé des commandes (pipeline vs baseline, corpus Adhésion)
 
 ```bash
-# 1. Pipeline de prétraitement (v2) sur les 20 documents
-uv run python pipeline_modular/automate_pipeline_example/batch_pipeline_all_pdfs.py \
+# 1. Pipeline de prétraitement sur les 20 documents
+uv run python pipeline_preprocessing/orchestrators/batch_pipeline_all_pdfs.py \
   --dotenv .env.test --input-dir "data/input_files/afac/Adhésion"
 
 # 2. Baseline docling brut
-uv run python single_retrieval_nopreprocessing/single_docling_baseline.py --dotenv .env.test
+uv run python pipeline_baseline/single_docling_baseline.py --dotenv .env.test
 
 # 3. Évaluation du pipeline (Recall/Precision/nDCG/MRR@k)
 uv run python retrieval_protocol_evaluation/evaluate_all_docs.py
 
 # 4. Rapport de comparaison
-uv run python single_retrieval_nopreprocessing/compare_baseline_report.py --dotenv .env.test
+uv run python pipeline_baseline/compare_baseline_report.py --dotenv .env.test
 ```
 
-Rapport final : `data/baseline_evaluation/comparison_report.md`. Pour v3/v3-noimg, voir §6.
-En cas d'erreur, voir §7 (pièges déjà rencontrés).
+Rapport final : `data/baseline_evaluation/comparison_report.md`.
+En cas d'erreur, voir §6 (pièges déjà rencontrés).

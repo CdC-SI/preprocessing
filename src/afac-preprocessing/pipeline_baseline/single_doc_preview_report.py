@@ -1,6 +1,6 @@
 """
-single_doc_preview_report.py — Pre-flight comparison report for ONE document across baseline,
-v2, and v3 (embed / no-embed) content variants, before committing to a full corpus rerun.
+single_doc_preview_report.py — Pre-flight comparison report for ONE document, baseline vs.
+the preprocessing pipeline, before committing to a full corpus rerun.
 
 IMPORTANT — what this does NOT measure:
   Formal retrieval metrics (Recall@k, Precision@k, nDCG@k, MRR@k, as used in
@@ -12,7 +12,7 @@ IMPORTANT — what this does NOT measure:
 What this DOES measure, as a legitimate but different signal:
   - Structural facts per arm : content length, image/table extraction completeness.
   - Self-similarity : cosine similarity between each arm's own document embedding and each
-    HyQ question's embedding (same frozen question set, reused across baseline/v2/v3 for
+    HyQ question's embedding (same frozen question set, reused across baseline/pipeline for
     comparability). This says "how semantically close is this representation to questions
     about it" — a proxy for embedding quality, NOT a ranking metric. A higher score here does
     not guarantee better Recall@k once real competing documents are in the corpus.
@@ -153,9 +153,7 @@ def render_markdown(doc_name: str, arms: list[dict], questions: list[tuple[str, 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--doc-name", required=True)
-    parser.add_argument("--stage5-v2", type=Path, default=project_root() / "data" / "output_files_preprocessing")
-    parser.add_argument("--stage5-v3", type=Path, default=project_root() / "data" / "output_files_v3")
-    parser.add_argument("--stage5-v3-noembed", type=Path, default=project_root() / "data" / "output_files_v3_noembed")
+    parser.add_argument("--stage5", type=Path, default=project_root() / "data" / "output_files_preprocessing")
     parser.add_argument("--baseline-metadata", type=Path, default=project_root() / "data" / "baseline_evaluation" / "baseline_metadata.csv")
     parser.add_argument("--output", type=Path, default=None)
     return parser.parse_args()
@@ -174,16 +172,15 @@ def main() -> None:
         if row:
             arms_raw.append(("baseline", row["CONTENT"], parse_embedding(row["EMBEDDING"])))
 
-    for label, stage5 in (("v2", args.stage5_v2), ("v3-embed", args.stage5_v3), ("v3-noembed", args.stage5_v3_noembed)):
-        csv_path = stage5 / doc_name / "metadata" / f"{doc_name}_final.csv"
-        row = load_doc_row(csv_path)
-        if row:
-            arms_raw.append((label, row["CONTENT"], parse_embedding(row["EMBEDDING"])))
+    csv_path = args.stage5 / doc_name / "metadata" / f"{doc_name}_final.csv"
+    row = load_doc_row(csv_path)
+    if row:
+        arms_raw.append(("pipeline", row["CONTENT"], parse_embedding(row["EMBEDDING"])))
 
     if not arms_raw:
         raise SystemExit(f"No data found for {doc_name!r} in any arm.")
 
-    hyq_dir = args.stage5_v2 / doc_name / "metadata" / f"hyq_{doc_name}"
+    hyq_dir = args.stage5 / doc_name / "metadata" / f"hyq_{doc_name}"
     questions = load_hyq_questions(hyq_dir)
     if not questions:
         raise SystemExit(f"No HyQ questions found in {hyq_dir}")

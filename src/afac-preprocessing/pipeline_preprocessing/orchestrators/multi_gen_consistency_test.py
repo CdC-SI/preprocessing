@@ -8,7 +8,7 @@ each time. After each successful run, output files are snapshotted into:
 so you can diff outputs across generations and check VLM consistency.
 
 Usage:
-    uv run python pipeline_modular/automate_pipeline_example/multi_gen_consistency_test.py \\
+    uv run python pipeline_preprocessing/orchestrators/multi_gen_consistency_test.py \\
         --dotenv .env.test \\
         --input "data/input_files/Adhésion/Ahésion traitement.pdf" \\
         --runs 5
@@ -32,8 +32,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-_HERE = Path(__file__).resolve().parent        # automate_pipeline_example/
-_PIPELINE_ROOT = _HERE.parent                  # pipeline_modular/
+_HERE = Path(__file__).resolve().parent        # orchestrators/
+_PIPELINE_ROOT = _HERE.parent                  # pipeline_preprocessing/
 _PROJECT_ROOT = _PIPELINE_ROOT.parent          # afac-preprocessing/
 
 PIPELINE_SCRIPT = _HERE / "pipeline_extraction.py"

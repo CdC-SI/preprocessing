@@ -20,9 +20,9 @@ la ligne d'en-tête au début d'une nouvelle page sans nouvelle ligne de sépara
 que traitée comme une ligne de données.
 
 Usage :
-    uv run python markdown_tables_to_jsonl.py --markdown data/output_files_v3/MonDoc/MonDoc_final.md
-    uv run python markdown_tables_to_jsonl.py --dotenv .env.test --stage5 data/output_files_v3
-    uv run python markdown_tables_to_jsonl.py --markdown ... --output-dir data/output_files_v3/MonDoc/tables_markdown
+    uv run python markdown_tables_to_jsonl.py --markdown data/output_files_preprocessing/MonDoc/MonDoc_final.md
+    uv run python markdown_tables_to_jsonl.py --dotenv .env.test --stage5 data/output_files_preprocessing
+    uv run python markdown_tables_to_jsonl.py --markdown ... --output-dir data/output_files_preprocessing/MonDoc/tables_markdown
     uv run python markdown_tables_to_jsonl.py --markdown MonDoc_final.md --embed-output MonDoc_final_embed.md
 """
 import argparse
@@ -227,8 +227,8 @@ def parse_args() -> argparse.Namespace:
         epilog=(
             "Exemples :\n"
             "  uv run python markdown_tables_to_jsonl.py \\\n"
-            "      --markdown data/output_files_v3/MonDoc/MonDoc_final.md\n"
-            "  uv run python markdown_tables_to_jsonl.py --dotenv .env.test --stage5 data/output_files_v3\n"
+            "      --markdown data/output_files_preprocessing/MonDoc/MonDoc_final.md\n"
+            "  uv run python markdown_tables_to_jsonl.py --dotenv .env.test --stage5 data/output_files_preprocessing\n"
         ),
     )
     parser.add_argument(

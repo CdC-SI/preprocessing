@@ -57,7 +57,7 @@ def generate_embedding(text: str, client: OpenAI, embedding_model_name: str) -> 
     Envoie le texte au modèle d'embedding et retourne le vecteur brut.
 
     Délègue à utils.vlm_client.get_embedding (cache-first) — conservé sous ce nom car
-    single_retrieval_nopreprocessing/single_docling_baseline.py l'importe directement.
+    pipeline_baseline/single_docling_baseline.py l'importe directement.
 
     :param text: Contenu markdown du document (markdown_dir)
     :type text: str
