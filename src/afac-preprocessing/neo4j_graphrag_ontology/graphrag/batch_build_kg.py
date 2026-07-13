@@ -31,6 +31,7 @@ from build_kg import (
     build_llm,
     graph_summary,
     resolve_final_md,
+    strip_internal_labels,
 )
 from ontology.afac_ontology import NODE_TYPES, PATTERNS, RELATIONSHIP_TYPES, normalize_name
 from utils.vlm_client import build_vlm_config
@@ -131,6 +132,8 @@ async def run(dotenv: str | None, output_dir: Path, use_embeddings: bool, wipe: 
     _log.info("Chargement terminé : %d ok, %d échecs", ok, len(failed))
     if failed:
         _log.warning("Documents en échec : %s", ", ".join(failed))
+
+    strip_internal_labels(driver)
 
     _log.info("Passe de normalisation des noms d'entités…")
     normalize_pass(driver)

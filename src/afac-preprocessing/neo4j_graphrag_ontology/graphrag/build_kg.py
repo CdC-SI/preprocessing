@@ -97,6 +97,15 @@ def wipe_graph(driver: neo4j.Driver) -> None:
     driver.execute_query("MATCH (n) DETACH DELETE n")
 
 
+def strip_internal_labels(driver: neo4j.Driver) -> None:
+    """Retire les labels internes __KGBuilder__/__Entity__ posés par neo4j-graphrag sur
+    chaque nœud (en plus du label métier). Neo4j Browser colore un nœud multi-labels selon
+    l'ID de label interne le plus ancien, et ces deux labels techniques sont toujours créés
+    avant le label métier — ils gagnent donc systématiquement le filtre couleur si on les
+    laisse. Sans effet sur normalize_pass() (qui exclut déjà les labels préfixés __)."""
+    driver.execute_query("MATCH (n) REMOVE n:__KGBuilder__:__Entity__")
+
+
 def graph_summary(driver: neo4j.Driver) -> None:
     """Affiche un résumé de ce qui a été chargé (compte par label et par type de relation)."""
     nodes, _, _ = driver.execute_query(
@@ -165,6 +174,7 @@ async def run(doc_name: str, dotenv: str | None, output_dir: Path, use_embedding
     result = await pipeline.run_async(text=text)
     _log.info("Pipeline terminé : %s", getattr(result, "result", result))
 
+    strip_internal_labels(driver)
     graph_summary(driver)
     driver.close()
     print(f"\n✅ Graphe construit pour « {doc_name} ». Ouvrir http://localhost:7474 pour explorer.")

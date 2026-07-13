@@ -166,3 +166,9 @@ panneau de style. À refaire après chaque rechargement du graphe (`build_kg.py`
    label puis choisir **Size mapped by...** (ou l'icône de taille) → sélectionner la
    propriété `degree`. Les nœuds les plus connectés (ex. `mineur`, `GEDO`) apparaissent
    alors visiblement plus gros que les nœuds périphériques.
+
+Construire le graphe:
+``` 
+uv run --active python neo4j_graphrag_ontology/graphrag/batch_build_kg.py --dotenv .env.test
+
+```

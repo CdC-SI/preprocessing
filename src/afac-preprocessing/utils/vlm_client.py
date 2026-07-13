@@ -206,6 +206,30 @@ async def vision_completion_async(
     return content.strip()
 
 
+def text_completion(
+    client: OpenAI,
+    model: str,
+    system_prompt: str,
+    user_content: str,
+    *,
+    temperature: float = 0.0,
+) -> str:
+    """Free-form text completion, no schema constraint (few-shot prompting)."""
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content},
+        ],
+        temperature=temperature,
+        extra_body=_ENABLE_THINKING_FALSE,
+    )
+    content = response.choices[0].message.content
+    if content is None:
+        raise ValueError(f"VLM returned content=null. Full response: {response}")
+    return content.strip()
+
+
 def text_completion_structured(
     client: OpenAI,
     model: str,
