@@ -17,7 +17,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-from collections import defaultdict
 from pathlib import Path
 
 import neo4j
@@ -27,13 +26,13 @@ from neo4j_graphrag.experimental.pipeline.kg_builder import SimpleKGPipeline
 from build_kg import (
     DEFAULT_OUTPUT_DIR,
     LEXICAL_GRAPH_CONFIG,
-    build_embedder,
     build_llm,
     graph_summary,
     resolve_final_md,
     strip_internal_labels,
 )
-from ontology.afac_ontology import NODE_TYPES, PATTERNS, RELATIONSHIP_TYPES, normalize_name
+from ontology.afac_ontology import NODE_TYPES, PATTERNS, RELATIONSHIP_TYPES
+from shared.kg_shared_utils import EmbedderFactory, GraphNormalizer
 from utils.vlm_client import build_vlm_config
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
@@ -47,49 +46,6 @@ def list_documents(output_dir: Path) -> list[str]:
         if d.is_dir() and (d / f"{d.name}_final.md").exists():
             docs.append(d.name)
     return docs
-
-
-def normalize_pass(driver: neo4j.Driver) -> None:
-    """Fusionne les nœuds métier dont le nom se rabat sur la même forme canonique.
-
-    Groupe par (labels métier, normalize_name(name)) ; pour chaque groupe de >1 nœud, fusionne
-    via apoc.refactor.mergeNodes (combine propriétés, fusionne relations dupliquées) et fixe le
-    nom canonique. Pour un nœud seul dont le nom diffère de sa forme canonique, met juste à jour.
-    """
-    records, _, _ = driver.execute_query(
-        """
-        MATCH (n) WHERE n.name IS NOT NULL
-        RETURN elementId(n) AS id, n.name AS name,
-               [l IN labels(n) WHERE NOT l STARTS WITH '__'] AS labels
-        """
-    )
-    groups: dict[tuple, list[str]] = defaultdict(list)
-    for r in records:
-        canonical = normalize_name(r["name"])
-        key = (tuple(sorted(r["labels"])), canonical)
-        groups[key].append(r["id"])
-
-    merged, renamed = 0, 0
-    for (labels, canonical), ids in groups.items():
-        if len(ids) > 1:
-            driver.execute_query(
-                """
-                MATCH (n) WHERE elementId(n) IN $ids
-                WITH collect(n) AS ns
-                CALL apoc.refactor.mergeNodes(ns, {properties:'combine', mergeRels:true})
-                YIELD node SET node.name = $canonical
-                RETURN elementId(node)
-                """,
-                ids=ids, canonical=canonical,
-            )
-            merged += len(ids) - 1
-        else:
-            driver.execute_query(
-                "MATCH (n) WHERE elementId(n) = $id AND n.name <> $canonical SET n.name = $canonical",
-                id=ids[0], canonical=canonical,
-            )
-            renamed += 1  # compte les candidats ; SET no-op si déjà canonique
-    _log.info("Normalisation : %d nœuds fusionnés (doublons de variantes)", merged)
 
 
 async def run(dotenv: str | None, output_dir: Path, use_embeddings: bool, wipe: bool) -> None:
@@ -110,7 +66,7 @@ async def run(dotenv: str | None, output_dir: Path, use_embeddings: bool, wipe: 
     _log.info("%d documents à charger : %s", len(docs), ", ".join(docs))
 
     llm = build_llm(cfg)
-    embedder = build_embedder(cfg) if use_embeddings else None
+    embedder = EmbedderFactory(cfg).build() if use_embeddings else None
     pipeline = SimpleKGPipeline(
         llm=llm, driver=driver, embedder=embedder,
         entities=NODE_TYPES, relations=RELATIONSHIP_TYPES, potential_schema=PATTERNS,
@@ -126,7 +82,7 @@ async def run(dotenv: str | None, output_dir: Path, use_embeddings: bool, wipe: 
             await pipeline.run_async(text=text)
             ok += 1
         except Exception as exc:  # noqa: BLE001 — on continue malgré l'échec d'un document
-            _log.error("[%d/%d] ÉCHEC %s : %s", i, len(docs), doc, exc)
+            logging.exception("[%d/%d] ÉCHEC %s : %s", i, len(docs), doc, exc)
             failed.append(doc)
 
     _log.info("Chargement terminé : %d ok, %d échecs", ok, len(failed))
@@ -136,11 +92,11 @@ async def run(dotenv: str | None, output_dir: Path, use_embeddings: bool, wipe: 
     strip_internal_labels(driver)
 
     _log.info("Passe de normalisation des noms d'entités…")
-    normalize_pass(driver)
+    GraphNormalizer(driver).run()
 
     graph_summary(driver)
     driver.close()
-    print(f"\n✅ Graphe construit pour {ok}/{len(docs)} documents. Ouvrir http://localhost:7474.")
+    print(f"\nGraphe construit pour {ok}/{len(docs)} documents. Ouvrir http://localhost:7474.")
 
 
 def main() -> None:

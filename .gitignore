@@ -36,3 +36,6 @@ graphify-out
 src/afac-preprocessing/neo4j_graphrag_ontology/examples
 src/afac-preprocessing/neo4j_graphrag_ontology/export/
 src/afac-preprocessing/pipeline_preprocessing/docling_image_png
+src/afac-preprocessing/neo4j_graphrag_ontology/extraction_concepts/output
+src/afac-preprocessing/neo4j_graphrag_ontology/trash
+src/afac-preprocessing/neo4j_graphrag_ontology/extraction_concepts/qa_runs

@@ -28,7 +28,6 @@ from pathlib import Path
 
 import httpx
 import neo4j
-from neo4j_graphrag.embeddings import OpenAIEmbeddings
 from neo4j_graphrag.experimental.components.types import LexicalGraphConfig
 from neo4j_graphrag.experimental.pipeline.kg_builder import SimpleKGPipeline
 from neo4j_graphrag.llm import OpenAILLM
@@ -42,6 +41,7 @@ for p in (str(PROJECT_ROOT), str(KG_DIR)):
         sys.path.insert(0, p)
 
 from ontology.afac_ontology import NODE_TYPES, RELATIONSHIP_TYPES, PATTERNS  # noqa: E402
+from shared.kg_shared_utils import EmbedderFactory  # noqa: E402
 from utils.vlm_client import build_vlm_config  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
@@ -79,16 +79,6 @@ def build_llm(cfg) -> OpenAILLM:
         base_url=cfg.vlm_base_url,
         api_key="no-key",
         http_client=httpx.AsyncClient(verify=cfg.ca_path, timeout=180.0),
-    )
-
-
-def build_embedder(cfg) -> OpenAIEmbeddings:
-    """Embedder pointé sur l'endpoint d'embedding interne (client sync avec CA système)."""
-    return OpenAIEmbeddings(
-        model=cfg.embedding_model_name,
-        base_url=cfg.embedding_base_url,
-        api_key="no-key",
-        http_client=httpx.Client(verify=cfg.ca_path, timeout=120.0),
     )
 
 
@@ -153,7 +143,7 @@ async def run(doc_name: str, dotenv: str | None, output_dir: Path, use_embedding
         wipe_graph(driver)
 
     llm = build_llm(cfg)
-    embedder = build_embedder(cfg) if use_embeddings else None
+    embedder = EmbedderFactory(cfg).build() if use_embeddings else None
     if not use_embeddings:
         _log.info("Embeddings désactivés (--no-embeddings)")
 

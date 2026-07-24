@@ -37,6 +37,8 @@ dependencies = [
     "neo4j-graphrag>=1.18.0",
     "spacy==3.8.14",
     "fr-core-news-sm",
+    "fr-core-news-md",
+    "fr-core-news-lg",
 ]
 
 [tool.uv]
@@ -44,6 +46,8 @@ system-certs = true
 
 [tool.uv.sources]
 fr-core-news-sm = { url = "https://github.com/explosion/spacy-models/releases/download/fr_core_news_sm-3.8.0/fr_core_news_sm-3.8.0-py3-none-any.whl" }
+fr-core-news-md = { url = "https://github.com/explosion/spacy-models/releases/download/fr_core_news_md-3.8.0/fr_core_news_md-3.8.0-py3-none-any.whl" }
+fr-core-news-lg = { url = "https://github.com/explosion/spacy-models/releases/download/fr_core_news_lg-3.8.0/fr_core_news_lg-3.8.0-py3-none-any.whl" }
 # Ajouter ici des sources privées si nécessaire (ex. index interne)
 
 [build-system]

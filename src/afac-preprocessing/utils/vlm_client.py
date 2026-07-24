@@ -36,6 +36,7 @@ DEFAULT_VISION_MAX_TOKENS = 8192
 DEFAULT_MAX_RETRIES = 3
 DEFAULT_TIMEOUT = 120.0
 _ENABLE_THINKING_FALSE = {"chat_template_kwargs": {"enable_thinking": False}}  # avoids content=null (Qwen3)
+_ENABLE_THINKING_TRUE = {"chat_template_kwargs": {"enable_thinking": True}}
 
 
 # Configuration
@@ -227,6 +228,61 @@ def text_completion(
     content = response.choices[0].message.content
     if content is None:
         raise ValueError(f"VLM returned content=null. Full response: {response}")
+    return content.strip()
+
+
+async def text_completion_async(
+    client: AsyncOpenAI,
+    model: str,
+    system_prompt: str,
+    user_content: str,
+    *,
+    temperature: float = 0.0,
+) -> str:
+    """Async counterpart of text_completion() — free-form text completion, no schema
+    constraint, thinking disabled (see _ENABLE_THINKING_FALSE)."""
+    response = await client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content},
+        ],
+        temperature=temperature,
+        extra_body=_ENABLE_THINKING_FALSE,
+    )
+    content = response.choices[0].message.content
+    if content is None:
+        raise ValueError(f"VLM returned content=null. Full response: {response}")
+    return content.strip()
+
+
+def text_completion_thinking(
+    client: OpenAI,
+    model: str,
+    system_prompt: str,
+    user_content: str,
+    *,
+    temperature: float = 0.0,
+) -> str:
+    """Free-form text completion with Qwen3 thinking mode enabled (chat_template_kwargs.
+    enable_thinking=True), for prompts that benefit from reasoning before answering (e.g.
+    open-ended concept extraction). Every other call in this module disables thinking to
+    avoid content=null — see _ENABLE_THINKING_FALSE. Do not combine this with structured
+    output (text_completion_structured): thinking + response_format is the exact
+    combination the rest of this module avoids."""
+    # print("CLIENT TIMEOUT: ", client.timeout)
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content},
+        ],
+        temperature=temperature,
+        extra_body=_ENABLE_THINKING_TRUE,
+    )
+    content = response.choices[0].message.content
+    if content is None:
+        raise ValueError(f"VLM returned content=null (thinking mode). Full response: {response}")
     return content.strip()
 
 
