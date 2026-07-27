@@ -57,20 +57,30 @@ pour un vrai reset).
 
 ## Visualisation — taille des nœuds selon leur connectivité
 
+Dans la version utilisée actuellement pour les tests : 
+```cypher
+CALL dbms.components()
+```
+Output :
+"Neo4j Kernel" / ["5.26.28"] / "community"
+
 Neo4j Browser n'a pas de notion de « degré » calculée à la volée pour le style : il faut
 d'abord stocker le degré comme propriété, puis mapper cette propriété à la taille dans le
 panneau de style. À refaire après chaque rechargement du graphe, le degré n'étant pas mis à
 jour automatiquement.
+De plus, cette version ne permet plus de visualiser la taille des noeuds en fonction du nombre d'arrêtes connectées.
 
 1. Dans la barre de requête du Browser, calculer et stocker le degré de chaque nœud :
 
    ```cypher
    MATCH (n)
-   SET n.degree = size((n)--())
+   SET n.degree = COUNT { (n)--() }
    ```
 
 2. Afficher le graphe (`MATCH (n)-[r]->(m) RETURN n, r, m`, ou une requête filtrée par
    `test_source` — voir `extraction_concepts/README.md`).
+
 3. Dans le panneau latéral (légende par label), cliquer sur un label puis choisir **Size
    mapped by...** → sélectionner la propriété `degree`. Les nœuds les plus connectés
    apparaissent alors visiblement plus gros que les nœuds périphériques.
+   /!\ C'est justement cette option qui à été retirée.
