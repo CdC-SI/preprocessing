@@ -547,6 +547,16 @@ class ConceptGraphLoader:
     def wipe(self) -> None:
         self.driver.execute_query("MATCH (n {test_source: $source}) DETACH DELETE n", source=self.source)
 
+    def ensure_entity_source_index(self) -> None:
+        """Index simple (range, pas vectoriel) sur {ANCHOR_LABEL}.test_source — label fixe
+        partagé par toutes les entités (contrairement aux labels métier / types de relation,
+        dynamiques et donc impossibles à indexer un par un). Sert VectorGraphContextRetriever
+        (test_graphrag_question.py), qui filtre chaque nœud traversé par test_source à chaque
+        appel — sans cet index, chaque recherche scanne tout le label. IF NOT EXISTS : idempotent."""
+        self.driver.execute_query(
+            f"CREATE INDEX concept_test_source_idx IF NOT EXISTS FOR (n:{ANCHOR_LABEL}) ON (n.test_source)"
+        )
+
     def summary(self) -> None:
         _LEXICAL_TYPES = ["FROM_CHUNK", "FROM_DOCUMENT", "NEXT_CHUNK"]
         nodes, _, _ = self.driver.execute_query(
@@ -650,6 +660,7 @@ class ConceptKGBatchBuilder:
         GraphNormalizer(driver).run()
 
         self.lexical_loader.ensure_vector_index()
+        self.loader.ensure_entity_source_index()
         self.loader.summary()
 
 
