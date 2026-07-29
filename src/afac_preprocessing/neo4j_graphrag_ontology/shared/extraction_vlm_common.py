@@ -53,20 +53,27 @@ class DocumentLocator:
         self.output_dir = output_dir
 
     def list_documents(self) -> list[str]:
-        """Noms des documents ayant un markdown final, triés."""
+        """Documents ayant un markdown final, triés.
+
+        Renvoie des chemins RELATIFS à output_dir (lot F1) : la sortie
+        reproduit l'arborescence d'entrée."""
         return [
-            d.name for d in sorted(self.output_dir.iterdir())
+            str(d.relative_to(self.output_dir))
+            for d in sorted(self.output_dir.rglob("*"))
             if d.is_dir() and (d / f"{d.name}_final.md").exists()
         ]
 
-    def resolve_final_md(self, doc_name: str) -> Path:
-        """Chemin du markdown final d'un document (préfère `_final.md`)."""
-        doc_dir = self.output_dir / doc_name
+    def resolve_final_md(self, doc_ref: str) -> Path:
+        """Chemin du markdown final d'un document (préfère `_final.md`).
+
+        *doc_ref* est un chemin relatif à output_dir (cf. list_documents)."""
+        doc_dir = self.output_dir / doc_ref
+        doc_name = Path(doc_ref).name
         for suffix in ("_final.md", ".md"):
             candidate = doc_dir / f"{doc_name}{suffix}"
             if candidate.exists():
                 return candidate
-        raise FileNotFoundError(f"Aucun markdown final trouvé pour « {doc_name} » dans {doc_dir}")
+        raise FileNotFoundError(f"Aucun markdown final trouvé pour « {doc_ref} » dans {doc_dir}")
 
 
 class TextChunker:

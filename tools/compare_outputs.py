@@ -178,11 +178,48 @@ def compare_file(ref: Path, cand: Path, rel: Path) -> tuple[Verdict, bool]:
     return compare_binary(ref, cand), False
 
 
+def _index_by_doc_dir(cand_root: Path) -> dict[str, list[Path]]:
+    """Dossiers document du candidat, groupés par NOM de dossier.
+
+    Un dossier document est celui qui contient ``<nom>.doctags``, la même
+    convention que ``audit_pipeline_output.discover_docs``.
+    """
+    index: dict[str, list[Path]] = {}
+    for directory in sorted(cand_root.rglob("*")):
+        if directory.is_dir() and (directory / f"{directory.name}.doctags").exists():
+            index.setdefault(directory.name, []).append(directory)
+    return index
+
+
+def remap_flat_to_tree(rel: Path, index: dict[str, list[Path]]) -> tuple[Path | None, bool]:
+    """Apparie un chemin de la référence PLATE à son homologue ARBORESCENT.
+
+    La référence plate est ``<doc>/<reste…>`` ; on cherche sous la nouvelle
+    racine l'unique dossier portant ce nom de document et on y recolle le
+    reste du chemin.
+
+    Retourne ``(chemin, ambigu)`` — ambigu = plusieurs dossiers portent ce
+    nom : c'est le cas des documents homonymes que le layout plat écrasait,
+    on les rapporte à part sans échouer dessus.
+    """
+    parts = rel.parts
+    if not parts:
+        return None, False
+    doc_name, rest = parts[0], Path(*parts[1:]) if len(parts) > 1 else Path()
+    matches = index.get(doc_name, [])
+    if len(matches) != 1:
+        return None, len(matches) > 1
+    candidate = matches[0] / rest if rest.parts else matches[0]
+    return (candidate if candidate.exists() else None), False
+
+
 def main(argv: list[str]) -> int:
-    if len(argv) != 3:
+    args = [a for a in argv[1:] if not a.startswith("--")]
+    remap = "--remap-flat-to-tree" in argv
+    if len(args) != 2:
         print(__doc__)
         return 2
-    ref_root, cand_root = Path(argv[1]), Path(argv[2])
+    ref_root, cand_root = Path(args[0]), Path(args[1])
     if not ref_root.is_dir() or not cand_root.is_dir():
         print(f"Dossier introuvable: {ref_root if not ref_root.is_dir() else cand_root}")
         return 2
@@ -198,10 +235,21 @@ def main(argv: list[str]) -> int:
         if p.is_file() and p.name != ".gitkeep"
     }
 
+    doc_index = _index_by_doc_dir(cand_root) if remap else {}
+    ambiguous: set[str] = set()
+
     failures = warnings = 0
     counts: dict[str, int] = {}
     for rel, ref_path in ref_files.items():
         cand_path = cand_files.pop(rel, None)
+        if cand_path is None and remap:
+            remapped, is_ambiguous = remap_flat_to_tree(rel, doc_index)
+            if is_ambiguous:
+                ambiguous.add(rel.parts[0])
+                continue
+            if remapped is not None:
+                cand_path = remapped
+                cand_files.pop(remapped.relative_to(cand_root), None)
         if cand_path is None:
             failures += 1
             counts["MANQUANT"] = counts.get("MANQUANT", 0) + 1
@@ -225,6 +273,14 @@ def main(argv: list[str]) -> int:
     total = len(ref_files)
     summary = ", ".join(f"{mode}: {n}" for mode, n in sorted(counts.items()))
     print(f"\n{total} fichiers comparés ({summary})")
+    if ambiguous:
+        # Documents homonymes que le layout plat fusionnait : la référence
+        # plate n'en contient qu'une version, impossible de dire laquelle.
+        # Rapportés à part, sans faire échouer la comparaison (§ 4bis.1).
+        print(
+            f"AMBIGU      ⚠ {len(ambiguous)} document(s) homonyme(s), non comparables "
+            f"depuis la référence plate : {', '.join(sorted(ambiguous))}"
+        )
     print(f"Échecs bloquants: {failures} — Avertissements: {warnings}")
     return 1 if failures else 0
 

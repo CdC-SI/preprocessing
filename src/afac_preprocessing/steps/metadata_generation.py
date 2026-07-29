@@ -35,6 +35,7 @@ from .metadata_enhancer import MetadataEnhancer
 
 if TYPE_CHECKING:
     from ..context import PipelineContext
+    from ..workspace import DocumentWorkspace
 
 _log = logging.getLogger(__name__)
 
@@ -91,13 +92,12 @@ def get_hierarchy(folder_source: Path, relative_doc_path: str) -> dict:
 
 
 # Input dir – JSON Docling — déplacé tel quel
-def load_input_json(input_dir: Path, doc_name: str) -> dict:
+def load_input_json(workspace: DocumentWorkspace) -> dict:
     """
-    :param input_dir: Dossier contenant le JSON Docling (sortie de l'étape 01)
-    :param doc_name: Nom du document sans extension
-    :return: JSON Docling du document
+    :param workspace: Workspace du document (porte tous les chemins)
+    :return: JSON Docling du document (vide s'il n'existe pas)
     """
-    path = input_dir / doc_name / f"{doc_name}.json"
+    path = workspace.docling_json
     if not path.exists():
         return {}
     with open(path, encoding="utf-8") as f:
@@ -165,16 +165,15 @@ def parse_date(raw: str) -> str:
     return ""
 
 
-# Image dir – images extraites — déplacé tel quel
-def get_images(image_dir: Path, doc_name: str) -> list[str]:
+# Images extraites — chemin porté par le workspace (lot F1)
+def get_images(workspace: DocumentWorkspace) -> list[str]:
     """
     Retourne la liste des images extraites du document (used_images/).
 
-    :param image_dir: Dossier contenant les images extraites (used_images/)
-    :param doc_name: Nom du document sans extension
+    :param workspace: Workspace du document (porte tous les chemins)
     :return: Liste des noms de fichiers image
     """
-    img_dir = image_dir / doc_name / "used_images"
+    img_dir = workspace.used_images_dir
     if not img_dir.exists():
         return []
     return sorted(
@@ -200,15 +199,14 @@ def read_jsonl(path: Path) -> list[dict]:
     return items
 
 
-def get_outgoing_links(url_dir: Path, doc_name: str) -> list[dict]:
+def get_outgoing_links(workspace: DocumentWorkspace) -> list[dict]:
     """
     Retourne la liste des liens hypertextes extraits du document.
 
-    :param url_dir: Dossier contenant les hyperliens extraits
-    :param doc_name: Nom du document sans extension
+    :param workspace: Workspace du document (porte tous les chemins)
     :return: Liste de liens sortants
     """
-    jsonl = url_dir / doc_name / f"hyperlinks_data_{doc_name}.jsonl"
+    jsonl = workspace.hyperlinks_jsonl
     if not jsonl.exists():
         return []
     return [
@@ -221,36 +219,44 @@ def get_outgoing_links(url_dir: Path, doc_name: str) -> list[dict]:
     ]
 
 
-def get_incoming_links(url_dir: Path, doc_name: str) -> list[dict]:
+def get_incoming_links(out_root: Path, doc_name: str) -> list[dict]:
     """
     Parcourt les hyperlinks de tous les autres documents pour trouver des références à doc_name.
 
-    :param url_dir: Dossier contenant les hyperliens extraits
+    ⚠ Lot F1, décision n°10 : le parcours est RÉCURSIF depuis la racine de
+    sortie. En layout plat, ``iterdir()`` voyait tous les documents ; avec
+    l'arborescence miroir il n'aurait vu que ceux du même sous-dossier, et les
+    incoming_links seraient devenus silencieusement incomplets. Le tri par nom
+    de document (et non par chemin) préserve l'ordre historique de la liste.
+
+    :param out_root: Racine des sorties (output_files_preprocessing/)
     :param doc_name: Nom du document sans extension
     :return: Liste de liens entrants
     """
-    if not url_dir.exists():
+    if not out_root.exists():
         return []
     needle = doc_name.lower()
     incoming = []
-    for other_dir in sorted(url_dir.iterdir()):
-        if not other_dir.is_dir() or other_dir.name == doc_name:
-            continue
-        jsonl = other_dir / f"hyperlinks_data_{other_dir.name}.jsonl"
-        if not jsonl.exists():
+    jsonls = sorted(
+        out_root.rglob("hyperlinks_data_*.jsonl"),
+        key=lambda p: (p.parent.name, str(p)),
+    )
+    for jsonl in jsonls:
+        other_name = jsonl.parent.name
+        if other_name == doc_name or jsonl.name != f"hyperlinks_data_{other_name}.jsonl":
             continue
         for obj in read_jsonl(jsonl):
             if needle in obj.get("text", "").lower() or needle in obj.get("hyperlink", "").lower():
                 incoming.append({
-                    "from_doc": other_dir.name,
+                    "from_doc": other_name,
                     "text": obj.get("text", ""),
                     "url": obj.get("hyperlink", ""),
                 })
     return incoming
 
 
-# Markdown dir – markdown final — déplacé tel quel
-def _resolve_markdown_file(markdown_dir: Path, doc_name: str) -> Path | None:
+# Markdown final — chemins portés par le workspace (lot F1)
+def _resolve_markdown_file(workspace: DocumentWorkspace) -> Path | None:
     """
     Résout le fichier markdown à utiliser comme CONTENT (donc comme source de l'embedding).
 
@@ -258,39 +264,35 @@ def _resolve_markdown_file(markdown_dir: Path, doc_name: str) -> Path | None:
     markdown_tables_to_jsonl.py --embed-output) s'il existe, sinon <doc>_final.md.
     Rétrocompatible : les documents sans _final_embed.md (v1/v2/baseline) sont inchangés.
     """
-    for suffix in ("_final_embed.md", "_final.md"):
-        candidate = markdown_dir / doc_name / f"{doc_name}{suffix}"
+    for candidate in (workspace.final_embed_markdown, workspace.final_markdown):
         if candidate.exists():
             return candidate
     return None
 
 
-def get_markdown_info(markdown_dir: Path, doc_name: str) -> tuple[str, int]:
+def get_markdown_info(workspace: DocumentWorkspace) -> tuple[str, int]:
     """
     Retourne (content_filename, chunk_count).
 
-    :param markdown_dir: Dossier contenant le markdown final
-    :param doc_name: Nom du document sans extension
+    :param workspace: Workspace du document (porte tous les chemins)
     :return: Tuple (nom du fichier markdown, nombre de chunks)
     """
-    resolved = _resolve_markdown_file(markdown_dir, doc_name) if markdown_dir.exists() else None
+    resolved = _resolve_markdown_file(workspace)
     if resolved:
         return resolved.name, 1
-    return f"{doc_name}_final.md", 0
+    return workspace.final_markdown.name, 0
 
 
-def get_markdown_content(markdown_dir: Path, doc_name: str) -> str:
+def get_markdown_content(workspace: DocumentWorkspace) -> str:
     """
-    Retourne le contenu markdown du document depuis markdown_dir — cf.
-    _resolve_markdown_file pour la préférence _final_embed.md / _final.md.
-    C'est ce texte qui devient la colonne CONTENT du CSV final ET la source de
-    l'embedding.
+    Retourne le contenu markdown du document — cf. _resolve_markdown_file pour
+    la préférence _final_embed.md / _final.md. C'est ce texte qui devient la
+    colonne CONTENT du CSV final ET la source de l'embedding.
 
-    :param markdown_dir: Dossier contenant le markdown final
-    :param doc_name: Nom du document sans extension
+    :param workspace: Workspace du document (porte tous les chemins)
     :return: Contenu markdown
     """
-    resolved = _resolve_markdown_file(markdown_dir, doc_name)
+    resolved = _resolve_markdown_file(workspace)
     return resolved.read_text(encoding="utf-8") if resolved else ""
 
 
@@ -319,32 +321,32 @@ def get_page_num(page_count: int) -> str:
     return ",".join(str(i) for i in range(1, page_count + 1))
 
 
-# Construction du bloc metadata — déplacé tel quel
+# Construction du bloc metadata
 def build_metadata(
     relative_doc_path: str,
     folder_source: Path,
-    input_dir: Path,
-    image_dir: Path,
-    url_dir: Path,
-    markdown_dir: Path,
+    workspace: DocumentWorkspace,
+    out_root: Path,
     embedding_model_name: str,
 ) -> dict:
     """
     Construit le bloc de metadata pour un document donné.
 
+    Depuis le lot F1, tous les chemins du document viennent du ``workspace``
+    (qui porte l'arborescence miroir) ; ``out_root`` ne sert plus qu'au
+    balayage inter-documents des incoming_links (décision n°10).
+
     :param relative_doc_path: Chemin relatif dans folder_source (ex: "Taxation/MonDoc.pdf")
-    :param folder_source: Racine de la hiérarchie documentaire
-    :param input_dir: Dossier contenant le JSON Docling (sortie de l'étape 01)
-    :param image_dir: Dossier contenant les images extraites (used_images/)
-    :param url_dir: Dossier contenant les hyperliens extraits
-    :param markdown_dir: Dossier contenant le markdown final
+    :param folder_source: Racine de la hiérarchie documentaire (data/input_files/)
+    :param workspace: Workspace du document (porte tous ses chemins de sortie)
+    :param out_root: Racine des sorties, pour le balayage des incoming_links
     :param embedding_model_name: Nom du modèle d'embedding (résolu depuis la config VLM)
     :return: Dictionnaire de metadata
     """
     doc_name = Path(relative_doc_path).stem
     hierarchy = get_hierarchy(folder_source, relative_doc_path)
-    doc_json = load_input_json(input_dir, doc_name)
-    content_file, chunk_count = get_markdown_info(markdown_dir, doc_name)
+    doc_json = load_input_json(workspace)
+    content_file, chunk_count = get_markdown_info(workspace)
     created_at = get_pdf_creation_date(folder_source / relative_doc_path)
     updated_at = datetime.now(UTC).strftime(ISO_8601_FMT)
     page_count = get_page_count(doc_json)
@@ -358,11 +360,11 @@ def build_metadata(
         "version": get_version(doc_json),
         "visibility": VISIBILITY_DEFAULT,
         "language": "fr",
-        "outgoing_links": get_outgoing_links(url_dir, doc_name),
-        "incoming_links": get_incoming_links(url_dir, doc_name),
+        "outgoing_links": get_outgoing_links(workspace),
+        "incoming_links": get_incoming_links(out_root, doc_name),
         "created_at": created_at,
         "updated_at": updated_at,
-        "media_type": get_images(image_dir, doc_name),
+        "media_type": get_images(workspace),
         "parent_label": hierarchy["parent_label"],
         "children_label": hierarchy["children_label"],
         "sibling": hierarchy["sibling"],
@@ -467,17 +469,15 @@ class MetadataGenerationStep(PipelineStep):
             metadata = build_metadata(
                 self._relative_doc_path(ctx),
                 folder_source=ctx.settings.input_files_root,
-                input_dir=out_root,
-                image_dir=out_root,
-                url_dir=out_root,
-                markdown_dir=out_root,
+                workspace=ws,
+                out_root=out_root,
                 embedding_model_name=embedding_model_name,
             )
             metadata["resume"] = enrichment["resume"]
             metadata["intent"] = ", ".join(enrichment["intent"])
             metadata["hyq"] = ", ".join(enrichment["hyq"])
 
-            content = get_markdown_content(out_root, ws.doc_name)
+            content = get_markdown_content(ws)
             write_csv_row(ws.final_csv, metadata, content, embedding_str)
         except Exception as exc:
             raise StepFailed(f"metadata-generation failed on {ws.doc_name}: {exc}") from exc

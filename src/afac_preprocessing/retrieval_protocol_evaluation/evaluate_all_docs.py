@@ -38,7 +38,7 @@ _log = logging.getLogger(__name__)
 def discover_doc_names(stage5_dir: Path) -> list[str]:
     """All doc names that have both a document embedding and at least one HyQ question."""
     names = []
-    for csv_path in sorted(stage5_dir.glob("*/metadata/*_final.csv")):
+    for csv_path in sorted(stage5_dir.rglob("metadata/*_final.csv")):
         doc_name = csv_path.stem.removesuffix("_final")
         hyq_dir = csv_path.parent / f"hyq_{doc_name}"
         if hyq_dir.exists() and any(hyq_dir.glob("question_*.csv")):

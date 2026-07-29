@@ -40,12 +40,19 @@ JSONL_ROW_RE = re.compile(r'^\s*\{".*"\s*:.*\}\s*$', re.MULTILINE)
 
 
 def discover_docs(stage5_dir: Path) -> list[str]:
-    """Any subdirectory <name>/ of stage5_dir containing a canonical <name>.doctags (the raw
-    stage-1 export) is treated as a processed doc. Matching on the exact <dirname>.doctags
+    """Any directory <name>/ containing a canonical <name>.doctags (the raw stage-1
+    export) is treated as a processed doc. Matching on the exact <dirname>.doctags
     filename (not a glob over every *.doctags variant) avoids counting each doc multiple
-    times for its _reordered/_url_vlm/etc. intermediate doctags files."""
+    times for its _reordered/_url_vlm/etc. intermediate doctags files.
+
+    ⚠ Lot F1 : la recherche est RÉCURSIVE et renvoie des chemins RELATIFS à
+    stage5_dir (ex. "afac/Adhésion/Mineur"), la sortie reproduisant désormais
+    l'arborescence d'entrée. Deux documents homonymes rangés dans des dossiers
+    différents apparaissent donc comme deux entrées distinctes.
+    """
     return sorted(
-        p.name for p in stage5_dir.iterdir()
+        str(p.relative_to(stage5_dir))
+        for p in stage5_dir.rglob("*")
         if p.is_dir() and (p / f"{p.name}.doctags").exists()
     )
 
@@ -146,10 +153,13 @@ def _check_table_visibility(doc_dir: Path, content: str) -> tuple[list[str], dic
     return issues, {"tables_extracted": n_tables, "tables_visible_in_content": visible}
 
 
-def audit_doc(stage5_dir: Path, doc_name: str) -> dict:
-    doc_dir = stage5_dir / doc_name
+def audit_doc(stage5_dir: Path, doc_ref: str) -> dict:
+    """*doc_ref* est le chemin relatif du dossier document sous stage5_dir
+    (lot F1) — le nom du document en est le dernier segment."""
+    doc_dir = stage5_dir / doc_ref
+    doc_name = Path(doc_ref).name
     meta_dir = doc_dir / "metadata"
-    info: dict = {"doc": doc_name}
+    info: dict = {"doc": doc_ref}
     issues: list[str] = []
 
     issues += _check_stage1(doc_dir, doc_name)

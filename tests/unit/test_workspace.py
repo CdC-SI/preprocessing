@@ -81,14 +81,16 @@ def _settings(tmp_path: Path) -> Settings:
     )
 
 
-def test_for_document_computes_relative_dir_and_flat_root(tmp_path: Path) -> None:
+def test_for_document_computes_relative_dir_and_mirrored_root(tmp_path: Path) -> None:
     settings = _settings(tmp_path)
     pdf = tmp_path / "data" / "input_files" / "afac" / "Adhésion" / "Mineur.pdf"
     ws = DocumentWorkspace.for_document(pdf, settings)
     assert ws.doc_name == "Mineur"
     assert ws.relative_dir == Path("afac/Adhésion")
-    # Lot 2 : root reste PLAT — relative_dir n'est consommé qu'au lot F1.
-    assert ws.root == tmp_path / "data" / "output_files_preprocessing" / "Mineur"
+    # Lot F1 : la sortie reproduit l'arborescence d'entrée.
+    assert ws.root == (
+        tmp_path / "data" / "output_files_preprocessing" / "afac" / "Adhésion" / "Mineur"
+    )
 
 
 def test_for_document_outside_input_files_gets_dot_relative_dir(tmp_path: Path) -> None:

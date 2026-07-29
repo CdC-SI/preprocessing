@@ -61,14 +61,19 @@ LEXICAL_GRAPH_CONFIG = LexicalGraphConfig(
 )
 
 
-def resolve_final_md(doc_name: str, output_dir: Path) -> Path:
-    """Chemin du markdown final d'un document (préfère _final.md)."""
-    doc_dir = output_dir / doc_name
+def resolve_final_md(doc_ref: str, output_dir: Path) -> Path:
+    """Chemin du markdown final d'un document (préfère _final.md).
+
+    *doc_ref* est le chemin du dossier document relatif à output_dir
+    (lot F1 : la sortie reproduit l'arborescence d'entrée) ; le nom du
+    document en est le dernier segment."""
+    doc_dir = output_dir / doc_ref
+    doc_name = Path(doc_ref).name
     for suffix in ("_final.md", ".md"):
         candidate = doc_dir / f"{doc_name}{suffix}"
         if candidate.exists():
             return candidate
-    raise FileNotFoundError(f"Aucun markdown final trouvé pour « {doc_name} » dans {doc_dir}")
+    raise FileNotFoundError(f"Aucun markdown final trouvé pour « {doc_ref} » dans {doc_dir}")
 
 
 def build_llm(cfg) -> OpenAILLM:

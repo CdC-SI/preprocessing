@@ -147,11 +147,19 @@ class DocumentWorkspace:
 
     @classmethod
     def for_document(cls, pdf: Path, settings: Settings) -> DocumentWorkspace:
-        """Construit le workspace d'un PDF selon les conventions actuelles.
+        """Construit le workspace d'un PDF.
 
-        ``relative_dir`` porte le sous-dossier du PDF dans input_files/
-        (``Path(".")`` si hors input_files/) ; ``root`` reste PLAT au lot 2 —
-        le layout miroir n'arrive qu'au lot F1.
+        Depuis le lot F1, la sortie **reproduit l'arborescence de l'entrée** :
+        ``input_files/afac/Adhésion/x.pdf`` produit
+        ``output_files_preprocessing/afac/Adhésion/x/``. Les noms de fichiers
+        à l'intérieur sont inchangés.
+
+        C'est ce qui corrige l'écrasement silencieux de deux documents
+        homonymes rangés dans des dossiers différents (le layout plat leur
+        donnait le même ``root``).
+
+        ``relative_dir`` vaut ``Path(".")`` pour un document hors de
+        ``input_files/`` — la sortie reste alors à la racine, comme avant.
         """
         pdf = Path(pdf)
         doc_name = pdf.stem.strip()
@@ -161,7 +169,7 @@ class DocumentWorkspace:
             ).parent
         except ValueError:
             relative_dir = Path()
-        root = settings.output_files_root / doc_name
+        root = settings.output_files_root / relative_dir / doc_name
         return cls(
             doc_name=doc_name,
             source_pdf=pdf,

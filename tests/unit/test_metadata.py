@@ -9,7 +9,9 @@ from pathlib import Path
 
 import pytest
 
+from afac_preprocessing import Settings
 from afac_preprocessing.steps.metadata_generation import build_metadata
+from afac_preprocessing.workspace import DocumentWorkspace
 
 # Les 22 clés produites par build_metadata (resume/intent/hyq sont ajoutées
 # après coup par l'étape, pas par cette fonction).
@@ -23,21 +25,23 @@ EXPECTED_KEYS = {
 
 def _build(tmp_path: Path, relative_doc_path: str, doc_json: dict | None = None) -> dict:
     """build_metadata sur une arborescence minimale ; doc_json optionnel."""
-    out = tmp_path / "out"
+    settings = Settings(
+        vlm_url="http://vlm.local/v1",  # type: ignore[arg-type]
+        project_root=tmp_path,
+        data_root=tmp_path / "data",
+    )
+    workspace = DocumentWorkspace.for_document(
+        settings.input_files_root / relative_doc_path, settings
+    )
+    settings.output_files_root.mkdir(parents=True, exist_ok=True)
     if doc_json is not None:
-        doc_name = Path(relative_doc_path).stem
-        (out / doc_name).mkdir(parents=True, exist_ok=True)
-        (out / doc_name / f"{doc_name}.json").write_text(
-            json.dumps(doc_json), encoding="utf-8"
-        )
-    out.mkdir(parents=True, exist_ok=True)
+        workspace.root.mkdir(parents=True, exist_ok=True)
+        workspace.docling_json.write_text(json.dumps(doc_json), encoding="utf-8")
     return build_metadata(
         relative_doc_path,
-        folder_source=tmp_path / "in",
-        input_dir=out,
-        image_dir=out,
-        url_dir=out,
-        markdown_dir=out,
+        folder_source=settings.input_files_root,
+        workspace=workspace,
+        out_root=settings.output_files_root,
         embedding_model_name="bge-m3",
     )
 

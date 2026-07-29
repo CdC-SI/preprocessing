@@ -40,11 +40,15 @@ _log = logging.getLogger("batch_build_kg")
 
 
 def list_documents(output_dir: Path) -> list[str]:
-    """Noms des documents ayant un markdown final, triés."""
+    """Documents ayant un markdown final, triés.
+
+    Renvoie des chemins RELATIFS à output_dir (lot F1) : la sortie reproduit
+    l'arborescence d'entrée, et deux documents homonymes rangés dans des
+    dossiers différents sont désormais deux entrées distinctes."""
     docs = []
-    for d in sorted(output_dir.iterdir()):
+    for d in sorted(output_dir.rglob("*")):
         if d.is_dir() and (d / f"{d.name}_final.md").exists():
-            docs.append(d.name)
+            docs.append(str(d.relative_to(output_dir)))
     return docs
 
 

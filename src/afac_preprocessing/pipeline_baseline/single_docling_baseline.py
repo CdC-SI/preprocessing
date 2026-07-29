@@ -88,7 +88,7 @@ DEFAULT_DOCS_OUTPUT_DIR = project_root() / "data" / "output_files_baseline"
 def discover_doc_names(stage5_dir: Path) -> list[str]:
     """Doc names with a raw docling markdown, a document embedding and at least one HyQ question."""
     names = []
-    for csv_path in sorted(stage5_dir.glob("*/metadata/*_final.csv")):
+    for csv_path in sorted(stage5_dir.rglob("metadata/*_final.csv")):
         doc_name = csv_path.stem.removesuffix("_final")
         hyq_dir = csv_path.parent / f"hyq_{doc_name}"
         raw_md = stage5_dir / doc_name / f"{doc_name}.md"
