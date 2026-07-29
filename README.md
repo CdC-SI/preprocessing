@@ -26,12 +26,17 @@ uv run afac-preprocess run --input data/input_files/afac/Adhésion --profile no-
 ## Où atterrissent les sorties
 
 ```
-data/output_files_preprocessing/<nom-du-document>/
+data/output_files_preprocessing/<corpus>/<thème>/<nom-du-document>/
 ├── <doc>.doctags, <doc>.md, <doc>_final.md, …   # artefacts d'extraction
 ├── tables/                                       # tables CSV/HTML/JSONL
 ├── used_images/                                  # images extraites
 └── metadata/<doc>_final.csv                      # CONTENT | METADATA | EMBEDDING
+
+data/output_files_preprocessing/<corpus>/<corpus>.csv     # CSV global : une ligne par document
 ```
+
+La sortie reproduit l'arborescence de `data/input_files/`, et chaque corpus
+(dossier racine) reçoit un CSV global concaténant les CSV de ses documents.
 
 ## Commandes utiles
 
@@ -39,6 +44,7 @@ data/output_files_preprocessing/<nom-du-document>/
 uv run afac-preprocess steps            # liste des 13 étapes
 uv run afac-preprocess steps --graph    # qui dépend de quoi
 uv run afac-preprocess doctor           # diagnostique l'installation et dit quoi corriger
+uv run afac-preprocess aggregate        # reconstruit les CSV globaux (fait aussi en fin de batch)
 uv run afac-preprocess run --help       # profils : default, full, no-images, no-vlm, extract
 ```
 

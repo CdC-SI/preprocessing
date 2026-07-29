@@ -13,6 +13,7 @@ import logging
 import time
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..exceptions import AfacError, UnknownStep
@@ -45,6 +46,8 @@ class PipelineReport:
 @dataclass
 class BatchReport:
     reports: list[PipelineReport] = field(default_factory=list)
+    # CSV globaux reconstruits en fin de batch (lot F2)
+    aggregated: list[Path] = field(default_factory=list)
 
     @property
     def failed(self) -> list[PipelineReport]:
@@ -136,11 +139,21 @@ class Pipeline:
                 break
         return report
 
-    def run_batch(self, contexts: Iterable[PipelineContext]) -> BatchReport:
+    def run_batch(
+        self, contexts: Iterable[PipelineContext], *, aggregate: bool = True
+    ) -> BatchReport:
         """Un run par document ; un échec isolé n'arrête pas le batch
-        (comportement actuel, conservé à l'identique)."""
+        (comportement actuel, conservé à l'identique).
+
+        En fin de batch, les CSV globaux par racine sont reconstruits
+        (lot F2) — une action d'ensemble, pas une étape par document.
+        """
+        from ..aggregate import aggregate_all_roots
+
         batch = BatchReport()
+        out_roots: set[Path] = set()
         for ctx in contexts:
+            out_roots.add(ctx.settings.output_files_root)
             try:
                 report = self.run(ctx)
             except Exception as exc:  # échec isolé ⇒ le batch continue
@@ -150,4 +163,14 @@ class Pipeline:
                 )
                 _log.exception("Document '%s' failed", ctx.workspace.doc_name)
             batch.reports.append(report)
+
+        if aggregate:
+            for out_root in sorted(out_roots):
+                try:
+                    batch.aggregated += aggregate_all_roots(out_root)
+                except OSError:
+                    # L'agrégation ne doit jamais faire échouer un batch dont
+                    # les documents sont traités : elle est rejouable seule
+                    # (afac-preprocess aggregate).
+                    _log.exception("Agrégation des CSV globaux impossible (%s)", out_root)
         return batch

@@ -16,11 +16,18 @@ data/input_files/<corpus>/<thème>/<doc>.pdf
    └────────────────────────────────────────────┘
         │  un PipelineContext par document
         ▼
-data/output_files_preprocessing/<doc>/
+data/output_files_preprocessing/<corpus>/<thème>/<doc>/
    ├── <doc>.doctags, <doc>.md, <doc>_final.md, …
    ├── tables/, used_images/
    └── metadata/<doc>_final.csv
+data/output_files_preprocessing/<corpus>/<corpus>.csv   ← agrégat de fin de batch
 ```
+
+La sortie **reproduit l'arborescence de l'entrée** (lot F1) : deux documents
+homonymes rangés dans des dossiers différents ne s'écrasent plus. En fin de
+batch, `aggregate.py` reconstruit un CSV global par corpus (lot F2) — ce n'est
+pas une étape du pipeline : une étape ne voit qu'un document, alors que
+l'agrégat dépend de tous les autres.
 
 ## Les objets du noyau
 

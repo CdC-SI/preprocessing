@@ -14,12 +14,14 @@ rapport et convertit les exceptions métier en codes de sortie stables :
 
 from __future__ import annotations
 
+import csv
 import importlib.metadata
 import platform
 from pathlib import Path
 
 import typer
 
+from ..aggregate import aggregate_all_roots, aggregate_root_csv
 from ..clients.bundle import ClientBundle
 from ..context import PipelineContext
 from ..core.pipeline import Pipeline
@@ -146,11 +148,47 @@ def run(
                 for name, result in report.results:
                     if not result.ok:
                         typer.echo(f"      étape en échec : {name} — {result.message}")
+        for csv_path in batch.aggregated:
+            typer.echo(f"  CSV global : {csv_path}")
         typer.echo(
             f"{'OK' if batch.ok else 'ÉCHEC'} — {len(batch.reports)} document(s), "
             f"{len(batch.failed)} échec(s)"
         )
         raise typer.Exit(0 if batch.ok else 1)
+    except AfacError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(_exit_code(exc)) from exc
+
+
+@app.command()
+def aggregate(
+    root: str | None = typer.Option(
+        None, help="Dossier racine à agréger (ex. afac). Par défaut : toutes les racines."
+    ),
+    dotenv: Path | None = typer.Option(None, help="Fichier .env (défaut : .env puis .env.test)."),
+    verbose: int = typer.Option(0, "--verbose", "-v", count=True, help="-v = DEBUG."),
+) -> None:
+    """Reconstruit le CSV global de chaque dossier racine (<racine>/<racine>.csv).
+
+    Concatène les CSV par document du sous-arbre, sans les modifier. Rejouable :
+    le fichier est reconstruit, jamais complété.
+    """
+    configure_logging(verbose)
+    try:
+        settings = Settings.from_dotenv(_resolve_dotenv(dotenv))
+        out_root = settings.output_files_root
+        if root:
+            written = [aggregate_root_csv(out_root, root)]
+        else:
+            written = aggregate_all_roots(out_root)
+        if not written:
+            typer.echo(f"Aucun CSV par document trouvé sous {out_root}")
+            raise typer.Exit(0)
+        for path in written:
+            with path.open(newline="", encoding="utf-8") as fh:
+                n_rows = sum(1 for _ in csv.reader(fh)) - 1
+            typer.echo(f"  ✓ {path} — {n_rows} ligne(s)")
+        raise typer.Exit(0)
     except AfacError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(_exit_code(exc)) from exc

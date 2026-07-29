@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING
 
 import fitz  # PyMuPDF
 
+from ..aggregate import CSV_HEADER, CSV_QUOTING
 from ..core.step import PipelineStep, StepResult, StepStatus
 from ..exceptions import StepFailed
 from .document_embedder import DocumentEmbedder
@@ -411,8 +412,10 @@ def write_csv_row(output_path: Path, metadata: dict, content: str = "", embeddin
     output_path.parent.mkdir(parents=True, exist_ok=True)
     kept_rows = _rows_excluding_title(output_path, metadata.get("title", ""))
     with open(output_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f, quoting=csv.QUOTE_ALL)
-        writer.writerow(["CONTENT", "METADATA", "EMBEDDING"])
+        # En-tête et quoting viennent d'aggregate : le CSV global concatène ces
+        # lignes, les deux formats ne doivent pas pouvoir diverger (lot F2).
+        writer = csv.writer(f, quoting=CSV_QUOTING)
+        writer.writerow(CSV_HEADER)
         writer.writerows(kept_rows)
         writer.writerow([content, json.dumps(metadata, ensure_ascii=False), embedding])
 
