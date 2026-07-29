@@ -39,3 +39,8 @@ src/afac-preprocessing/pipeline_preprocessing/docling_image_png
 src/afac-preprocessing/neo4j_graphrag_ontology/extraction_concepts/output
 src/afac-preprocessing/neo4j_graphrag_ontology/trash
 src/afac-preprocessing/neo4j_graphrag_ontology/extraction_concepts/qa_runs
+
+# Others
+src/afac-preprocessing/PLAN_REFACTOR_OOP.md
+src/afac-preprocessing/NOTES_NOTEBOOKS_JUPYTER.md
+src/afac-preprocessing/neo4j_graphrag_ontology/PLAN_retrieval_scoring_reranking.md

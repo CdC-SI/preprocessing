@@ -42,8 +42,8 @@ _META    = _PIPELINE_ROOT / "metadata"
 
 STEPS: list[Step] = [
     Step("docling-extract",           _SIMPLE  / "docling_extract.py"),            # 01 — doctags via Docling
-    Step("reorder-doctags",           _SIMPLE  / "reordered_doctags.py"),          # 02 — réordonnement des balises
-    Step("opencv-check",              _SIMPLE  / "opencv_checker.py"),             # 03 — QA visuelle only, skipped par défaut
+    Step("reorder-doctags",           _SIMPLE  / "reordered_doctags.py"),          # 02 — réordonnement des balises SKIP POSSIBLE
+    Step("opencv-check",              _SIMPLE  / "opencv_checker.py"),             # 03 — QA visuelle only, SKIP POSSIBLE
     Step("csv-to-jsonlines",          _SIMPLE  / "csv_to_jsonlines.py"),           # 04 — CSV → JSONL
     Step("load-jsonline-doctags",     _SIMPLE  / "load_jsonline_doctags.py"),      # 05 — chargement doctags enrichi
     Step("image-description",         _DESCIMG / "description_image_context.py"),  # 06 — descriptions images VLM (slow)
