@@ -1,86 +1,41 @@
-"""
-Génération des metadata d'un document
-Script 1 : metadata_generation.py
+"""Étape metadata-generation — CONTENT + METADATA + EMBEDDING → CSV final.
 
-Construit la ligne finale (CONTENT + METADATA + EMBEDDING) d'un document en lisant les
-sorties des dossiers input/image/url/markdown, puis en appelant l'enrichissement VLM (resume / intent / hyq via
-run_enhancement) et l'embedding du contenu markdown (via run_embedding). Ces metadata
-servent ensuite au reranking et à l'embedding.
+Conversion de ``metadata/metadata_generation.py`` (vague D). Toutes les
+fonctions de construction (get_*, build_metadata, write_csv_row…) sont
+DÉPLACÉES telles quelles (invariant n°1). Les deux collaborateurs VLM
+(``MetadataEnhancer``, ``DocumentEmbedder`` — piège P4) portent les appels
+modèle, en async (contrainte C2), via les clients du ClientBundle.
 
-Écrit une ligne dans un CSV de 3 colonnes (idempotent : une ligne du même titre est
-remplacée) :
-    CONTENT   -> markdown final du document (markdown_dir, _final_embed.md ou _final.md)
-    METADATA  -> JSON généré par ce script (voir champs ci-dessous)
-    EMBEDDING -> vecteur d'embedding du contenu (généré par run_embedding)
-
-Champs du bloc METADATA :
-- uuid : uuid5 déterministe basé sur le chemin relatif du document (stable entre les runs)
-- user_uuid : chaîne vide par défaut
-- source : premier segment du chemin (ex : "afac"), sinon "afac" par défaut
-- title : nom du fichier avec extension (ex : "Annulation d'une dispense.pdf")
-- doctype : pdf, docx, html, ... (déduit du mimetype Docling)
-- version : version extraite d'une table du document (ex : "4.2"), sinon chaîne vide
-- visibility : "internal" par défaut ("internal" / "public" / "sensitive")
-- language : "fr" (tous les documents AF)
-- outgoing_links : liens hypertextes sortants extraits du document (url_dir)
-- incoming_links : références au document trouvées dans les hyperlinks des autres documents
-- created_at : date de création du PDF (ISO 8601 YYYY-MM-DDTHH:MM:SSZ), sinon chaîne vide
-- updated_at : horodatage UTC courant (ISO 8601)
-- media_type : liste des images extraites du document (image_dir, used_images/)
-- parent_label : dossier parent du document (ex : ["DISPENSE"])
-- children_label : sous-dossiers présents dans le dossier du document
-- sibling : autres fichiers présents dans le même dossier (hors document lui-même)
-- content : nom du fichier markdown utilisé comme CONTENT (ex : "MonDoc_final.md")
-- page_count : nombre de pages du document
-- page_num : numéros de page en chaîne CSV (ex : "1,2,3")
-- chunk_count : 1 si le markdown final existe, sinon 0
-- embedding_model : nom du modèle d'embedding (résolu depuis la config VLM)
-- resume : résumé du document (VLM, depuis le markdown de markdown_dir)
-- intent : intentions du document, jointes en une chaîne (VLM)
-- hyq : questions fréquentes, jointes en une chaîne (VLM)
-
-Usage :
-    uv run python metadata_generation.py --dotenv .env.test
-    uv run python metadata_generation.py --dotenv .env.test --doc-path "afac/Taxation/DISPENSE/Annulation d'une dispense.pdf"
-    uv run python metadata_generation.py --dotenv .env.test --output ./out/docs.csv
-    uv run python metadata_generation.py --dotenv .env.test --skip-enhancement
-
-Sortie par défaut :
-    data/output_files_preprocessing/metadata/<DOC_NAME>_final.csv
+Champs du bloc METADATA : voir build_metadata (inchangé).
 """
 
-import argparse
+from __future__ import annotations
+
 import csv
 import json
-import os
-import sys
+import logging
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import fitz  # PyMuPDF
 
-from .enhancement_metadata import run_enhancement
-from .embedding_metadata import run_embedding
-from ...utils.paths import project_root, resolve_doc_name
+from ..core.step import PipelineStep, StepResult, StepStatus
+from ..exceptions import StepFailed
+from .document_embedder import DocumentEmbedder
+from .metadata_enhancer import MetadataEnhancer
 
-# Root — data/input_files/ contient déjà la hiérarchie <source>/<thème>/[<sous-thème>/]<fichier>.pdf
-# utilisée pour l'extraction (cf. resolve_input_pdf) ; on la réutilise directement pour la
-# hiérarchie de métadonnées au lieu de maintenir un second dossier miroir séparé.
-FOLDER_SOURCE  = project_root() / "data" / "input_files"
-DEFAULT_OUTPUT_FILES = project_root() / "data" / "output_files_preprocessing"
-DEFAULT_INPUT_DIR = DEFAULT_OUTPUT_FILES
-DEFAULT_IMAGE_DIR = DEFAULT_OUTPUT_FILES
-DEFAULT_URL_DIR = DEFAULT_OUTPUT_FILES
-DEFAULT_MARKDOWN_DIR = DEFAULT_OUTPUT_FILES
-DEFAULT_OUTPUT_DIR = DEFAULT_OUTPUT_FILES
+if TYPE_CHECKING:
+    from ..context import PipelineContext
+
+_log = logging.getLogger(__name__)
 
 VISIBILITY_DEFAULT = "internal"
 ISO_8601_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
 
-# Hiérarchie (folder_source)
-
+# Hiérarchie (folder_source) — déplacé tel quel
 def get_hierarchy(folder_source: Path, relative_doc_path: str) -> dict:
     """
     Déduit source, parent_label, children_label et sibling depuis le chemin relatif du
@@ -94,10 +49,9 @@ def get_hierarchy(folder_source: Path, relative_doc_path: str) -> dict:
         sibling -> autres fichiers présents dans DISPENSE
 
     Retombe sur "afac" quand le chemin n'a pas de vraie hiérarchie <source>/... à lire :
-    chemin à plat ("MonDoc.pdf", un seul segment — DOC_PATH absent, cf. main() cas 3) ou
-    chemin absolu (DOC_PATH réglé sur un chemin absolu quand --input pointe hors de
-    data/input_files/, cf. fullpipeline_modular_v3.py _resolve_doc_name()) — sinon parts[0]
-    vaudrait respectivement le nom de fichier ou la racine du système de fichiers ("/").
+    chemin à plat ("MonDoc.pdf", un seul segment — DOC_PATH absent) ou chemin absolu
+    (document hors de data/input_files/) — sinon parts[0] vaudrait respectivement le nom
+    de fichier ou la racine du système de fichiers ("/").
     """
     doc_path = Path(relative_doc_path)
     parts = doc_path.parts
@@ -129,15 +83,12 @@ def get_hierarchy(folder_source: Path, relative_doc_path: str) -> dict:
     }
 
 
-# Input dir – JSON Docling
+# Input dir – JSON Docling — déplacé tel quel
 def load_input_json(input_dir: Path, doc_name: str) -> dict:
     """
     :param input_dir: Dossier contenant le JSON Docling (sortie de l'étape 01)
-    :type input_dir: Path
     :param doc_name: Nom du document sans extension
-    :type doc_name: str
     :return: JSON Docling du document
-    :rtype: dict
     """
     path = input_dir / doc_name / f"{doc_name}.json"
     if not path.exists():
@@ -151,9 +102,7 @@ def get_doctype(doc_json: dict) -> str:
     Mimetype mapping pour déterminer le type de document.
 
     :param doc_json: JSON Docling du document
-    :type doc_json: dict
     :return: Type de document (pdf, docx, html, ...)
-    :rtype: str
     """
     mimetype = doc_json.get("origin", {}).get("mimetype", "")
     mapping = {
@@ -171,9 +120,7 @@ def get_doctype(doc_json: dict) -> str:
 def get_page_count(doc_json: dict) -> int:
     """
     :param doc_json: JSON Docling du document
-    :type doc_json: dict
     :return: Nombre de pages du document
-    :rtype: int
     """
     return len(doc_json.get("pages", {}))
 
@@ -183,7 +130,6 @@ def find_version_table(doc_json: dict):
     Retourne (cells, headers) de la première table ayant une colonne 'Version'.
 
     :param doc_json: JSON Docling du document
-    :type doc_json: dict
     """
     for table in doc_json.get("tables", []):
         cells = table.get("data", {}).get("table_cells", [])
@@ -196,9 +142,7 @@ def find_version_table(doc_json: dict):
 def get_version(doc_json: dict) -> str:
     """
     :param doc_json: JSON Docling du document
-    :type doc_json: dict
     :return: Version du document ou chaîne vide si non trouvée
-    :rtype: str
     """
     cells, _ = find_version_table(doc_json)
     if not cells:
@@ -224,9 +168,7 @@ def parse_date(raw: str) -> str:
     Tente de parser une date à partir de formats courants et retourne en ISO 8601.
 
     :param raw: Date brute
-    :type raw: str
     :return: Date en ISO 8601 ou chaîne vide
-    :rtype: str
     """
     for fmt in ("%d.%m.%Y", "%d/%m/%Y", "%Y-%m-%d"):
         try:
@@ -236,17 +178,14 @@ def parse_date(raw: str) -> str:
     return ""
 
 
-# Image dir – images extraites
+# Image dir – images extraites — déplacé tel quel
 def get_images(image_dir: Path, doc_name: str) -> list[str]:
     """
     Retourne la liste des images extraites du document (used_images/).
 
     :param image_dir: Dossier contenant les images extraites (used_images/)
-    :type image_dir: Path
     :param doc_name: Nom du document sans extension
-    :type doc_name: str
     :return: Liste des noms de fichiers image
-    :rtype: list[str]
     """
     img_dir = image_dir / doc_name / "used_images"
     if not img_dir.exists():
@@ -257,15 +196,13 @@ def get_images(image_dir: Path, doc_name: str) -> list[str]:
     )
 
 
-# URL dir – hyperlinks
+# URL dir – hyperlinks — déplacé tel quel
 def read_jsonl(path: Path) -> list[dict]:
     """
     Lit un fichier JSONL et retourne une liste de dictionnaires.
 
     :param path: Chemin vers le fichier JSONL
-    :type path: Path
     :return: Liste de dictionnaires
-    :rtype: list[dict]
     """
     items = []
     with open(path, encoding="utf-8") as f:
@@ -281,11 +218,8 @@ def get_outgoing_links(url_dir: Path, doc_name: str) -> list[dict]:
     Retourne la liste des liens hypertextes extraits du document.
 
     :param url_dir: Dossier contenant les hyperliens extraits
-    :type url_dir: Path
     :param doc_name: Nom du document sans extension
-    :type doc_name: str
     :return: Liste de liens sortants
-    :rtype: list[dict]
     """
     jsonl = url_dir / doc_name / f"hyperlinks_data_{doc_name}.jsonl"
     if not jsonl.exists():
@@ -305,11 +239,8 @@ def get_incoming_links(url_dir: Path, doc_name: str) -> list[dict]:
     Parcourt les hyperlinks de tous les autres documents pour trouver des références à doc_name.
 
     :param url_dir: Dossier contenant les hyperliens extraits
-    :type url_dir: Path
     :param doc_name: Nom du document sans extension
-    :type doc_name: str
     :return: Liste de liens entrants
-    :rtype: list[dict]
     """
     if not url_dir.exists():
         return []
@@ -331,11 +262,10 @@ def get_incoming_links(url_dir: Path, doc_name: str) -> list[dict]:
     return incoming
 
 
-# Markdown dir – markdown final
+# Markdown dir – markdown final — déplacé tel quel
 def _resolve_markdown_file(markdown_dir: Path, doc_name: str) -> Path | None:
     """
-    Résout le fichier markdown à utiliser comme CONTENT (donc comme source de l'embedding —
-    cf. get_markdown_content, appelée juste avant write_csv_row).
+    Résout le fichier markdown à utiliser comme CONTENT (donc comme source de l'embedding).
 
     Préfère <doc>_final_embed.md (tables remplacées par du JSONL, produit par
     markdown_tables_to_jsonl.py --embed-output) s'il existe, sinon <doc>_final.md.
@@ -353,11 +283,8 @@ def get_markdown_info(markdown_dir: Path, doc_name: str) -> tuple[str, int]:
     Retourne (content_filename, chunk_count).
 
     :param markdown_dir: Dossier contenant le markdown final
-    :type markdown_dir: Path
     :param doc_name: Nom du document sans extension
-    :type doc_name: str
     :return: Tuple (nom du fichier markdown, nombre de chunks)
-    :rtype: tuple[str, int]
     """
     resolved = _resolve_markdown_file(markdown_dir, doc_name) if markdown_dir.exists() else None
     if resolved:
@@ -365,51 +292,16 @@ def get_markdown_info(markdown_dir: Path, doc_name: str) -> tuple[str, int]:
     return f"{doc_name}_final.md", 0
 
 
-def load_existing_enrichment(output_dir: Path, doc_name: str) -> dict:
-    """
-    Lit resume.md / intent.json / hyq.json déjà présents (au lieu d'appeler run_enhancement,
-    qui régénère ces 3 champs via VLM depuis le markdown courant). Utilisé avec --skip-enhancement
-    pour recalculer un embedding sans changer les questions HyQ déjà utilisées ailleurs.
-
-    :param output_dir: Dossier racine de sortie (metadata + embeddings)
-    :type output_dir: Path
-    :param doc_name: Nom du document sans extension
-    :type doc_name: str
-    :return: Dictionnaire {"resume": str, "intent": list[str], "hyq": list[str]}
-    :rtype: dict
-    """
-    meta_dir = output_dir / doc_name / "metadata"
-    resume_path = meta_dir / "resume.md"
-    intent_path = meta_dir / "intent.json"
-    hyq_path = meta_dir / "hyq.json"
-
-    missing = [p.name for p in (resume_path, intent_path, hyq_path) if not p.exists()]
-    if missing:
-        raise FileNotFoundError(
-            f"--skip-enhancement requiert resume.md/intent.json/hyq.json existants dans {meta_dir} "
-            f"— manquant(s) : {', '.join(missing)}"
-        )
-
-    return {
-        "resume": resume_path.read_text(encoding="utf-8").strip(),
-        "intent": json.loads(intent_path.read_text(encoding="utf-8")),
-        "hyq": json.loads(hyq_path.read_text(encoding="utf-8")),
-    }
-
-
 def get_markdown_content(markdown_dir: Path, doc_name: str) -> str:
     """
-    Retourne le contenu markdown du document depuis markdown_dir — cf. _resolve_markdown_file
-    pour la préférence _final_embed.md / _final.md. C'est ce texte qui devient la
-    colonne CONTENT du CSV final ET la source de l'embedding (run_embedding lit le
-    même fichier via embedding_metadata._read_markdown).
+    Retourne le contenu markdown du document depuis markdown_dir — cf.
+    _resolve_markdown_file pour la préférence _final_embed.md / _final.md.
+    C'est ce texte qui devient la colonne CONTENT du CSV final ET la source de
+    l'embedding.
 
     :param markdown_dir: Dossier contenant le markdown final
-    :type markdown_dir: Path
     :param doc_name: Nom du document sans extension
-    :type doc_name: str
     :return: Contenu markdown
-    :rtype: str
     """
     resolved = _resolve_markdown_file(markdown_dir, doc_name)
     return resolved.read_text(encoding="utf-8") if resolved else ""
@@ -420,9 +312,7 @@ def get_pdf_creation_date(pdf_path: Path) -> str:
     Lit la date de création du PDF via fitz (PyMuPDF) et retourne en ISO 8601.
 
     :param pdf_path: Chemin vers le fichier PDF
-    :type pdf_path: Path
     :return: Date de création en ISO 8601 ou chaîne vide
-    :rtype: str
     """
     try:
         with fitz.open(str(pdf_path)) as doc:
@@ -442,7 +332,7 @@ def get_page_num(page_count: int) -> str:
     return ",".join(str(i) for i in range(1, page_count + 1))
 
 
-# Construction du bloc metadata
+# Construction du bloc metadata — déplacé tel quel
 def build_metadata(
     relative_doc_path: str,
     folder_source: Path,
@@ -456,21 +346,13 @@ def build_metadata(
     Construit le bloc de metadata pour un document donné.
 
     :param relative_doc_path: Chemin relatif dans folder_source (ex: "Taxation/MonDoc.pdf")
-    :type relative_doc_path: str
     :param folder_source: Racine de la hiérarchie documentaire
-    :type folder_source: Path
     :param input_dir: Dossier contenant le JSON Docling (sortie de l'étape 01)
-    :type input_dir: Path
     :param image_dir: Dossier contenant les images extraites (used_images/)
-    :type image_dir: Path
     :param url_dir: Dossier contenant les hyperliens extraits
-    :type url_dir: Path
     :param markdown_dir: Dossier contenant le markdown final
-    :type markdown_dir: Path
     :param embedding_model_name: Nom du modèle d'embedding (résolu depuis la config VLM)
-    :type embedding_model_name: str
     :return: Dictionnaire de metadata
-    :rtype: dict
     """
     doc_name = Path(relative_doc_path).stem
     doc_name_extension = Path(relative_doc_path).name
@@ -482,7 +364,7 @@ def build_metadata(
     page_count = get_page_count(doc_json)
 
     return {
-        "uuid": str(uuid.uuid5(uuid.NAMESPACE_DNS, str(relative_doc_path))), # "uuid": str(uuid.uuid4()),  # random
+        "uuid": str(uuid.uuid5(uuid.NAMESPACE_DNS, str(relative_doc_path))),
         "user_uuid": "",
         "source": hierarchy["source"],
         "title": doc_name_extension,
@@ -506,7 +388,7 @@ def build_metadata(
     }
 
 
-# Écriture CSV
+# Écriture CSV — déplacé tel quel
 def _rows_excluding_title(output_path: Path, doc_title: str) -> list[list[str]]:
     """Lit le CSV existant et retourne toutes les lignes sauf celle du document identifié par doc_title."""
     if not output_path.exists():
@@ -534,13 +416,9 @@ def write_csv_row(output_path: Path, metadata: dict, content: str = "", embeddin
     Idempotent : si une ligne avec le même titre existe déjà, elle est remplacée.
 
     :param output_path: Chemin vers le fichier CSV de sortie
-    :type output_path: Path
     :param metadata: Dictionnaire de metadata
-    :type metadata: dict
     :param content: Contenu markdown du document (markdown_dir)
-    :type content: str
     :param embedding: Vecteur d'embedding sous forme de chaîne CSV
-    :type embedding: str
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
     kept_rows = _rows_excluding_title(output_path, metadata.get("title", ""))
@@ -551,127 +429,72 @@ def write_csv_row(output_path: Path, metadata: dict, content: str = "", embeddin
         writer.writerow([content, json.dumps(metadata, ensure_ascii=False), embedding])
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Génère les metadata d'un document (CONTENT + METADATA + EMBEDDING) et les écrit dans le CSV final.",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=(
-            "Exemples :\n"
-            "  uv run python metadata_generation.py --dotenv .env.test\n"
-            "  uv run python metadata_generation.py --dotenv .env.test "
-            "--doc-path \"Taxation/DISPENSE/Annulation d'une dispense.pdf\"\n"
-        ),
-    )
-    parser.add_argument(
-        "--dotenv",
-        type=Path,
-        default=None,
-        metavar="FICHIER",
-        help="Fichier .env à charger (DOC_NAME, VLM_URL, EMBEDDING_URL, VLM_CA_PEM, ...).",
-    )
-    parser.add_argument(
-        "--doc-path",
-        type=str,
-        default=None,
-        help=(
-            "Chemin relatif du document dans folder_source (data/input_files/) pour la "
-            "hiérarchie (ex: \"afac/Taxation/DISPENSE/MonDoc.pdf\"). "
-            "Si absent, réutilise DOC_PATH (déjà résolu par --input dans pipeline_extraction.py/fullpipeline_modular_v3.py). "
-            "Si DOC_PATH est aussi absent, construit <DOC_NAME>.pdf (structure plate, sans sous-dossier)."
-        ),
-    )
-    parser.add_argument(
-        "--folder-source", type=Path, default=FOLDER_SOURCE,
-        help="Racine de la hiérarchie documentaire (défaut: data/input_files/).",
-    )
-    parser.add_argument(
-        "--input-dir", type=Path, default=DEFAULT_INPUT_DIR,
-        help="Dossier contenant le JSON Docling (sortie de l'étape 01).",
-    )
-    parser.add_argument(
-        "--image-dir", type=Path, default=DEFAULT_IMAGE_DIR,
-        help="Dossier contenant les images extraites (used_images/).",
-    )
-    parser.add_argument(
-        "--url-dir", type=Path, default=DEFAULT_URL_DIR,
-        help="Dossier contenant les hyperliens extraits.",
-    )
-    parser.add_argument(
-        "--markdown-dir", type=Path, default=DEFAULT_MARKDOWN_DIR,
-        help="Dossier contenant le markdown final (source du résumé/embedding).",
-    )
-    parser.add_argument(
-        "--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR,
-        help="Dossier racine de sortie (metadata + embeddings).",
-    )
-    parser.add_argument(
-        "--output", type=Path, default=None,
-        help="Fichier CSV de sortie (défaut: data/output_files_preprocessing/metadata/<DOC_NAME>_final.csv).",
-    )
-    parser.add_argument(
-        "--skip-enhancement",
-        action="store_true",
-        help=(
-            "Ne pas régénérer resume/intent/hyq via VLM — lit resume.md, intent.json et hyq.json "
-            "déjà présents dans <output_dir>/<DOC_NAME>/metadata/. Utile pour recalculer l'embedding "
-            "d'un document sans changer les questions HyQ déjà utilisées ailleurs (comparabilité)."
-        ),
-    )
-    return parser.parse_args()
+class MetadataGenerationStep(PipelineStep):
+    """Construit la ligne CONTENT | METADATA | EMBEDDING du document → _final.csv."""
 
+    name = "metadata-generation"
+    description = "Metadata + embedding → CSV final"
+    requires_vlm = True
 
-def main() -> None:
-    args = parse_args()
+    def inputs(self, ctx: "PipelineContext") -> list[Path]:
+        return [ctx.workspace.final_markdown, ctx.workspace.docling_json]
 
-    try:
-        doc_name = resolve_doc_name(args, primary_flag="--dotenv")
-        dotenv_path = args.dotenv
+    def outputs(self, ctx: "PipelineContext") -> list[Path]:
+        ws = ctx.workspace
+        return [ws.final_csv, ws.resume_markdown, ws.intent_json, ws.hyq_json,
+                ws.embedding_json]
 
-        # --doc-path définit la position dans la hiérarchie folder_source (data/input_files/).
-        # Résolution : 1. --doc-path explicite  2. DOC_PATH (déjà résolu par --input dans
-        # pipeline_extraction.py/fullpipeline_modular_v3.py, ou défini dans le .env chargé par resolve_doc_name
-        # ci-dessus — propagé aux sous-processus par héritage d'environnement)  3. DOC_NAME.pdf
-        # à plat (aucune hiérarchie disponible → parent/children/sibling resteront vides).
-        relative_doc_path = args.doc_path or os.environ.get("DOC_PATH", "").strip() or f"{doc_name}.pdf"
-        output_path = args.output or (args.output_dir / doc_name / "metadata" / f"{doc_name}_final.csv")
+    def _relative_doc_path(self, ctx: "PipelineContext") -> str:
+        """Équivalent du DOC_PATH historique : chemin relatif à input_files/,
+        ou chemin absolu si le document vit ailleurs, ou <doc>.pdf à plat."""
+        ws = ctx.workspace
+        if ws.relative_dir != Path("."):
+            return str(ws.relative_dir / ws.source_pdf.name)
+        try:
+            return str(ws.source_pdf.resolve().relative_to(
+                ctx.settings.input_files_root.resolve()
+            ))
+        except ValueError:
+            if ws.source_pdf.is_absolute():
+                return str(ws.source_pdf)
+            return f"{ws.doc_name}.pdf"
 
-        # VLM enrichment (resume, intent, hyq), ou lecture de l'existant si --skip-enhancement
-        if args.skip_enhancement:
-            enrichment = load_existing_enrichment(args.output_dir, doc_name)
-        else:
-            enrichment = run_enhancement(doc_name, args.markdown_dir, args.output_dir, dotenv_path=dotenv_path)
+    def execute(self, ctx: "PipelineContext") -> StepResult:
+        return ctx.run_async(self._execute_async(ctx))  # ⚠ PAS asyncio.run() (P7)
 
-        # Embedding du contenu markdown (retourne aussi le nom du modèle)
-        embedding_str, embedding_model_name = run_embedding(
-            doc_name, args.markdown_dir, args.output_dir, dotenv_path=dotenv_path
-        )
+    async def _execute_async(self, ctx: "PipelineContext") -> StepResult:
+        ws = ctx.workspace
+        out_root = ctx.settings.output_files_root
+        try:
+            # VLM enrichment (resume, intent, hyq) — collaborateur MetadataEnhancer
+            enhancer = MetadataEnhancer(ctx.vlm())
+            enrichment = await enhancer.run(ws)
 
-        # Construction des metadata structurées
-        metadata = build_metadata(
-            relative_doc_path,
-            folder_source=args.folder_source,
-            input_dir=args.input_dir,
-            image_dir=args.image_dir,
-            url_dir=args.url_dir,
-            markdown_dir=args.markdown_dir,
-            embedding_model_name=embedding_model_name,
-        )
-        metadata["resume"] = enrichment["resume"]
-        metadata["intent"] = ", ".join(enrichment["intent"])
-        metadata["hyq"] = ", ".join(enrichment["hyq"])
+            # Embedding du contenu markdown — collaborateur DocumentEmbedder
+            embedder = DocumentEmbedder(
+                ctx.embeddings(), ctx.settings.embedding_model_name
+            )
+            embedding_str, embedding_model_name = await embedder.run(ws)
 
-        content = get_markdown_content(args.markdown_dir, doc_name)
-        write_csv_row(output_path, metadata, content, embedding_str)
+            # Construction des metadata structurées (mêmes racines que les
+            # défauts historiques : tout vit sous output_files_preprocessing/)
+            metadata = build_metadata(
+                self._relative_doc_path(ctx),
+                folder_source=ctx.settings.input_files_root,
+                input_dir=out_root,
+                image_dir=out_root,
+                url_dir=out_root,
+                markdown_dir=out_root,
+                embedding_model_name=embedding_model_name,
+            )
+            metadata["resume"] = enrichment["resume"]
+            metadata["intent"] = ", ".join(enrichment["intent"])
+            metadata["hyq"] = ", ".join(enrichment["hyq"])
 
-        print(json.dumps(metadata, ensure_ascii=False, indent=2))
-        print(f"\n→ Ligne ajoutée dans : {output_path}")
+            content = get_markdown_content(out_root, ws.doc_name)
+            write_csv_row(ws.final_csv, metadata, content, embedding_str)
+        except Exception as exc:
+            raise StepFailed(f"metadata-generation failed on {ws.doc_name}: {exc}") from exc
 
-    except Exception as e:
-        print(f"Erreur : {e}", file=sys.stderr)
-        sys.exit(1)
-
-    sys.exit(0)
-
-
-if __name__ == "__main__":
-    main()
+        _log.info("Ligne ajoutée dans : %s", ws.final_csv)
+        return StepResult(StepStatus.OK, outputs=self.outputs(ctx))

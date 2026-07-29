@@ -163,5 +163,5 @@ def test_registry_wave_c_serves_classes() -> None:
     still_scripts = {
         s.name for s in Pipeline.default().steps if isinstance(s, ScriptStep)
     }
-    # Après la vague C, seules les 3 étapes de la vague D restent en ScriptStep.
-    assert still_scripts == {"image-description", "metadata-generation", "hyq-embedding"}
+    # Depuis la fin de la vague D, plus aucune étape n'est un ScriptStep.
+    assert still_scripts == set()
