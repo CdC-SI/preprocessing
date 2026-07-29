@@ -3,44 +3,55 @@ name = "afac-preprocessing"
 version = "1.0.0"
 description = "Pipeline de prétraitement de documents PDF avec OCR, structuration, enrichissement VLM et export Markdown."
 requires-python = ">=3.11"
+# Noyau du pipeline de prétraitement SEULEMENT (lot 5 du refactor) —
+# le reste (KG, visualisation, évaluation) vit dans les extras ci-dessous.
 dependencies = [
-    # Stage 1 — PDF parsing, OCR, visualisation
+    # Extraction PDF — parsing, OCR
     "docling==2.93.0",
     "easyocr==1.7.2",
     "torch==2.11.0",
     "opencv-python==4.13.0.92",
     "numpy==2.4.4",
-    # Stage 2 — export tables, JSONL, appels VLM synchrones
+    # Tables, JSONL
     "pandas==3.0.2",
     "tabulate==0.10.0",
     "requests==2.33.1",
     "jsonlines==4.0.0",
-    # Stage 3 — extraction liens, appels VLM asynchrones
+    # Appels VLM/embedding (client OpenAI-compatible, async)
     "httpx==0.28.1",
-    # Stage 4 — conversion DocTags → Markdown
-    "docling-core==2.74.1",
-    # Stage 5 — métadonnées, embeddings (client OpenAI-compatible)
     "openai==2.26.0",
     "pydantic==2.13.4",
-    # Retrieval evaluation — similarité cosinus, recall@k
-    "scikit-learn==1.6.1",
-    # graph_url — graphe d'URLs
-    "networkx==3.6.1",
-    "matplotlib==3.10.0",
-    "pyvis==0.3.2",
-    "Jinja2==3.1.6",
-    # Partagé tous les stages
+    "pydantic-settings>=2.14.1",
+    # Conversion DocTags → Markdown
+    "docling-core==2.74.1",
+    # Partagé
     "PyMuPDF==1.27.2.3",
     "python-dotenv==1.2.2",
     "certifi==2026.4.22",
+    "typer>=0.21.2",
+]
+
+[project.optional-dependencies]
+kg = [
     "neo4j>=6.2.0",
     "neo4j-graphrag>=1.18.0",
     "spacy==3.8.14",
     "fr-core-news-sm",
     "fr-core-news-md",
     "fr-core-news-lg",
-    "pydantic-settings>=2.14.1",
 ]
+viz = [
+    "networkx==3.6.1",
+    "matplotlib==3.10.0",
+    "pyvis==0.3.2",
+    "Jinja2==3.1.6",
+]
+eval = [
+    "scikit-learn==1.6.1",
+]
+
+[project.scripts]
+afac-preprocess = "afac_preprocessing.cli.main:app"
 
 [tool.uv]
 system-certs = true

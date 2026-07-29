@@ -51,16 +51,8 @@ dependencies = [
     { name = "docling" },
     { name = "docling-core" },
     { name = "easyocr" },
-    { name = "fr-core-news-lg" },
-    { name = "fr-core-news-md" },
-    { name = "fr-core-news-sm" },
     { name = "httpx" },
-    { name = "jinja2" },
     { name = "jsonlines" },
-    { name = "matplotlib" },
-    { name = "neo4j" },
-    { name = "neo4j-graphrag" },
-    { name = "networkx" },
     { name = "numpy" },
     { name = "openai" },
     { name = "opencv-python" },
@@ -69,12 +61,29 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "pymupdf" },
     { name = "python-dotenv" },
-    { name = "pyvis" },
     { name = "requests" },
-    { name = "scikit-learn" },
-    { name = "spacy" },
     { name = "tabulate" },
     { name = "torch" },
+    { name = "typer" },
+]
+
+[package.optional-dependencies]
+eval = [
+    { name = "scikit-learn" },
+]
+kg = [
+    { name = "fr-core-news-lg" },
+    { name = "fr-core-news-md" },
+    { name = "fr-core-news-sm" },
+    { name = "neo4j" },
+    { name = "neo4j-graphrag" },
+    { name = "spacy" },
+]
+viz = [
+    { name = "jinja2" },
+    { name = "matplotlib" },
+    { name = "networkx" },
+    { name = "pyvis" },
 ]
 
 [package.dev-dependencies]
@@ -89,16 +98,16 @@ requires-dist = [
     { name = "docling", specifier = "==2.93.0" },
     { name = "docling-core", specifier = "==2.74.1" },
     { name = "easyocr", specifier = "==1.7.2" },
-    { name = "fr-core-news-lg", url = "https://github.com/explosion/spacy-models/releases/download/fr_core_news_lg-3.8.0/fr_core_news_lg-3.8.0-py3-none-any.whl" },
-    { name = "fr-core-news-md", url = "https://github.com/explosion/spacy-models/releases/download/fr_core_news_md-3.8.0/fr_core_news_md-3.8.0-py3-none-any.whl" },
-    { name = "fr-core-news-sm", url = "https://github.com/explosion/spacy-models/releases/download/fr_core_news_sm-3.8.0/fr_core_news_sm-3.8.0-py3-none-any.whl" },
+    { name = "fr-core-news-lg", marker = "extra == 'kg'", url = "https://github.com/explosion/spacy-models/releases/download/fr_core_news_lg-3.8.0/fr_core_news_lg-3.8.0-py3-none-any.whl" },
+    { name = "fr-core-news-md", marker = "extra == 'kg'", url = "https://github.com/explosion/spacy-models/releases/download/fr_core_news_md-3.8.0/fr_core_news_md-3.8.0-py3-none-any.whl" },
+    { name = "fr-core-news-sm", marker = "extra == 'kg'", url = "https://github.com/explosion/spacy-models/releases/download/fr_core_news_sm-3.8.0/fr_core_news_sm-3.8.0-py3-none-any.whl" },
     { name = "httpx", specifier = "==0.28.1" },
-    { name = "jinja2", specifier = "==3.1.6" },
+    { name = "jinja2", marker = "extra == 'viz'", specifier = "==3.1.6" },
     { name = "jsonlines", specifier = "==4.0.0" },
-    { name = "matplotlib", specifier = "==3.10.0" },
-    { name = "neo4j", specifier = ">=6.2.0" },
-    { name = "neo4j-graphrag", specifier = ">=1.18.0" },
-    { name = "networkx", specifier = "==3.6.1" },
+    { name = "matplotlib", marker = "extra == 'viz'", specifier = "==3.10.0" },
+    { name = "neo4j", marker = "extra == 'kg'", specifier = ">=6.2.0" },
+    { name = "neo4j-graphrag", marker = "extra == 'kg'", specifier = ">=1.18.0" },
+    { name = "networkx", marker = "extra == 'viz'", specifier = "==3.6.1" },
     { name = "numpy", specifier = "==2.4.4" },
     { name = "openai", specifier = "==2.26.0" },
     { name = "opencv-python", specifier = "==4.13.0.92" },
@@ -107,13 +116,15 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.14.1" },
     { name = "pymupdf", specifier = "==1.27.2.3" },
     { name = "python-dotenv", specifier = "==1.2.2" },
-    { name = "pyvis", specifier = "==0.3.2" },
+    { name = "pyvis", marker = "extra == 'viz'", specifier = "==0.3.2" },
     { name = "requests", specifier = "==2.33.1" },
-    { name = "scikit-learn", specifier = "==1.6.1" },
-    { name = "spacy", specifier = "==3.8.14" },
+    { name = "scikit-learn", marker = "extra == 'eval'", specifier = "==1.6.1" },
+    { name = "spacy", marker = "extra == 'kg'", specifier = "==3.8.14" },
     { name = "tabulate", specifier = "==0.10.0" },
     { name = "torch", specifier = "==2.11.0" },
+    { name = "typer", specifier = ">=0.21.2" },
 ]
+provides-extras = ["kg", "viz", "eval"]
 
 [package.metadata.requires-dev]
 dev = [
