@@ -110,10 +110,32 @@ def _io(name: str) -> tuple[_W, _W]:
     return table[name]
 
 
+def _converted_steps() -> dict[str, Callable[[], PipelineStep]]:
+    """Étapes déjà converties en classes (lot 6) — le reste sert en ScriptStep.
+
+    Import paresseux : les modules d'étapes peuvent tirer des dépendances
+    lourdes, on ne paie que ce qu'on instancie.
+    """
+    from ..steps.csv_to_jsonlines import CsvToJsonlinesStep
+
+    return {
+        "csv-to-jsonlines": CsvToJsonlinesStep,
+    }
+
+
 def build_default_steps() -> list[PipelineStep]:
-    """Les 13 étapes, dans l'ordre canonique de la liste ``STEPS`` legacy."""
+    """Les 13 étapes, dans l'ordre canonique de la liste ``STEPS`` legacy.
+
+    Registre MIXTE pendant le lot 6 : une étape convertie est servie par sa
+    classe, les autres restent des ``ScriptStep`` — le pipeline tourne dans
+    les deux cas, c'est ce qui rend le lot interruptible.
+    """
+    converted = _converted_steps()
     steps: list[PipelineStep] = []
     for legacy in _LEGACY_STEPS:
+        if legacy.name in converted:
+            steps.append(converted[legacy.name]())
+            continue
         inputs_fn, outputs_fn = _io(legacy.name)
         steps.append(
             ScriptStep(
