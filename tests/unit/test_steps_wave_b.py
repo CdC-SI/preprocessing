@@ -161,13 +161,6 @@ def test_inject_missing_markdown(ctx: PipelineContext) -> None:
 
 
 def test_registry_wave_b_serves_classes() -> None:
-    converted = {
-        "reorder-doctags", "opencv-check", "csv-to-jsonlines",
-        "load-jsonline-doctags", "url-extraction", "markdown-convert",
-        "inject-image-descriptions",
-    }
-    from afac_preprocessing.core.script_step import ScriptStep
-
+    # Toutes les étapes viennent du package steps/ (plus d'adaptateur legacy).
     for step in Pipeline.default().steps:
-        if step.name in converted:
-            assert not isinstance(step, ScriptStep), step.name
+        assert type(step).__module__.startswith("afac_preprocessing.steps."), step.name

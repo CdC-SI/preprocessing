@@ -68,6 +68,6 @@ def test_idempotent_rerun_produces_same_output(ctx: PipelineContext) -> None:
     assert (ctx.workspace.tables_dir / "Doc-table-01.jsonl").read_bytes() == first
 
 
-def test_registry_serves_the_class_not_a_script_step(tmp_path: Path) -> None:
+def test_registry_serves_the_class(tmp_path: Path) -> None:
     step = next(s for s in Pipeline.default().steps if s.name == "csv-to-jsonlines")
     assert isinstance(step, CsvToJsonlinesStep)

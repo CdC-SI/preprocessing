@@ -25,7 +25,6 @@ from ..clients.bundle import ClientBundle
 from ..context import PipelineContext
 from ..core.pipeline import Pipeline
 from ..core.registry import PROFILES
-from ..core.script_step import ScriptStep
 from ..exceptions import AfacError, ConfigError, UnknownStep, VlmUnavailable
 from ..logging_config import configure_logging
 from ..settings import Settings
@@ -130,11 +129,7 @@ def run(
             raise ConfigError("No steps selected — check --from-step/--to-step/--skip/--only.")
         if no_ocr:
             for step in pipeline.steps:
-                if step.name != "docling-extract":
-                    continue
-                if isinstance(step, ScriptStep):
-                    step.extra_args = (*step.extra_args, "--no-ocr")
-                elif hasattr(step, "ocr"):
+                if step.name == "docling-extract" and hasattr(step, "ocr"):
                     step.ocr = False
 
         typer.echo(f"{len(pdfs)} PDF(s) — étapes : {', '.join(s.name for s in pipeline.steps)}")

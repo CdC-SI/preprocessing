@@ -280,10 +280,11 @@ def test_hyq_embedding_missing_hyq_json(ctx) -> None:
 # --- fin du lot 6 : plus aucun ScriptStep au registre ---
 
 
-def test_no_script_step_left_in_registry() -> None:
-    from afac_preprocessing.core.script_step import ScriptStep
-
-    assert not any(isinstance(s, ScriptStep) for s in Pipeline.default().steps)
+def test_no_legacy_adapter_left_in_registry() -> None:
+    assert all(
+        type(s).__module__.startswith("afac_preprocessing.steps.")
+        for s in Pipeline.default().steps
+    )
 
 
 def test_six_vlm_steps_have_execute_async() -> None:

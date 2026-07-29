@@ -158,10 +158,6 @@ def test_docling_extract_declared_io(ctx) -> None:
 
 
 def test_registry_wave_c_serves_classes() -> None:
-    from afac_preprocessing.core.script_step import ScriptStep
-
-    still_scripts = {
-        s.name for s in Pipeline.default().steps if isinstance(s, ScriptStep)
-    }
-    # Depuis la fin de la vague D, plus aucune étape n'est un ScriptStep.
-    assert still_scripts == set()
+    # Depuis la fin de la vague D, toutes les étapes sont des classes de steps/.
+    for step in Pipeline.default().steps:
+        assert type(step).__module__.startswith("afac_preprocessing.steps."), step.name

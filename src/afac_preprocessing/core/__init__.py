@@ -3,7 +3,6 @@
 from .pipeline import BatchReport, Pipeline, PipelineReport
 from .registry import PROFILES, STEP_REGISTRY, build_default_steps
 from .runner import InProcessRunner, StepRunner, SubprocessRunner
-from .script_step import ScriptStep
 from .step import PipelineStep, StepResult, StepStatus
 
 __all__ = [
@@ -14,7 +13,6 @@ __all__ = [
     "PipelineReport",
     "PipelineStep",
     "STEP_REGISTRY",
-    "ScriptStep",
     "StepResult",
     "StepRunner",
     "StepStatus",

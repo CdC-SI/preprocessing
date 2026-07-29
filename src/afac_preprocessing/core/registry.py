@@ -1,20 +1,34 @@
 """STEP_REGISTRY — les 13 étapes canoniques du pipeline.
 
-L'ordre vient de la liste ``STEPS`` de ``pipeline_extraction.py`` (l'actif
-réutilisé au lot 4). Depuis la fin du lot 6, chaque étape est une vraie
-classe (``steps/``) — plus aucun ``ScriptStep``. L'orchestrateur legacy
-disparaît au lot 7 ; l'ordre canonique vivra alors ici.
-
-Les déclarations ``inputs``/``outputs`` vivent dans chaque classe d'étape ;
-elles nourrissent le test de câblage et ``steps --graph``.
+L'ordre canonique vit ici depuis le lot 7 (l'orchestrateur legacy
+``pipeline_extraction.py``, dont il était levé au lot 4, est supprimé).
+Chaque étape est une classe de ``steps/`` — les déclarations
+``inputs``/``outputs`` vivent dans chaque classe ; elles nourrissent le test
+de câblage et ``steps --graph``.
 """
 
 from __future__ import annotations
 
 from typing import Callable
 
-from ..pipeline_preprocessing.orchestrators.pipeline_extraction import STEPS as _LEGACY_STEPS
 from .step import PipelineStep
+
+# Ordre canonique des 13 étapes — hérité de la liste STEPS historique.
+STEP_ORDER: tuple[str, ...] = (
+    "docling-extract",            # 01 — doctags via Docling
+    "reorder-doctags",            # 02 — réordonnancement des balises
+    "opencv-check",               # 03 — QA visuelle only (désactivée par défaut)
+    "csv-to-jsonlines",           # 04 — CSV → JSONL
+    "load-jsonline-doctags",      # 05 — chargement doctags enrichi
+    "image-description",          # 06 — descriptions images VLM
+    "url-extraction",             # 07 — extraction URL
+    "url-tuning",                 # 08 — tuning URL via VLM
+    "markdown-convert",           # 09 — conversion markdown
+    "markdown-control",           # 10 — contrôle markdown VLM
+    "inject-image-descriptions",  # 11 — injection descriptions → _final.md
+    "metadata-generation",        # 12 — metadata + embedding CSV
+    "hyq-embedding",              # 13 — embeddings des questions hyq
+)
 
 
 def _converted_steps() -> dict[str, Callable[[], PipelineStep]]:
@@ -55,9 +69,9 @@ def _converted_steps() -> dict[str, Callable[[], PipelineStep]]:
 
 
 def build_default_steps() -> list[PipelineStep]:
-    """Les 13 étapes, dans l'ordre canonique de la liste ``STEPS`` legacy."""
+    """Les 13 étapes, dans l'ordre canonique."""
     converted = _converted_steps()
-    return [converted[legacy.name]() for legacy in _LEGACY_STEPS]
+    return [converted[name]() for name in STEP_ORDER]
 
 
 STEP_REGISTRY: dict[str, PipelineStep] = {step.name: step for step in build_default_steps()}
