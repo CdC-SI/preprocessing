@@ -6,7 +6,14 @@ DÉPLACÉES telles quelles (invariant n°1). Les deux collaborateurs VLM
 (``MetadataEnhancer``, ``DocumentEmbedder`` — piège P4) portent les appels
 modèle, en async (contrainte C2), via les clients du ClientBundle.
 
-Champs du bloc METADATA : voir build_metadata (inchangé).
+Champs du bloc METADATA : voir build_metadata.
+
+⚠ Lot F3 : ``title`` porte le nom du fichier SANS extension et ``doctype``
+l'extension seule, en minuscules — le nom de la clé ne change pas, seule sa
+source change (l'extension du chemin au lieu du mimetype Docling). Effet de
+bord assumé : ``_rows_excluding_title`` déduplique par ``title``, donc un CSV
+écrit avant F3 ("MonDoc.pdf") ne matche plus une ligne post-F3 ("MonDoc") —
+purger les ``*_final.csv`` avant le premier run post-F3 (décision n°13).
 """
 
 from __future__ import annotations
@@ -95,26 +102,6 @@ def load_input_json(input_dir: Path, doc_name: str) -> dict:
         return {}
     with open(path, encoding="utf-8") as f:
         return json.load(f)
-
-
-def get_doctype(doc_json: dict) -> str:
-    """
-    Mimetype mapping pour déterminer le type de document.
-
-    :param doc_json: JSON Docling du document
-    :return: Type de document (pdf, docx, html, ...)
-    """
-    mimetype = doc_json.get("origin", {}).get("mimetype", "")
-    mapping = {
-        "application/pdf": "pdf",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
-        "application/msword": "doc",
-        "text/html": "html",
-        "text/plain": "txt",
-        "image/png": "png",
-        "image/jpeg": "jpg",
-    }
-    return mapping.get(mimetype, mimetype.split("/")[-1] if "/" in mimetype else "unknown")
 
 
 def get_page_count(doc_json: dict) -> int:
@@ -355,7 +342,6 @@ def build_metadata(
     :return: Dictionnaire de metadata
     """
     doc_name = Path(relative_doc_path).stem
-    doc_name_extension = Path(relative_doc_path).name
     hierarchy = get_hierarchy(folder_source, relative_doc_path)
     doc_json = load_input_json(input_dir, doc_name)
     content_file, chunk_count = get_markdown_info(markdown_dir, doc_name)
@@ -367,8 +353,8 @@ def build_metadata(
         "uuid": str(uuid.uuid5(uuid.NAMESPACE_DNS, str(relative_doc_path))),
         "user_uuid": "",
         "source": hierarchy["source"],
-        "title": doc_name_extension,
-        "doctype": get_doctype(doc_json),
+        "title": doc_name,
+        "doctype": Path(relative_doc_path).suffix.lstrip(".").lower(),
         "version": get_version(doc_json),
         "visibility": VISIBILITY_DEFAULT,
         "language": "fr",

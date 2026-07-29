@@ -43,3 +43,4 @@ src/afac_preprocessing/neo4j_graphrag_ontology/PLAN_retrieval_scoring_reranking.
 NOTES_NOTEBOOKS_JUPYTER.md
 PLAN_REFACTOR_OOP.md
 tests/reference/
+tests/reference_F*/
