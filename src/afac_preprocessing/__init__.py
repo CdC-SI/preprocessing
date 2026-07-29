@@ -5,6 +5,17 @@ au lot 4 ; la liste ``__all__`` définitive est fixée au lot 8.
 """
 
 from .context import PipelineContext
+from .core import (
+    BatchReport,
+    Pipeline,
+    PipelineReport,
+    PipelineStep,
+    ScriptStep,
+    StepResult,
+    StepStatus,
+    STEP_REGISTRY,
+    PROFILES,
+)
 from .exceptions import (
     AfacError,
     ConfigError,
@@ -19,6 +30,15 @@ from .workspace import DocumentWorkspace
 
 __all__ = [
     "AfacError",
+    "BatchReport",
+    "PROFILES",
+    "Pipeline",
+    "PipelineReport",
+    "PipelineStep",
+    "STEP_REGISTRY",
+    "ScriptStep",
+    "StepResult",
+    "StepStatus",
     "ConfigError",
     "DocumentWorkspace",
     "EmbeddingUnavailable",

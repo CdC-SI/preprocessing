@@ -59,6 +59,10 @@ class Settings(BaseSettings):
         default_factory=lambda: _find_project_root() / "data",
         validation_alias="DATA_ROOT",
     )
+    # Fichier .env d'origine, mémorisé par from_dotenv(). Les ScriptStep (lot 4)
+    # le retransmettent aux scripts legacy via --dotenv ; devient inutile quand
+    # toutes les étapes sont converties (lot 6).
+    dotenv_path: Path | None = Field(default=None, exclude=True)
 
     @field_validator(
         "embedding_url", "reranker_url", "ca_pem", mode="before"
@@ -110,7 +114,9 @@ class Settings(BaseSettings):
         if path is not None and not Path(path).exists():
             raise ConfigError(f".env file not found — {Path(path).resolve()}")
         try:
-            return cls(_env_file=path)  # type: ignore[call-arg]
+            settings = cls(_env_file=path)  # type: ignore[call-arg]
+            settings.dotenv_path = Path(path).resolve() if path is not None else None
+            return settings
         except ValidationError as exc:
             problems = "; ".join(
                 f"{'.'.join(str(loc) for loc in err['loc'])}: {err['msg']}"
