@@ -1,19 +1,12 @@
 """
 vlm_client.py — Unified OpenAI client for all VLM/embedding calls in the pipeline.
 
-Before this module, each VLM script built its own HTTP client (httpx sync, httpx
-async, requests, or openai) with its own retry logic:
-  - description_image_context.py : requests, no retry
-  - url_tuning_vlm.py             : httpx.AsyncClient, homemade retry (3 attempts, 15s*n)
-  - markdown_control_vlm.py       : httpx.AsyncClient (via the old utils/vlm_client.py),
-                                             homemade retry (_should_retry, _MAX_RETRIES, _RETRY_DELAYS)
-  - enhancement_metadata.py       : openai.OpenAI, no explicit retry
-  - embedding_metadata.py /
-    hyq_embedding_doc.py          : openai.OpenAI, duplicated generate_embedding
-
-This module replaces all of that with a pair of openai clients (sync + async), relying on
-the SDK's built-in retry (max_retries=3: connection, 408/409/429, 5xx, with backoff) instead
-of retry loops rewritten in each script.
+⚠ COUCHE DE COMPAT (lot 3 du refactor) — façade au-dessus de
+``clients/openai_client.py`` (le noyau, contrat async). Signatures et valeurs
+de retour inchangées : les 6 étapes VLM et les outils hors périmètre (lot 9)
+ne bougent pas de ce lot. Les fonctions async délèguent au noyau ; les
+variantes sync restent ici et disparaîtront avec la conversion des étapes
+(lot 6) puis la suppression de la façade (lot 8).
 
 No disk cache here (deliberate): every call actually hits the VLM/embedding
 endpoint on each run.
@@ -22,11 +15,19 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TypeVar
-from urllib.parse import urlparse, urlunparse
 
 import httpx
 from openai import AsyncOpenAI, OpenAI
 from pydantic import BaseModel
+
+from ..clients.openai_client import _to_base_url
+from ..clients.openai_client import check_vlm_connectivity_async as _core_check_async
+from ..clients.openai_client import embedding_to_string as _core_embedding_to_string
+from ..clients.openai_client import get_embedding_async  # noqa: F401  (re-export, lot 6)
+from ..clients.openai_client import (
+    text_completion_structured_async,  # noqa: F401  (re-export, lot 6)
+)
+from ..clients.openai_client import vision_completion_async as _core_vision_async
 
 _log = logging.getLogger(__name__)
 
@@ -50,17 +51,6 @@ class VlmConfig:
     embedding_model_name: str
 
 
-def _to_base_url(raw_url: str) -> str:
-    """Reduces a full endpoint URL (e.g. .../v1/chat/completions) to scheme://host/v1,
-    the format expected by the OpenAI SDK's base_url (it appends /chat/completions,
-    /embeddings, /models, ... itself). Same logic as enhancement_metadata.py /
-    embedding_metadata.py before this fix — centralized here."""
-    if not raw_url:
-        return ""
-    parsed = urlparse(raw_url)
-    return urlunparse((parsed.scheme, parsed.netloc, "/v1", "", "", ""))
-
-
 def build_vlm_config(dotenv_path: Path | None = None) -> VlmConfig:
     """Builds the configuration from the environment (lazy import, see utils.config)."""
     from .config import load_vlm_config
@@ -74,7 +64,8 @@ def build_vlm_config(dotenv_path: Path | None = None) -> VlmConfig:
     )
 
 
-# Client construction
+# Client construction — variantes sync conservées pour les scripts non encore
+# convertis (lot 6) ; la construction async du noyau vit dans clients/.
 def build_sync_client(
     cfg: VlmConfig, *, timeout: float = DEFAULT_TIMEOUT, max_retries: int = DEFAULT_MAX_RETRIES
 ) -> OpenAI:
@@ -135,18 +126,8 @@ def check_vlm_connectivity(client: OpenAI, model_name: str) -> bool:
 
 
 async def check_vlm_connectivity_async(client: AsyncOpenAI, model_name: str) -> bool:
-    """Async version — see check_vlm_connectivity()."""
-    try:
-        resp = await client.models.list()
-        available = [m.id for m in resp.data]
-        _log.info("VLM OK — available models: %s", available or ["(none)"])
-        if model_name and model_name not in available:
-            _log.error("Configured model '%s' absent from the VLM list: %s", model_name, available)
-            return False
-        return True
-    except Exception:
-        _log.exception("VLM unreachable")
-        return False
+    """Async version — délègue au noyau (clients/openai_client.py)."""
+    return await _core_check_async(client, model_name)
 
 
 # High-level calls (vision, structured text, embedding) — the SDK handles transient retries
@@ -188,23 +169,10 @@ async def vision_completion_async(
     max_tokens: int = DEFAULT_VISION_MAX_TOKENS,
     temperature: float = 0.0,
 ) -> str:
-    response = await client.chat.completions.create(
-        model=model,
-        messages=[{
-            "role": "user",
-            "content": [
-                {"type": "text", "text": prompt},
-                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_b64}"}},
-            ],
-        }],
-        max_tokens=max_tokens,
-        temperature=temperature,
-        extra_body=_ENABLE_THINKING_FALSE,
+    """Délègue au noyau (clients/openai_client.py) — corps identique."""
+    return await _core_vision_async(
+        client, model, prompt, image_b64, max_tokens=max_tokens, temperature=temperature
     )
-    content = response.choices[0].message.content
-    if content is None:
-        raise ValueError(f"VLM returned content=null. Full response: {response}")
-    return content.strip()
 
 
 def text_completion(
@@ -215,7 +183,10 @@ def text_completion(
     *,
     temperature: float = 0.0,
 ) -> str:
-    """Free-form text completion, no schema constraint (few-shot prompting)."""
+    """Free-form text completion, no schema constraint (few-shot prompting).
+
+    Conservée pour les appelants hors périmètre (neo4j_graphrag_ontology, lot 9).
+    """
     response = client.chat.completions.create(
         model=model,
         messages=[
@@ -240,7 +211,10 @@ async def text_completion_async(
     temperature: float = 0.0,
 ) -> str:
     """Async counterpart of text_completion() — free-form text completion, no schema
-    constraint, thinking disabled (see _ENABLE_THINKING_FALSE)."""
+    constraint, thinking disabled (see _ENABLE_THINKING_FALSE).
+
+    Conservée pour les appelants hors périmètre (neo4j_graphrag_ontology, lot 9).
+    """
     response = await client.chat.completions.create(
         model=model,
         messages=[
@@ -269,8 +243,10 @@ def text_completion_thinking(
     open-ended concept extraction). Every other call in this module disables thinking to
     avoid content=null — see _ENABLE_THINKING_FALSE. Do not combine this with structured
     output (text_completion_structured): thinking + response_format is the exact
-    combination the rest of this module avoids."""
-    # print("CLIENT TIMEOUT: ", client.timeout)
+    combination the rest of this module avoids.
+
+    Conservée pour les appelants hors périmètre (neo4j_graphrag_ontology, lot 9).
+    """
     response = client.chat.completions.create(
         model=model,
         messages=[
@@ -313,4 +289,4 @@ def get_embedding(client: OpenAI, model: str, text: str) -> list[float]:
 
 def embedding_to_string(embedding: list[float]) -> str:
     """Ex: [0.4, 0.8, 1.5] -> \"0.4, 0.8, 1.5\" (EMBEDDING column format in the CSVs)."""
-    return str(embedding).replace("[", "").replace("]", "")
+    return _core_embedding_to_string(embedding)
