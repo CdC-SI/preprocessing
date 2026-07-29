@@ -58,7 +58,10 @@ class ClientBundle:
 
             if not str(self._settings.vlm_url):
                 raise VlmUnavailable("VLM_URL is not configured")
-            self._vlm_raw = build_async_client(self._settings)
+            # timeout=180 : le client est partagé par tout le run (P7) et doit
+            # porter le besoin le plus exigeant — markdown-control utilisait
+            # historiquement 180 s là où les autres étapes prenaient 120 s.
+            self._vlm_raw = build_async_client(self._settings, timeout=180.0)
             self._vlm = OpenAIVlmClient(
                 self._vlm_raw,
                 self._settings.vlm_model_name,

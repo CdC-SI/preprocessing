@@ -130,8 +130,12 @@ def run(
             raise ConfigError("No steps selected — check --from-step/--to-step/--skip/--only.")
         if no_ocr:
             for step in pipeline.steps:
-                if isinstance(step, ScriptStep) and step.name == "docling-extract":
+                if step.name != "docling-extract":
+                    continue
+                if isinstance(step, ScriptStep):
                     step.extra_args = (*step.extra_args, "--no-ocr")
+                elif hasattr(step, "ocr"):
+                    step.ocr = False
 
         typer.echo(f"{len(pdfs)} PDF(s) — étapes : {', '.join(s.name for s in pipeline.steps)}")
         with ClientBundle(settings) as bundle:

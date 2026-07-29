@@ -48,6 +48,11 @@ class Settings(BaseSettings):
     enable_image_description: bool = Field(
         default=True, validation_alias="ENABLE_IMAGE_DESCRIPTION"
     )
+    # Export des PNG d'images par Docling (lu par docling-extract ; défaut
+    # False comme le script historique — le .env du projet le met à true).
+    enable_image_extraction: bool = Field(
+        default=False, validation_alias="ENABLE_IMAGE_EXTRACTION"
+    )
     gen_id: str = Field(default="", validation_alias="GEN_ID")
     vlm_temperature: float = Field(default=0.0, validation_alias="VLM_TEMPERATURE")
     project_root: Path = Field(
@@ -74,11 +79,19 @@ class Settings(BaseSettings):
             return None
         return value
 
-    @field_validator("enable_image_description", "vlm_temperature", "gen_id", mode="before")
+    @field_validator(
+        "enable_image_description", "enable_image_extraction", "vlm_temperature", "gen_id",
+        mode="before",
+    )
     @classmethod
     def _blank_to_default(cls, value: Any, info: Any) -> Any:
         if isinstance(value, str) and not value.strip():
-            defaults = {"enable_image_description": True, "vlm_temperature": 0.0, "gen_id": ""}
+            defaults = {
+                "enable_image_description": True,
+                "enable_image_extraction": False,
+                "vlm_temperature": 0.0,
+                "gen_id": "",
+            }
             return defaults[info.field_name]
         return value
 

@@ -52,24 +52,11 @@ def _io(name: str) -> tuple[_W, _W]:
     ws = lambda ctx: ctx.workspace  # noqa: E731
 
     table: dict[str, tuple[_W, _W]] = {
-        "docling-extract": (
-            lambda c: [ws(c).source_pdf],
-            lambda c: [ws(c).doctags, ws(c).docling_json, ws(c).text_dump,
-                       ws(c).markdown, ws(c).tables_dir, ws(c).used_images_dir],
-        ),
         "image-description": (
             lambda c: [ws(c).source_pdf, ws(c).reordered_with_tables_doctags,
                        ws(c).used_images_dir],
             lambda c: [ws(c).image_descriptions,
                        ws(c).reordered_with_tables_pictures_doctags],
-        ),
-        "url-tuning": (
-            lambda c: [ws(c).reordered_with_tables_pictures_doctags, ws(c).hyperlinks_jsonl],
-            lambda c: [ws(c).url_vlm_doctags],
-        ),
-        "markdown-control": (
-            lambda c: [ws(c).source_pdf, ws(c).url_vlm_markdown],
-            lambda c: [ws(c).vlm_check_markdown],
         ),
         "metadata-generation": (
             lambda c: [ws(c).final_markdown, ws(c).docling_json],
@@ -91,20 +78,26 @@ def _converted_steps() -> dict[str, Callable[[], PipelineStep]]:
     lourdes, on ne paie que ce qu'on instancie.
     """
     from ..steps.csv_to_jsonlines import CsvToJsonlinesStep
+    from ..steps.docling_extract import DoclingExtractStep
     from ..steps.inject_image_descriptions import InjectImageDescriptionsStep
     from ..steps.load_jsonline_doctags import LoadJsonlineDoctagsStep
+    from ..steps.markdown_control import MarkdownControlStep
     from ..steps.markdown_convert import MarkdownConvertStep
     from ..steps.opencv_check import OpencvCheckStep
     from ..steps.reorder_doctags import ReorderDoctagsStep
     from ..steps.url_extraction import UrlExtractionStep
+    from ..steps.url_tuning import UrlTuningStep
 
     return {
+        "docling-extract": DoclingExtractStep,
         "reorder-doctags": ReorderDoctagsStep,
         "opencv-check": OpencvCheckStep,
         "csv-to-jsonlines": CsvToJsonlinesStep,
         "load-jsonline-doctags": LoadJsonlineDoctagsStep,
         "url-extraction": UrlExtractionStep,
+        "url-tuning": UrlTuningStep,
         "markdown-convert": MarkdownConvertStep,
+        "markdown-control": MarkdownControlStep,
         "inject-image-descriptions": InjectImageDescriptionsStep,
     }
 
