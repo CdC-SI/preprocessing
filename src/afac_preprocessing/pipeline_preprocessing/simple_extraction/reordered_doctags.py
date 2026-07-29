@@ -18,7 +18,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from utils.paths import project_root, resolve_doc_name
+from ...utils.paths import project_root, resolve_doc_name
 
 _log = logging.getLogger(__name__)
 

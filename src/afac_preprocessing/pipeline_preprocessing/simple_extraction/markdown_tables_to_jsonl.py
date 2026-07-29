@@ -34,7 +34,7 @@ from pathlib import Path
 
 import jsonlines
 
-from utils.paths import project_root, resolve_doc_name
+from ...utils.paths import project_root, resolve_doc_name
 
 _log = logging.getLogger(__name__)
 

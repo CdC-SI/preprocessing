@@ -15,11 +15,21 @@ import subprocess
 import sys
 from pathlib import Path
 
-_HERE = Path(__file__).resolve().parent
-_PIPELINE_ROOT = _HERE.parent
-_PROJECT_ROOT = _PIPELINE_ROOT.parent
+def _find_project_root() -> Path:
+    """Remonte jusqu'au dossier contenant pyproject.toml (racine du dépôt).
 
-_FULL_PIPELINE = _HERE / "pipeline_extraction.py"
+    data/ vit à la racine du projet, hors de src/ (lot 1 du refactor).
+    """
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "pyproject.toml").exists():
+            return parent
+    raise SystemExit(f"[ERROR] pyproject.toml introuvable au-dessus de {here}")
+
+
+_PROJECT_ROOT = _find_project_root()
+
+_FULL_PIPELINE_MODULE = "afac_preprocessing.pipeline_preprocessing.orchestrators.pipeline_extraction"
 _INPUT_ROOT = _PROJECT_ROOT / "data" / "input_files"
 
 
@@ -124,7 +134,7 @@ def main() -> None:
         print(f"{'#' * 60}")
 
         cmd = [
-            sys.executable, str(_FULL_PIPELINE),
+            sys.executable, "-m", _FULL_PIPELINE_MODULE,
             "--dotenv", str(dotenv),
             "--input", str(pdf),
             *forward,

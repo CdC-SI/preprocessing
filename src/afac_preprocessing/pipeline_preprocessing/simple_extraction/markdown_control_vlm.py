@@ -31,9 +31,9 @@ if TYPE_CHECKING:
 
 import fitz  # PyMuPDF
 
-from prompts.prompts import VLM_PROMPT_STAGE4_CHECK_PAGE_EN, VLM_PROMPT_STAGE4_CHECK_PAGE_EN_V3
-from utils.paths import project_root, load_env, resolve_doc_name, resolve_input_pdf
-from utils.vlm_client import (
+from ...prompts.prompts import VLM_PROMPT_STAGE4_CHECK_PAGE_EN, VLM_PROMPT_STAGE4_CHECK_PAGE_EN_V3
+from ...utils.paths import project_root, load_env, resolve_doc_name, resolve_input_pdf
+from ...utils.vlm_client import (
     build_async_client,
     build_vlm_config,
     check_vlm_connectivity_async,

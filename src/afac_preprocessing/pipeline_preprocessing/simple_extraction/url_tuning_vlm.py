@@ -23,9 +23,9 @@ from pathlib import Path
 import fitz  # PyMuPDF
 from openai import AsyncOpenAI
 
-from prompts.prompts import VLM_PROMPT_CORRECTION_STAGE_3_EN, VLM_PROMPT_CORRECTION_STAGE_3_EN_V3
-from utils.paths import project_root, load_env, resolve_doc_name, resolve_input_pdf
-from utils.vlm_client import (
+from ...prompts.prompts import VLM_PROMPT_CORRECTION_STAGE_3_EN, VLM_PROMPT_CORRECTION_STAGE_3_EN_V3
+from ...utils.paths import project_root, load_env, resolve_doc_name, resolve_input_pdf
+from ...utils.vlm_client import (
     build_async_client,
     build_vlm_config,
     check_vlm_connectivity_async,

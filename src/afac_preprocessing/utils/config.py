@@ -13,7 +13,9 @@ _log = logging.getLogger(__name__)
 
 
 def load_vlm_config(dotenv_path: Path | None = None):
-    project_root = Path(__file__).resolve().parent.parent
+    from .paths import project_root as _project_root
+
+    project_root = _project_root()
     resolved_path = Path(dotenv_path).resolve() if dotenv_path else project_root / ".env.test"
     if resolved_path.exists():
         load_dotenv(dotenv_path=resolved_path)

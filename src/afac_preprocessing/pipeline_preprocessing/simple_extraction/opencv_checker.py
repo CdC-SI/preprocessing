@@ -18,7 +18,7 @@ import cv2
 import fitz  # PyMuPDF
 import numpy as np
 
-from utils.paths import project_root, load_env, resolve_doc_name, resolve_input_pdf
+from ...utils.paths import project_root, load_env, resolve_doc_name, resolve_input_pdf
 
 _log = logging.getLogger(__name__)
 

@@ -30,30 +30,41 @@ from typing import NamedTuple
 
 class Step(NamedTuple):
     name: str
-    script: Path
+    module: str
 
 
-_HERE = Path(__file__).resolve().parent        # orchestrators/
-_PIPELINE_ROOT = _HERE.parent                  # pipeline_preprocessing/
-_PROJECT_ROOT = _PIPELINE_ROOT.parent          # afac-preprocessing/
-_SIMPLE  = _PIPELINE_ROOT / "simple_extraction"
-_DESCIMG = _PIPELINE_ROOT / "description_image"
-_META    = _PIPELINE_ROOT / "metadata"
+def _find_project_root() -> Path:
+    """Remonte jusqu'au dossier contenant pyproject.toml (racine du dépôt).
+
+    data/ vit à la racine du projet, hors de src/ (lot 1 du refactor).
+    """
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "pyproject.toml").exists():
+            return parent
+    raise SystemExit(f"[ERROR] pyproject.toml introuvable au-dessus de {here}")
+
+
+_PROJECT_ROOT = _find_project_root()
+_PKG = "afac_preprocessing.pipeline_preprocessing"
+_SIMPLE  = f"{_PKG}.simple_extraction"
+_DESCIMG = f"{_PKG}.description_image"
+_META    = f"{_PKG}.metadata"
 
 STEPS: list[Step] = [
-    Step("docling-extract",           _SIMPLE  / "docling_extract.py"),            # 01 — doctags via Docling
-    Step("reorder-doctags",           _SIMPLE  / "reordered_doctags.py"),          # 02 — réordonnement des balises SKIP POSSIBLE
-    Step("opencv-check",              _SIMPLE  / "opencv_checker.py"),             # 03 — QA visuelle only, SKIP POSSIBLE
-    Step("csv-to-jsonlines",          _SIMPLE  / "csv_to_jsonlines.py"),           # 04 — CSV → JSONL
-    Step("load-jsonline-doctags",     _SIMPLE  / "load_jsonline_doctags.py"),      # 05 — chargement doctags enrichi
-    Step("image-description",         _DESCIMG / "description_image_context.py"),  # 06 — descriptions images VLM (slow)
-    Step("url-extraction",            _SIMPLE  / "url_extaction.py"),              # 07 — extraction URL
-    Step("url-tuning",                _SIMPLE  / "url_tuning_vlm.py"),             # 08 — tuning URL via VLM
-    Step("markdown-convert",          _SIMPLE  / "docling_markdown_converter.py"), # 09 — conversion markdown
-    Step("markdown-control",          _SIMPLE  / "markdown_control_vlm.py"),       # 10 — contrôle markdown VLM
-    Step("inject-image-descriptions", _SIMPLE  / "inject_image_descriptions.py"),  # 11 — injection descriptions images → _final.md
-    Step("metadata-generation",       _META    / "metadata_generation.py"),        # 12 — metadata + embedding CSV
-    Step("hyq-embedding",             _META    / "hyq_embedding_doc.py"),          # 13 — embeddings des questions hyq
+    Step("docling-extract",           f"{_SIMPLE}.docling_extract"),            # 01 — doctags via Docling
+    Step("reorder-doctags",           f"{_SIMPLE}.reordered_doctags"),          # 02 — réordonnement des balises SKIP POSSIBLE
+    Step("opencv-check",              f"{_SIMPLE}.opencv_checker"),             # 03 — QA visuelle only, SKIP POSSIBLE
+    Step("csv-to-jsonlines",          f"{_SIMPLE}.csv_to_jsonlines"),           # 04 — CSV → JSONL
+    Step("load-jsonline-doctags",     f"{_SIMPLE}.load_jsonline_doctags"),      # 05 — chargement doctags enrichi
+    Step("image-description",         f"{_DESCIMG}.description_image_context"), # 06 — descriptions images VLM (slow)
+    Step("url-extraction",            f"{_SIMPLE}.url_extaction"),              # 07 — extraction URL
+    Step("url-tuning",                f"{_SIMPLE}.url_tuning_vlm"),             # 08 — tuning URL via VLM
+    Step("markdown-convert",          f"{_SIMPLE}.docling_markdown_converter"), # 09 — conversion markdown
+    Step("markdown-control",          f"{_SIMPLE}.markdown_control_vlm"),       # 10 — contrôle markdown VLM
+    Step("inject-image-descriptions", f"{_SIMPLE}.inject_image_descriptions"),  # 11 — injection descriptions images → _final.md
+    Step("metadata-generation",       f"{_META}.metadata_generation"),          # 12 — metadata + embedding CSV
+    Step("hyq-embedding",             f"{_META}.hyq_embedding_doc"),            # 13 — embeddings des questions hyq
 ]
 
 _N = len(STEPS)
@@ -77,7 +88,7 @@ def _print_steps_table() -> None:
     print(f"{'#':>2}  {'Name':<26} Script")
     for i, step in enumerate(STEPS, start=1):
         note = "  (skipped by default — see --with-opencv-check)" if step.name == _OPENCV_CHECK_STEP else ""
-        print(f"{i:02d}  {step.name:<26} {step.script.name}{note}")
+        print(f"{i:02d}  {step.name:<26} {step.module.rsplit('.', 1)[-1]}{note}")
 
 
 def parse_args() -> argparse.Namespace:
@@ -170,17 +181,18 @@ def parse_args() -> argparse.Namespace:
 
 
 def _run_step(step_num: int, step: Step, dotenv: Path, extra_args: list[str] | None = None) -> int:
+    module_short = step.module.rsplit(".", 1)[-1]
     print(f"\n{'=' * 60}")
-    print(f"  Step {step_num:02d}/{_N:02d} — {step.name} ({step.script.name})")
+    print(f"  Step {step_num:02d}/{_N:02d} — {step.name} ({module_short})")
     print(f"{'=' * 60}")
     result = subprocess.run(
-        [sys.executable, str(step.script), "--dotenv", str(dotenv), *(extra_args or [])],
+        [sys.executable, "-m", step.module, "--dotenv", str(dotenv), *(extra_args or [])],
         stdout=sys.stdout,
         stderr=sys.stderr,
         text=True,
     )
     if result.returncode != 0:
-        print(f"\n[FAILED] {step.name} ({step.script.name}) exited with code {result.returncode}")
+        print(f"\n[FAILED] {step.name} ({module_short}) exited with code {result.returncode}")
     return result.returncode
 
 

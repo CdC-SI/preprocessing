@@ -15,15 +15,22 @@ _log = logging.getLogger(__name__)
 
 
 def project_root() -> Path:
-    """Return the afac-preprocessing project root (the directory that contains pyproject.toml).
+    """Return the project root (the directory that contains pyproject.toml).
 
     Respects the PROJECT_ROOT env variable so Tekton/container deployments can
     override the auto-detected path without rebuilding the image.
+
+    data/ vit à la racine du dépôt, hors de src/ (lot 1 du refactor) — on
+    remonte donc jusqu'au dossier qui contient pyproject.toml au lieu de
+    déduire la racine de l'emplacement du package.
     """
     if "PROJECT_ROOT" in os.environ:
         return Path(os.environ["PROJECT_ROOT"]).resolve()
-    # utils/paths.py lives at <root>/utils/paths.py — two levels up = <root>
-    return Path(__file__).resolve().parent.parent
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "pyproject.toml").exists():
+            return parent
+    raise SystemExit(f"Error: pyproject.toml not found above {here}")
 
 
 def load_env(dotenv_path: Path) -> None:

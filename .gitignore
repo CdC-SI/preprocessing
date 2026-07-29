@@ -1,6 +1,3 @@
-# Virtual environment and secrets example of nomenclature
-.env.example
-
 # Virtual environment and secrets production
 .env
 
@@ -8,40 +5,41 @@
 .env.test
 
 # Virtual environnemt for preprocessing pipeline/baseline pipeline
-.venv 
+.venv
 
 # Python cache files remove
 *.pyc
 
 # Removing all sources of data files, except for the input/output/evaluation directories and their .gitkeep files
-src/afac-preprocessing/data/**
+# ⚠ data/ vit à la racine du dépôt, HORS de src/ (lot 1 du refactor)
+data/**
 
-!src/afac-preprocessing/data/input_files/
-!src/afac-preprocessing/data/input_files/.gitkeep
+!data/input_files/
+!data/input_files/.gitkeep
 
-!src/afac-preprocessing/data/output_files_baseline/
-!src/afac-preprocessing/data/output_files_baseline/.gitkeep
+!data/output_files_baseline/
+!data/output_files_baseline/.gitkeep
 
-!src/afac-preprocessing/data/output_files_preprocessing/
-!src/afac-preprocessing/data/output_files_preprocessing/.gitkeep
+!data/output_files_preprocessing/
+!data/output_files_preprocessing/.gitkeep
 
-!src/afac-preprocessing/data/evaluation_results/
-!src/afac-preprocessing/data/evaluation_results/.gitkeep
+!data/pipeline_evaluation/
+!data/pipeline_evaluation/.gitkeep
 
 # Not showing those repo repo (local test)
-src/afac-preprocessing/graph_url/
+src/afac_preprocessing/graph_url/
 graphify-out
 
 # KG export, control not sensitive data published
-src/afac-preprocessing/neo4j_graphrag_ontology/examples
-src/afac-preprocessing/neo4j_graphrag_ontology/export/
-src/afac-preprocessing/pipeline_preprocessing/docling_image_png
-src/afac-preprocessing/neo4j_graphrag_ontology/extraction_concepts/output
-src/afac-preprocessing/neo4j_graphrag_ontology/trash
-src/afac-preprocessing/neo4j_graphrag_ontology/extraction_concepts/qa_runs
+src/afac_preprocessing/neo4j_graphrag_ontology/examples
+src/afac_preprocessing/neo4j_graphrag_ontology/export/
+src/afac_preprocessing/pipeline_preprocessing/docling_image_png
+src/afac_preprocessing/neo4j_graphrag_ontology/extraction_concepts/output
+src/afac_preprocessing/neo4j_graphrag_ontology/trash
+src/afac_preprocessing/neo4j_graphrag_ontology/extraction_concepts/qa_runs
 
 # Others
-src/afac-preprocessing/neo4j_graphrag_ontology/PLAN_retrieval_scoring_reranking.md
+src/afac_preprocessing/neo4j_graphrag_ontology/PLAN_retrieval_scoring_reranking.md
 NOTES_NOTEBOOKS_JUPYTER.md
 PLAN_REFACTOR_OOP.md
 tests/reference/

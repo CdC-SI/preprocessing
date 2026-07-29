@@ -63,7 +63,7 @@ def _to_base_url(raw_url: str) -> str:
 
 def build_vlm_config(dotenv_path: Path | None = None) -> VlmConfig:
     """Builds the configuration from the environment (lazy import, see utils.config)."""
-    from utils.config import load_vlm_config
+    from .config import load_vlm_config
     cfg = load_vlm_config(dotenv_path=dotenv_path)
     return VlmConfig(
         ca_path=cfg["CA_PATH"],

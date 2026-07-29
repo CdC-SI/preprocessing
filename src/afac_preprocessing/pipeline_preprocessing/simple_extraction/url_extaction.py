@@ -18,7 +18,7 @@ from pathlib import Path
 import fitz  # PyMuPDF
 import jsonlines
 
-from utils.paths import project_root, resolve_doc_name, resolve_input_pdf
+from ...utils.paths import project_root, resolve_doc_name, resolve_input_pdf
 
 _log = logging.getLogger(__name__)
 

@@ -16,7 +16,7 @@ from pathlib import Path
 import jsonlines
 import pandas as pd
 
-from utils.paths import project_root, resolve_doc_name
+from ...utils.paths import project_root, resolve_doc_name
 
 _log = logging.getLogger(__name__)
 

@@ -24,15 +24,15 @@ from pathlib import Path
 from openai import OpenAI
 from pydantic import BaseModel
 
-from prompts.metadata_prompts import (
+from ...prompts.metadata_prompts import (
     HYQ_PROMPT,
     INTENT_PROMPT_1,
     INTENT_PROMPT_2,
     INTENT_PROMPT_3,
     RESUME_PROMPT,
 )
-from utils.paths import project_root, resolve_doc_name
-from utils.vlm_client import build_sync_client, build_vlm_config, text_completion_structured
+from ...utils.paths import project_root, resolve_doc_name
+from ...utils.vlm_client import build_sync_client, build_vlm_config, text_completion_structured
 
 DEFAULT_OUTPUT_FILES = project_root() / "data" / "output_files_preprocessing"
 DEFAULT_MARKDOWN_DIR = DEFAULT_OUTPUT_FILES

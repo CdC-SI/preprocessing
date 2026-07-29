@@ -60,9 +60,9 @@ from pathlib import Path
 
 import fitz  # PyMuPDF
 
-from enhancement_metadata import run_enhancement
-from embedding_metadata import run_embedding
-from utils.paths import project_root, resolve_doc_name
+from .enhancement_metadata import run_enhancement
+from .embedding_metadata import run_embedding
+from ...utils.paths import project_root, resolve_doc_name
 
 # Root — data/input_files/ contient déjà la hiérarchie <source>/<thème>/[<sous-thème>/]<fichier>.pdf
 # utilisée pour l'extraction (cf. resolve_input_pdf) ; on la réutilise directement pour la

@@ -21,7 +21,7 @@ from pathlib import Path
 
 from docling_core.types.doc.document import DocTagsDocument, DoclingDocument
 
-from utils.paths import project_root, load_env, resolve_doc_name
+from ...utils.paths import project_root, load_env, resolve_doc_name
 
 _log = logging.getLogger(__name__)
 
@@ -120,7 +120,7 @@ def convert_doctags_to_markdown(doctags_path: Path) -> str:
     :return: final Markdown content with page separators
     :rtype: str
     """
-    from utils.markdown_utils import apply_markdown_transforms
+    from ...utils.markdown_utils import apply_markdown_transforms
 
     content = doctags_path.read_text(encoding="utf-8")
     content = _split_pages(content)

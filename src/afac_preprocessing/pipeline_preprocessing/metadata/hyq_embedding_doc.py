@@ -28,8 +28,8 @@ from pathlib import Path
 
 from openai import OpenAI
 
-from utils.paths import project_root, resolve_doc_name
-from utils.vlm_client import (
+from ...utils.paths import project_root, resolve_doc_name
+from ...utils.vlm_client import (
     build_embedding_client,
     build_vlm_config,
     embedding_to_string,

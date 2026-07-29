@@ -12,9 +12,9 @@ from typing import TypedDict
 import fitz  # PyMuPDF
 from openai import OpenAI
 
-from prompts.prompts import WIKI_PROMPT_TEMPLATE
-from utils.paths import project_root, resolve_input_pdf
-from utils.vlm_client import (
+from ...prompts.prompts import WIKI_PROMPT_TEMPLATE
+from ...utils.paths import project_root, resolve_input_pdf
+from ...utils.vlm_client import (
     build_sync_client,
     build_vlm_config,
     check_vlm_connectivity,

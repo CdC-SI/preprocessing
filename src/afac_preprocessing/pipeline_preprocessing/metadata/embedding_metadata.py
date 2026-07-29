@@ -20,8 +20,8 @@ from pathlib import Path
 
 from openai import OpenAI
 
-from utils.paths import project_root, resolve_doc_name
-from utils.vlm_client import build_embedding_client, build_vlm_config, embedding_to_string, get_embedding
+from ...utils.paths import project_root, resolve_doc_name
+from ...utils.vlm_client import build_embedding_client, build_vlm_config, embedding_to_string, get_embedding
 
 DEFAULT_OUTPUT_FILES = project_root() / "data" / "output_files_preprocessing"
 DEFAULT_MARKDOWN_DIR = DEFAULT_OUTPUT_FILES

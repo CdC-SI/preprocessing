@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from utils.paths import project_root, resolve_doc_name, resolve_input_pdf
+from ...utils.paths import project_root, resolve_doc_name, resolve_input_pdf
 from docling.datamodel.accelerator_options import AcceleratorDevice, AcceleratorOptions
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.pipeline_options import (
