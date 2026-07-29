@@ -1,24 +1,26 @@
-"""
-reordered_doctags.py — Reordering of blocks in a .doctags file by y0/x0 coordinates.
+"""Étape reorder-doctags — réordonnancement des blocs d'un .doctags par y0/x0.
+
+Conversion du script ``simple_extraction/reordered_doctags.py`` (vague B).
+Toutes les fonctions métier sont DÉPLACÉES telles quelles (invariant n°1).
 
 Docling can extract blocks in an incorrect order when y0 coordinates are
-similar or missing. This script re-sorts them by vertical position (y0) then
-horizontal position (x0), page by page, before the downstream VLM steps.
-
-Runs after docling_extract.py (which produces the source .doctags).
-
-Usage:
-    uv run python reordered_doctags.py --input data/output_files_preprocessing/MonDoc/MonDoc.doctags
-    uv run python reordered_doctags.py --dotenv .env.test
+similar or missing. Re-sorts them by vertical position (y0) then horizontal
+position (x0), page by page, before the downstream VLM steps.
 """
-import argparse
+
+from __future__ import annotations
+
 import logging
 import re
-import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from ...utils.paths import project_root, resolve_doc_name
+from ..core.step import PipelineStep, StepResult, StepStatus
+from ..exceptions import StepFailed
+
+if TYPE_CHECKING:
+    from ..context import PipelineContext
 
 _log = logging.getLogger(__name__)
 
@@ -37,7 +39,7 @@ class Block:
     is_list_item: bool = False
 
 
-# Business logic (pure functions)
+# Business logic (pure functions) — déplacées telles quelles
 def extract_xy0(s: str) -> tuple[int | None, int | None]:
     """
     Extract (x0, y0) from the first <loc_x0><loc_y0> pair found in s.
@@ -296,119 +298,29 @@ def reorder_doctags(input_path: Path, output_path: Path) -> None:
     _log.info("Doctags reordered (%d page(s)): %s", len(pages), output_path)
 
 
-# CLI
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description=(
-            "Reorders the blocks of a .doctags file by y0/x0 coordinates (page by page). "
-            "Run after docling_extract.py."
-        ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=(
-            "Examples:\n"
-            "  uv run python reordered_doctags.py "
-            "--input data/output_files_preprocessing/MonDoc/MonDoc.doctags\n"
-            "  uv run python reordered_doctags.py "
-            "--input data/output_files_preprocessing/MonDoc/MonDoc.doctags "
-            "--output data/output_files_preprocessing/MonDoc/MonDoc_reordered.doctags\n"
-            "  uv run python reordered_doctags.py --dotenv .env.test\n"
-        ),
-    )
-    parser.add_argument(
-        "--input", "-i",
-        type=Path,
-        default=None,
-        help=(
-            "Path to the source .doctags file. "
-            "If omitted, resolves data/output_files_preprocessing/<DOC_NAME>/<DOC_NAME>.doctags from the environment."
-        ),
-    )
-    parser.add_argument(
-        "--output", "-o",
-        type=Path,
-        default=None,
-        help=(
-            "Path to the reordered output .doctags file. "
-            "Default: same folder as --input, with the suffix _reordered added to the name."
-        ),
-    )
-    parser.add_argument(
-        "--dotenv",
-        type=Path,
-        default=None,
-        metavar="FILE",
-        help="Path to a .env file to load in order to resolve DOC_NAME (e.g., .env.test). Ignored if --input is provided.",
-    )
-    return parser.parse_args()
+class ReorderDoctagsStep(PipelineStep):
+    """Réordonne les blocs du .doctags par position (y0 puis x0), page par page."""
 
+    name = "reorder-doctags"
+    description = "Réordonnancement des balises doctags"
+    requires_vlm = False
 
-# Path resolution
-def resolve_input(args: argparse.Namespace) -> Path:
-    """
-    Resolves the path to the source .doctags file.
+    def inputs(self, ctx: "PipelineContext") -> list[Path]:
+        return [ctx.workspace.doctags]
 
-    Uses args.input if provided; otherwise resolves it from DOC_NAME in the
-    environment, under data/output_files_preprocessing/<DOC_NAME>/<DOC_NAME>.doctags.
+    def outputs(self, ctx: "PipelineContext") -> list[Path]:
+        return [ctx.workspace.reordered_doctags]
 
-    :param args: Parsed CLI arguments (namespace produced by parse_args()).
-    :type args: argparse.Namespace
-    :return: The resolved absolute path to the source .doctags file.
-    :rtype: Path
-    """
-    if args.input:
-        return args.input.resolve()
-    doc_name = resolve_doc_name(args, primary_flag="--input")
-    return project_root() / "data" / "output_files_preprocessing" / doc_name / f"{doc_name}.doctags"
+    def execute(self, ctx: "PipelineContext") -> StepResult:
+        input_path = ctx.workspace.doctags
+        output_path = ctx.workspace.reordered_doctags
+        output_path.parent.mkdir(parents=True, exist_ok=True)
 
-
-def resolve_output(args: argparse.Namespace, input_path: Path) -> Path:
-    """
-    Resolves the path to the output .doctags file.
-
-    Uses args.output if provided; otherwise derives it from input_path by
-    appending the _reordered suffix to the file stem, in the same parent folder.
-
-    :param args: Parsed CLI arguments (namespace produced by parse_args()).
-    :type args: argparse.Namespace
-    :param input_path: The resolved path to the source .doctags file.
-    :type input_path: Path
-    :return: The resolved path to the output .doctags file.
-    :rtype: Path
-    """
-    if args.output:
-        return args.output.resolve()
-    return input_path.parent / f"{input_path.stem}_reordered.doctags"
-
-
-# Entry point
-def main() -> None:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(message)s",
-        datefmt="%H:%M:%S",
-    )
-
-    args = parse_args()
-
-    input_path = resolve_input(args)
-    if not input_path.exists():
-        raise SystemExit(f"Error: .doctags file not found — {input_path}")
-
-    output_path = resolve_output(args, input_path)
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    _log.info("Input : %s", input_path)
-    _log.info("Output: %s", output_path)
-
-    try:
-        reorder_doctags(input_path, output_path)
-    except Exception:
-        _log.exception("Error while reordering %s", input_path.name)
-        sys.exit(1)
-
-    sys.exit(0)
-
-
-if __name__ == "__main__":
-    main()
+        _log.info("Input : %s", input_path)
+        _log.info("Output: %s", output_path)
+        try:
+            reorder_doctags(input_path, output_path)
+        except Exception as exc:
+            _log.exception("Error while reordering %s", input_path.name)
+            raise StepFailed(f"reorder-doctags failed on {input_path.name}: {exc}") from exc
+        return StepResult(StepStatus.OK, outputs=self.outputs(ctx))

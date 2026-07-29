@@ -46,56 +46,30 @@ _W = Callable[["PipelineContext"], list[Path]]
 
 
 def _io(name: str) -> tuple[_W, _W]:
-    """(inputs_fn, outputs_fn) d'une étape — chaînage relevé sur le disque."""
+    """(inputs_fn, outputs_fn) des étapes encore en ScriptStep — chaînage
+    relevé sur le disque. Les étapes converties déclarent leur I/O dans leur
+    classe ; leurs entrées disparaissent d'ici à la conversion (lot 6)."""
     ws = lambda ctx: ctx.workspace  # noqa: E731
 
     table: dict[str, tuple[_W, _W]] = {
         "docling-extract": (
             lambda c: [ws(c).source_pdf],
             lambda c: [ws(c).doctags, ws(c).docling_json, ws(c).text_dump,
-                       ws(c).tables_dir, ws(c).used_images_dir],
-        ),
-        "reorder-doctags": (
-            lambda c: [ws(c).doctags],
-            lambda c: [ws(c).reordered_doctags],
-        ),
-        "opencv-check": (
-            lambda c: [ws(c).source_pdf, ws(c).doctags],
-            lambda c: [],
-        ),
-        "csv-to-jsonlines": (
-            lambda c: [ws(c).tables_dir],
-            lambda c: [ws(c).tables_dir],
-        ),
-        "load-jsonline-doctags": (
-            lambda c: [ws(c).reordered_doctags, ws(c).tables_dir],
-            lambda c: [ws(c).reordered_with_tables_doctags,
-                       ws(c).reordered_with_tables_pictures_doctags],
+                       ws(c).markdown, ws(c).tables_dir, ws(c).used_images_dir],
         ),
         "image-description": (
             lambda c: [ws(c).source_pdf, ws(c).reordered_with_tables_doctags,
                        ws(c).used_images_dir],
-            lambda c: [ws(c).image_descriptions],
-        ),
-        "url-extraction": (
-            lambda c: [ws(c).source_pdf],
-            lambda c: [ws(c).hyperlinks_jsonl],
+            lambda c: [ws(c).image_descriptions,
+                       ws(c).reordered_with_tables_pictures_doctags],
         ),
         "url-tuning": (
             lambda c: [ws(c).reordered_with_tables_pictures_doctags, ws(c).hyperlinks_jsonl],
             lambda c: [ws(c).url_vlm_doctags],
         ),
-        "markdown-convert": (
-            lambda c: [ws(c).url_vlm_doctags],
-            lambda c: [ws(c).markdown, ws(c).url_vlm_markdown],
-        ),
         "markdown-control": (
             lambda c: [ws(c).source_pdf, ws(c).url_vlm_markdown],
             lambda c: [ws(c).vlm_check_markdown],
-        ),
-        "inject-image-descriptions": (
-            lambda c: [ws(c).vlm_check_markdown, ws(c).image_descriptions],
-            lambda c: [ws(c).final_markdown],
         ),
         "metadata-generation": (
             lambda c: [ws(c).final_markdown, ws(c).docling_json],
@@ -117,9 +91,21 @@ def _converted_steps() -> dict[str, Callable[[], PipelineStep]]:
     lourdes, on ne paie que ce qu'on instancie.
     """
     from ..steps.csv_to_jsonlines import CsvToJsonlinesStep
+    from ..steps.inject_image_descriptions import InjectImageDescriptionsStep
+    from ..steps.load_jsonline_doctags import LoadJsonlineDoctagsStep
+    from ..steps.markdown_convert import MarkdownConvertStep
+    from ..steps.opencv_check import OpencvCheckStep
+    from ..steps.reorder_doctags import ReorderDoctagsStep
+    from ..steps.url_extraction import UrlExtractionStep
 
     return {
+        "reorder-doctags": ReorderDoctagsStep,
+        "opencv-check": OpencvCheckStep,
         "csv-to-jsonlines": CsvToJsonlinesStep,
+        "load-jsonline-doctags": LoadJsonlineDoctagsStep,
+        "url-extraction": UrlExtractionStep,
+        "markdown-convert": MarkdownConvertStep,
+        "inject-image-descriptions": InjectImageDescriptionsStep,
     }
 
 

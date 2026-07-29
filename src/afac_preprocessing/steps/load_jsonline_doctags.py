@@ -1,32 +1,30 @@
-"""
-load_jsonline_doctags_modulaire.py — Injection des tables JSONL dans un fichier .doctags.
+"""Étape load-jsonline-doctags — injection des tables JSONL dans le .doctags.
+
+Conversion du script ``simple_extraction/load_jsonline_doctags.py`` (vague B).
+Fonctions métier DÉPLACÉES telles quelles (invariant n°1).
 
 Remplace chaque balise <otsl>…</otsl> du .doctags par un bloc <text> contenant
-le contenu JSONL de la table correspondante (ordre d'apparition = ordre de tri des fichiers).
-
-Se lance après :
-  - reordered_doctags.py   → produit <DOC_NAME>_reordered.doctags
-  - csv_to_jsonlines_modulaire.py → produit les .jsonl dans tables/
-
-Usage :
-    uv run python load_jsonline_doctags_modulaire.py \\
-        --doctags  data/output_files_preprocessing/MonDoc/MonDoc_reordered.doctags \\
-        --tables-dir data/output_files_preprocessing/MonDoc/tables
-    uv run python load_jsonline_doctags_modulaire.py --dotenv .env.test
+le contenu JSONL de la table correspondante (matching par coordonnées).
 """
-import argparse
+
+from __future__ import annotations
+
 import json
 import logging
 import re
-import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from ...utils.paths import project_root, resolve_doc_name
+from ..core.step import PipelineStep, StepResult, StepStatus
+from ..exceptions import StepFailed
+
+if TYPE_CHECKING:
+    from ..context import PipelineContext
 
 _log = logging.getLogger(__name__)
 
 
-# Logique métier (fonctions pures)
+# Logique métier (fonctions pures) — déplacées telles quelles
 def load_jsonl_rows(jsonl_path: Path) -> list[dict]:
     """Charge toutes les lignes d'un fichier JSONL et les retourne comme liste de dicts."""
     rows = []
@@ -186,116 +184,55 @@ def replace_otsl_with_jsonl(
     return n_replaced
 
 
-# CLI
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description=(
-            "Injecte les tables JSONL dans un .doctags en remplaçant les balises <otsl>. "
-            "À lancer après reordered_doctags.py et csv_to_jsonlines_modulaire.py."
-        ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=(
-            "Exemples :\n"
-            "  uv run python load_jsonline_doctags_modulaire.py \\\n"
-            "      --doctags  data/output_files_preprocessing/MonDoc/MonDoc_reordered.doctags \\\n"
-            "      --tables-dir data/output_files_preprocessing/MonDoc/tables\n"
-            "  uv run python load_jsonline_doctags_modulaire.py --dotenv .env.test\n"
-        ),
-    )
-    parser.add_argument(
-        "--doctags", "-d",
-        type=Path,
-        default=None,
-        help=(
-            "Fichier .doctags source (produit par reordered_doctags.py). "
-            "Si absent, résout data/output_files_preprocessing/<DOC_NAME>/<DOC_NAME>_reordered.doctags."
-        ),
-    )
-    parser.add_argument(
-        "--tables-dir", "-t",
-        type=Path,
-        default=None,
-        help=(
-            "Dossier contenant les fichiers .jsonl (produits par csv_to_jsonlines_modulaire.py). "
-            "Si absent, résout data/output_files_preprocessing/<DOC_NAME>/tables."
-        ),
-    )
-    parser.add_argument(
-        "--output", "-o",
-        type=Path,
-        default=None,
-        help=(
-            "Fichier .doctags enrichi en sortie. "
-            "Défaut : même dossier que --doctags, suffixe _with_tables ajouté au nom."
-        ),
-    )
-    parser.add_argument(
-        "--dotenv",
-        type=Path,
-        default=None,
-        metavar="FICHIER",
-        help="Fichier .env à charger pour résoudre DOC_NAME (ex. : .env.test). Ignoré si --doctags est fourni.",
-    )
-    return parser.parse_args()
+class LoadJsonlineDoctagsStep(PipelineStep):
+    """Injecte les tables JSONL dans le doctags réordonné (<otsl> → <text>)."""
 
+    name = "load-jsonline-doctags"
+    description = "Doctags enrichis des tables (et images)"
+    requires_vlm = False
 
-def resolve_doctags(args: argparse.Namespace) -> Path:
-    if args.doctags:
-        return args.doctags.resolve()
-    doc_name = resolve_doc_name(args, primary_flag="--doctags")
-    return project_root() / "data" / "output_files_preprocessing" / doc_name / f"{doc_name}_reordered.doctags"
+    def inputs(self, ctx: "PipelineContext") -> list[Path]:
+        return [ctx.workspace.reordered_doctags, ctx.workspace.tables_dir]
 
+    def outputs(self, ctx: "PipelineContext") -> list[Path]:
+        return [ctx.workspace.reordered_with_tables_doctags]
 
-def resolve_tables_dir(args: argparse.Namespace, doctags_path: Path) -> Path:
-    if args.tables_dir:
-        return args.tables_dir.resolve()
-    # Dérive depuis le dossier parent du doctags (structure standard)
-    return doctags_path.parent / "tables"
+    def validate_inputs(self, ctx: "PipelineContext") -> None:
+        """Seul le doctags est requis : un dossier tables/ absent était un
+        passthrough (copie sans modification, exit 0) — comportement conservé."""
+        from ..exceptions import StepInputMissing
 
+        if not ctx.workspace.reordered_doctags.exists():
+            raise StepInputMissing(
+                f"Step '{self.name}': missing input(s): {ctx.workspace.reordered_doctags}"
+            )
 
-def resolve_output(args: argparse.Namespace, doctags_path: Path) -> Path:
-    if args.output:
-        return args.output.resolve()
-    return doctags_path.parent / f"{doctags_path.stem}_with_tables.doctags"
+    def execute(self, ctx: "PipelineContext") -> StepResult:
+        doctags_path = ctx.workspace.reordered_doctags
+        tables_dir = ctx.workspace.tables_dir
+        output_path = ctx.workspace.reordered_with_tables_doctags
+        output_path.parent.mkdir(parents=True, exist_ok=True)
 
+        _log.info("Doctags source  : %s", doctags_path)
+        _log.info("Dossier tables  : %s", tables_dir)
+        _log.info("Sortie          : %s", output_path)
 
-# Point d'entrée
-def main() -> None:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(message)s",
-        datefmt="%H:%M:%S",
-    )
+        if not tables_dir.exists():
+            _log.warning(
+                "Dossier tables introuvable (%s) — fichier copié sans modification.", tables_dir
+            )
+            output_path.write_text(doctags_path.read_text(encoding="utf-8"), encoding="utf-8")
+            return StepResult(StepStatus.OK, outputs=self.outputs(ctx), message="passthrough")
 
-    args = parse_args()
+        try:
+            n = replace_otsl_with_jsonl(doctags_path, tables_dir, output_path)
+        except Exception as exc:
+            _log.exception("Erreur lors de l'injection des tables dans %s", doctags_path.name)
+            raise StepFailed(
+                f"load-jsonline-doctags failed on {doctags_path.name}: {exc}"
+            ) from exc
 
-    doctags_path = resolve_doctags(args)
-    if not doctags_path.exists():
-        raise SystemExit(f"Erreur : fichier .doctags introuvable — {doctags_path}")
-
-    tables_dir = resolve_tables_dir(args, doctags_path)
-    output_path = resolve_output(args, doctags_path)
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    _log.info("Doctags source  : %s", doctags_path)
-    _log.info("Dossier tables  : %s", tables_dir)
-    _log.info("Sortie          : %s", output_path)
-
-    if not tables_dir.exists():
-        _log.warning("Dossier tables introuvable (%s) — fichier copié sans modification.", tables_dir)
-        output_path.write_text(doctags_path.read_text(encoding="utf-8"), encoding="utf-8")
-        sys.exit(0)
-
-    try:
-        n = replace_otsl_with_jsonl(doctags_path, tables_dir, output_path)
-    except Exception:
-        _log.exception("Erreur lors de l'injection des tables dans %s", doctags_path.name)
-        sys.exit(1)
-
-    _log.info("Terminé — %d remplacement(s) <otsl> effectué(s).", n)
-    sys.exit(0)
-
-
-if __name__ == "__main__":
-    main()
+        _log.info("Terminé — %d remplacement(s) <otsl> effectué(s).", n)
+        return StepResult(
+            StepStatus.OK, outputs=self.outputs(ctx), message=f"{n} remplacement(s)"
+        )

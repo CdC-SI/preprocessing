@@ -1,36 +1,34 @@
-"""
-Step 11 - Inject image descriptions into the final Markdown.
-Script: inject_image_descriptions.py
+"""Étape inject-image-descriptions — injection des descriptions VLM dans le
+Markdown final.
+
+Conversion du script ``simple_extraction/inject_image_descriptions.py``
+(vague B). Fonctions métier DÉPLACÉES telles quelles (invariant n°1).
 
 Replaces the [[[IMAGE_DESC:N]]] markers left by description_image_context.py
-with the VLM descriptions from the _image_descriptions.md file.
-
-Descriptions are injected AFTER markdown_control_vlm.py (step 10), guaranteeing
-they cannot be dropped by earlier VLM steps.
-
-Usage:
-    uv run python inject_image_descriptions.py --input data/input_files/MonDoc.pdf
-    uv run python inject_image_descriptions.py --dotenv .env.test
-    uv run python inject_image_descriptions.py \\
-        --markdown data/output_files_preprocessing/MonDoc/MonDoc_vlm_check.md \\
-        --descriptions data/output_files_preprocessing/MonDoc/MonDoc_image_descriptions.md \\
-        --output data/output_files_preprocessing/MonDoc/MonDoc_final.md
+with the VLM descriptions from the _image_descriptions.md file. Descriptions
+are injected AFTER markdown_control_vlm.py (step 10), guaranteeing they cannot
+be dropped by earlier VLM steps.
 """
+
 from __future__ import annotations
 
-import argparse
 import logging
 import re
-import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from ...utils.paths import project_root, load_env, resolve_doc_name
+from ..core.step import PipelineStep, StepResult, StepStatus
+from ..exceptions import StepFailed
+
+if TYPE_CHECKING:
+    from ..context import PipelineContext
 
 _log = logging.getLogger(__name__)
 
 PLACEHOLDER_RE = re.compile(r"\[\[\[IMAGE(?:\\)?_DESC:(\d+)\]\]\]")
 
 
+# Fonctions métier — déplacées telles quelles
 def parse_image_descriptions_md(descriptions_path: Path) -> dict[int, str]:
     """
     Parse the _image_descriptions.md file and return {index: description}.
@@ -108,9 +106,12 @@ def inject_descriptions(markdown_content: str, descriptions: dict[int, str]) -> 
     return "".join(result), injected, missing
 
 
-def run(markdown_path: Path, descriptions_path: Path, output_path: Path) -> None:
+def run_injection(markdown_path: Path, descriptions_path: Path, output_path: Path) -> None:
     """
     Inject the descriptions into the Markdown and save the result.
+
+    (Corps du ``run()`` historique, renommé pour ne pas masquer
+    ``PipelineStep.run`` — comportement inchangé.)
 
     :param markdown_path: Markdown file to process
     :type markdown_path: Path
@@ -179,115 +180,29 @@ def run(markdown_path: Path, descriptions_path: Path, output_path: Path) -> None
         )
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description=(
-            "Injects VLM descriptions into the final Markdown, replacing the "
-            "[[[IMAGE_DESC:N]]] markers. "
-            "Run after markdown_control_vlm.py (step 10)."
-        ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=(
-            "Examples:\n"
-            "  uv run python inject_image_descriptions.py --input data/input_files/MonDoc.pdf\n"
-            "  uv run python inject_image_descriptions.py --dotenv .env.test\n"
-            "  uv run python inject_image_descriptions.py \\\n"
-            "      --markdown  data/output_files_preprocessing/MonDoc/MonDoc_vlm_check.md \\\n"
-            "      --descriptions data/output_files_preprocessing/MonDoc/MonDoc_image_descriptions.md \\\n"
-            "      --output data/output_files_preprocessing/MonDoc/MonDoc_final.md\n"
-        ),
-    )
-    parser.add_argument(
-        "--input", "-i",
-        type=Path,
-        default=None,
-        help="Path to the source PDF (used to resolve the document stem).",
-    )
-    parser.add_argument(
-        "--markdown", "-m",
-        type=Path,
-        default=None,
-        help="Markdown to process. Default: data/output_files_preprocessing/<stem>/<stem>_vlm_check.md",
-    )
-    parser.add_argument(
-        "--descriptions", "-d",
-        type=Path,
-        default=None,
-        help="_image_descriptions.md file. Default: data/output_files_preprocessing/<stem>/<stem>_image_descriptions.md",
-    )
-    parser.add_argument(
-        "--output", "-o",
-        type=Path,
-        default=None,
-        help="Output markdown. Default: data/output_files_preprocessing/<stem>/<stem>_final.md",
-    )
-    parser.add_argument(
-        "--dotenv",
-        type=Path,
-        default=None,
-        metavar="FILE",
-        help="Path to the .env file to resolve DOC_NAME.",
-    )
-    parser.add_argument(
-        "--log-level",
-        default="INFO",
-        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        help="Logging level. Default: INFO.",
-    )
-    return parser.parse_args()
+class InjectImageDescriptionsStep(PipelineStep):
+    """Remplace les marqueurs [[[IMAGE_DESC:N]]] du _vlm_check.md → _final.md."""
 
+    name = "inject-image-descriptions"
+    description = "Injection des descriptions d'images → _final.md"
+    requires_vlm = False
 
-def _resolve_stem(args: argparse.Namespace) -> str:
-    if args.input:
-        return args.input.resolve().stem.strip()
-    return resolve_doc_name(args, primary_flag="--input")
+    def inputs(self, ctx: "PipelineContext") -> list[Path]:
+        # _image_descriptions.md est volontairement absent des entrées
+        # déclarées : son absence est un cas nominal (0 image / désactivé).
+        return [ctx.workspace.vlm_check_markdown]
 
+    def outputs(self, ctx: "PipelineContext") -> list[Path]:
+        return [ctx.workspace.final_markdown]
 
-def _resolve_markdown(args: argparse.Namespace, stem: str) -> Path:
-    if args.markdown:
-        return args.markdown.resolve()
-    return project_root() / "data" / "output_files_preprocessing" / stem / f"{stem}_vlm_check.md"
-
-
-def _resolve_descriptions(args: argparse.Namespace, stem: str) -> Path:
-    if args.descriptions:
-        return args.descriptions.resolve()
-    return project_root() / "data" / "output_files_preprocessing" / stem / f"{stem}_image_descriptions.md"
-
-
-def _resolve_output(args: argparse.Namespace, stem: str) -> Path:
-    if args.output:
-        return args.output.resolve()
-    return project_root() / "data" / "output_files_preprocessing" / stem / f"{stem}_final.md"
-
-
-def main() -> None:
-    args = parse_args()
-    logging.basicConfig(
-        level=getattr(logging, args.log_level),
-        format="%(asctime)s [%(levelname)s] %(message)s",
-        datefmt="%H:%M:%S",
-    )
-
-    if args.dotenv:
-        load_env(args.dotenv)
-
-    stem = _resolve_stem(args)
-    markdown_path = _resolve_markdown(args, stem)
-    descriptions_path = _resolve_descriptions(args, stem)
-    output_path = _resolve_output(args, stem)
-
-    try:
-        run(markdown_path, descriptions_path, output_path)
-    except FileNotFoundError as e:
-        _log.exception("%s", e)
-        sys.exit(1)
-    except Exception:
-        _log.exception("Unexpected error during injection.")
-        sys.exit(1)
-
-    sys.exit(0)
-
-
-if __name__ == "__main__":
-    main()
+    def execute(self, ctx: "PipelineContext") -> StepResult:
+        try:
+            run_injection(
+                ctx.workspace.vlm_check_markdown,
+                ctx.workspace.image_descriptions,
+                ctx.workspace.final_markdown,
+            )
+        except Exception as exc:
+            _log.exception("Unexpected error during injection.")
+            raise StepFailed(f"inject-image-descriptions failed: {exc}") from exc
+        return StepResult(StepStatus.OK, outputs=self.outputs(ctx))

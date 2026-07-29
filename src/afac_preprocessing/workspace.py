@@ -107,6 +107,13 @@ class DocumentWorkspace:
     def metadata_dir(self) -> Path:
         return self.root / "metadata"
 
+    @property
+    def opencv_validation_dir(self) -> Path:
+        # QA visuelle (étape opencv-check, désactivée par défaut) — relevé
+        # dans opencv_checker.resolve_output, absent du gel de référence
+        # précisément parce que l'étape y était sautée.
+        return self.root / "opencv_validation"
+
     # --- contenu de metadata/ (relevé sur la sortie réelle) ---
     @property
     def final_csv(self) -> Path:
