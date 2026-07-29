@@ -44,3 +44,4 @@ src/afac-preprocessing/neo4j_graphrag_ontology/extraction_concepts/qa_runs
 src/afac-preprocessing/neo4j_graphrag_ontology/PLAN_retrieval_scoring_reranking.md
 NOTES_NOTEBOOKS_JUPYTER.md
 PLAN_REFACTOR_OOP.md
+tests/reference/
