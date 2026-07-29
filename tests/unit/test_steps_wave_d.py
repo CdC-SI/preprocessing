@@ -14,7 +14,7 @@ import pytest
 
 from afac_preprocessing import Pipeline, PipelineContext, Settings
 from afac_preprocessing.clients.fake import FakeEmbeddingClient, FakeVlmClient
-from afac_preprocessing.exceptions import StepFailed, StepInputMissing
+from afac_preprocessing.exceptions import StepInputMissing
 from afac_preprocessing.steps.hyq_embedding import HyqEmbeddingStep
 from afac_preprocessing.steps.image_description import ImageDescriptionStep
 from afac_preprocessing.steps.metadata_generation import MetadataGenerationStep

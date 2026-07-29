@@ -59,8 +59,7 @@ def normalize(text: str) -> str:
     text = text.replace("\r\n", "\n")
     text = ISO_TS_RE.sub("<TS>", text)
     text = ABS_PATH_RE.sub("<PATH>", text)
-    text = GEN_ID_RE.sub("<GEN_ID>", text)
-    return text
+    return GEN_ID_RE.sub("<GEN_ID>", text)
 
 
 def _load_json_normalized(path: Path) -> object | None:
@@ -83,7 +82,9 @@ def compare_strict(a: Path, b: Path) -> Verdict:
         return Verdict("STRICT", True)
     la, lb = ta.splitlines(), tb.splitlines()
     diff_at = next(
-        (i for i, (x, y) in enumerate(zip(la, lb), 1) if x != y),
+        # strict=False voulu : des longueurs différentes sont un cas normal ici,
+        # on cherche la première ligne divergente du préfixe commun.
+        (i for i, (x, y) in enumerate(zip(la, lb, strict=False), 1) if x != y),
         min(len(la), len(lb)) + 1,
     )
     return Verdict("STRICT", False, f"{len(la)} vs {len(lb)} lignes, 1re diff l.{diff_at}")
@@ -127,10 +128,10 @@ def compare_floats(a: Path, b: Path) -> Verdict:
     ra, rb = _cells(a), _cells(b)
     if len(ra) != len(rb):
         return Verdict("TOLERANT", False, f"{len(ra)} vs {len(rb)} lignes")
-    for i, (row_a, row_b) in enumerate(zip(ra, rb), 1):
+    for i, (row_a, row_b) in enumerate(zip(ra, rb, strict=True), 1):
         if len(row_a) != len(row_b):
             return Verdict("TOLERANT", False, f"l.{i}: {len(row_a)} vs {len(row_b)} colonnes")
-        for j, (ca, cb) in enumerate(zip(row_a, row_b), 1):
+        for j, (ca, cb) in enumerate(zip(row_a, row_b, strict=True), 1):
             try:
                 if not math.isclose(float(ca), float(cb), rel_tol=REL_TOL):
                     return Verdict("TOLERANT", False, f"l.{i} c.{j}: {ca!r} != {cb!r}")

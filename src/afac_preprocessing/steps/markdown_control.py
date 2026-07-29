@@ -91,7 +91,7 @@ async def process_page(
     page_markdown: str,
     pdf_path: Path,
     semaphore: asyncio.Semaphore,
-    vlm: "AsyncVlmClient",
+    vlm: AsyncVlmClient,
     prompt_template: str,
     dpi: int = 150,
 ) -> tuple[int, str]:
@@ -148,16 +148,16 @@ class MarkdownControlStep(PipelineStep):
         self.dpi = dpi
         self.prompt_template = VLM_PROMPT_STAGE4_CHECK_PAGE_EN  # variante v2 (défaut pipeline)
 
-    def inputs(self, ctx: "PipelineContext") -> list[Path]:
+    def inputs(self, ctx: PipelineContext) -> list[Path]:
         return [ctx.workspace.source_pdf, ctx.workspace.url_vlm_markdown]
 
-    def outputs(self, ctx: "PipelineContext") -> list[Path]:
+    def outputs(self, ctx: PipelineContext) -> list[Path]:
         return [ctx.workspace.vlm_check_markdown]
 
-    def execute(self, ctx: "PipelineContext") -> StepResult:
+    def execute(self, ctx: PipelineContext) -> StepResult:
         return ctx.run_async(self._execute_async(ctx))  # ⚠ PAS asyncio.run() (P7)
 
-    async def _execute_async(self, ctx: "PipelineContext") -> StepResult:
+    async def _execute_async(self, ctx: PipelineContext) -> StepResult:
         ws = ctx.workspace
         pdf_path = ws.source_pdf
         md_path = ws.url_vlm_markdown

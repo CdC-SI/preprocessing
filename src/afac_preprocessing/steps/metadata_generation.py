@@ -15,7 +15,7 @@ import csv
 import json
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -360,7 +360,7 @@ def build_metadata(
     doc_json = load_input_json(input_dir, doc_name)
     content_file, chunk_count = get_markdown_info(markdown_dir, doc_name)
     created_at = get_pdf_creation_date(folder_source / relative_doc_path)
-    updated_at = datetime.now(timezone.utc).strftime(ISO_8601_FMT)
+    updated_at = datetime.now(UTC).strftime(ISO_8601_FMT)
     page_count = get_page_count(doc_json)
 
     return {
@@ -436,19 +436,19 @@ class MetadataGenerationStep(PipelineStep):
     description = "Metadata + embedding → CSV final"
     requires_vlm = True
 
-    def inputs(self, ctx: "PipelineContext") -> list[Path]:
+    def inputs(self, ctx: PipelineContext) -> list[Path]:
         return [ctx.workspace.final_markdown, ctx.workspace.docling_json]
 
-    def outputs(self, ctx: "PipelineContext") -> list[Path]:
+    def outputs(self, ctx: PipelineContext) -> list[Path]:
         ws = ctx.workspace
         return [ws.final_csv, ws.resume_markdown, ws.intent_json, ws.hyq_json,
                 ws.embedding_json]
 
-    def _relative_doc_path(self, ctx: "PipelineContext") -> str:
+    def _relative_doc_path(self, ctx: PipelineContext) -> str:
         """Équivalent du DOC_PATH historique : chemin relatif à input_files/,
         ou chemin absolu si le document vit ailleurs, ou <doc>.pdf à plat."""
         ws = ctx.workspace
-        if ws.relative_dir != Path("."):
+        if ws.relative_dir != Path():
             return str(ws.relative_dir / ws.source_pdf.name)
         try:
             return str(ws.source_pdf.resolve().relative_to(
@@ -459,10 +459,10 @@ class MetadataGenerationStep(PipelineStep):
                 return str(ws.source_pdf)
             return f"{ws.doc_name}.pdf"
 
-    def execute(self, ctx: "PipelineContext") -> StepResult:
+    def execute(self, ctx: PipelineContext) -> StepResult:
         return ctx.run_async(self._execute_async(ctx))  # ⚠ PAS asyncio.run() (P7)
 
-    async def _execute_async(self, ctx: "PipelineContext") -> StepResult:
+    async def _execute_async(self, ctx: PipelineContext) -> StepResult:
         ws = ctx.workspace
         out_root = ctx.settings.output_files_root
         try:

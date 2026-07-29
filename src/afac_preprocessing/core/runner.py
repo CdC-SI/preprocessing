@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 
 class StepRunner(Protocol):
-    def run(self, step: PipelineStep, ctx: "PipelineContext") -> StepResult: ...
+    def run(self, step: PipelineStep, ctx: PipelineContext) -> StepResult: ...
 
 
 class InProcessRunner:
@@ -31,7 +31,7 @@ class InProcessRunner:
     in-process, le comportement observable reste celui d'aujourd'hui.
     """
 
-    def run(self, step: PipelineStep, ctx: "PipelineContext") -> StepResult:
+    def run(self, step: PipelineStep, ctx: PipelineContext) -> StepResult:
         return step.run(ctx)
 
 
@@ -42,7 +42,7 @@ class SubprocessRunner:
     posé dès maintenant pour que le lot 7 ne rouvre pas l'orchestration.
     """
 
-    def run(self, step: PipelineStep, ctx: "PipelineContext") -> StepResult:
+    def run(self, step: PipelineStep, ctx: PipelineContext) -> StepResult:
         cmd = [
             sys.executable, "-m", "afac_preprocessing.cli.main",
             "run", "--only", step.name,

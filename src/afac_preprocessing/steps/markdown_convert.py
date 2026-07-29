@@ -15,7 +15,7 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from docling_core.types.doc.document import DocTagsDocument, DoclingDocument
+from docling_core.types.doc.document import DoclingDocument, DocTagsDocument
 
 from ..core.step import PipelineStep, StepResult, StepStatus
 from ..exceptions import StepFailed
@@ -103,9 +103,7 @@ def preprocess_doctags(content: str) -> str:
     :param content: raw doctags content
     :return: preprocessed content, ready for DocTagsDocument
     """
-    content = _split_pages(content)
-    content = _hoist_misplaced_tags(content)
-    return content
+    return _hoist_misplaced_tags(_split_pages(content))
 
 PAGE_BREAK = "<!-- page-break -->"
 
@@ -151,13 +149,13 @@ class MarkdownConvertStep(PipelineStep):
     description = "Conversion doctags → markdown"
     requires_vlm = False
 
-    def inputs(self, ctx: "PipelineContext") -> list[Path]:
+    def inputs(self, ctx: PipelineContext) -> list[Path]:
         return [ctx.workspace.url_vlm_doctags]
 
-    def outputs(self, ctx: "PipelineContext") -> list[Path]:
+    def outputs(self, ctx: PipelineContext) -> list[Path]:
         return [ctx.workspace.url_vlm_markdown]
 
-    def execute(self, ctx: "PipelineContext") -> StepResult:
+    def execute(self, ctx: PipelineContext) -> StepResult:
         input_path = ctx.workspace.url_vlm_doctags
         output_path = ctx.workspace.url_vlm_markdown
 

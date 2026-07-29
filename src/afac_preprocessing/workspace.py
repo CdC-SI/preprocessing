@@ -30,7 +30,7 @@ class DocumentWorkspace:
     # Dossier du document RELATIF à input_files/ (ex. Path("afac/Adhésion")).
     # Alimenté dès le lot 2, consommé par root au lot F1 seulement :
     # for_document() le calcule, root l'ignore (décision du plan, § 2.2).
-    relative_dir: Path = field(default_factory=lambda: Path("."))
+    relative_dir: Path = field(default_factory=lambda: Path())
 
     # --- doctags ---
     @property
@@ -146,7 +146,7 @@ class DocumentWorkspace:
             directory.mkdir(parents=True, exist_ok=True)
 
     @classmethod
-    def for_document(cls, pdf: Path, settings: "Settings") -> "DocumentWorkspace":
+    def for_document(cls, pdf: Path, settings: Settings) -> DocumentWorkspace:
         """Construit le workspace d'un PDF selon les conventions actuelles.
 
         ``relative_dir`` porte le sous-dossier du PDF dans input_files/
@@ -160,7 +160,7 @@ class DocumentWorkspace:
                 settings.input_files_root.resolve()
             ).parent
         except ValueError:
-            relative_dir = Path(".")
+            relative_dir = Path()
         root = settings.output_files_root / doc_name
         return cls(
             doc_name=doc_name,

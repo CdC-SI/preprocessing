@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 _log = logging.getLogger(__name__)
 
 
-def load_hyq(workspace: "DocumentWorkspace") -> list[str]:
+def load_hyq(workspace: DocumentWorkspace) -> list[str]:
     """
     Lit le fichier hyq.json du document.
 
@@ -44,10 +44,10 @@ def load_hyq(workspace: "DocumentWorkspace") -> list[str]:
 
 
 async def write_hyq_csv(
-    workspace: "DocumentWorkspace",
+    workspace: DocumentWorkspace,
     doc_title: str,
     questions: list[str],
-    embeddings: "AsyncEmbeddingClient",
+    embeddings: AsyncEmbeddingClient,
 ) -> tuple[Path, int]:
     """
     Pour chaque question hyq, génère son embedding et écrit un CSV dédié :
@@ -97,16 +97,16 @@ class HyqEmbeddingStep(PipelineStep):
     description = "Embeddings des questions hypothétiques (hyq)"
     requires_vlm = True
 
-    def inputs(self, ctx: "PipelineContext") -> list[Path]:
+    def inputs(self, ctx: PipelineContext) -> list[Path]:
         return [ctx.workspace.hyq_json]
 
-    def outputs(self, ctx: "PipelineContext") -> list[Path]:
+    def outputs(self, ctx: PipelineContext) -> list[Path]:
         return [ctx.workspace.hyq_dir]
 
-    def execute(self, ctx: "PipelineContext") -> StepResult:
+    def execute(self, ctx: PipelineContext) -> StepResult:
         return ctx.run_async(self._execute_async(ctx))  # ⚠ PAS asyncio.run() (P7)
 
-    async def _execute_async(self, ctx: "PipelineContext") -> StepResult:
+    async def _execute_async(self, ctx: PipelineContext) -> StepResult:
         ws = ctx.workspace
         doc_title = f"{ws.doc_name}.pdf"  # même défaut que --doc-title
 

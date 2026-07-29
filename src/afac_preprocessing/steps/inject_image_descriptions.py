@@ -187,15 +187,15 @@ class InjectImageDescriptionsStep(PipelineStep):
     description = "Injection des descriptions d'images → _final.md"
     requires_vlm = False
 
-    def inputs(self, ctx: "PipelineContext") -> list[Path]:
+    def inputs(self, ctx: PipelineContext) -> list[Path]:
         # _image_descriptions.md est volontairement absent des entrées
         # déclarées : son absence est un cas nominal (0 image / désactivé).
         return [ctx.workspace.vlm_check_markdown]
 
-    def outputs(self, ctx: "PipelineContext") -> list[Path]:
+    def outputs(self, ctx: PipelineContext) -> list[Path]:
         return [ctx.workspace.final_markdown]
 
-    def execute(self, ctx: "PipelineContext") -> StepResult:
+    def execute(self, ctx: PipelineContext) -> StepResult:
         try:
             run_injection(
                 ctx.workspace.vlm_check_markdown,

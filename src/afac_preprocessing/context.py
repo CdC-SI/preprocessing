@@ -7,9 +7,10 @@ Le contexte ne construit jamais de client lui-même : il délègue au
 
 from __future__ import annotations
 
+from collections.abc import Awaitable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Awaitable, TypeVar
+from typing import TypeVar
 
 from .clients.base import AsyncEmbeddingClient, AsyncVlmClient
 from .clients.bundle import ClientBundle
@@ -52,7 +53,7 @@ class PipelineContext:
         *,
         clients: ClientBundle | None = None,
         dry_run: bool = False,
-    ) -> "PipelineContext":
+    ) -> PipelineContext:
         """Contexte d'un document. En batch, passer le MÊME ``clients`` à chaque
         document pour partager boucle et connexions sur tout le run."""
         workspace = DocumentWorkspace.for_document(pdf, settings)

@@ -132,13 +132,13 @@ class OpencvCheckStep(PipelineStep):
     requires_vlm = False
     enabled_by_default = False
 
-    def inputs(self, ctx: "PipelineContext") -> list[Path]:
+    def inputs(self, ctx: PipelineContext) -> list[Path]:
         return [ctx.workspace.source_pdf, ctx.workspace.doctags]
 
-    def outputs(self, ctx: "PipelineContext") -> list[Path]:
+    def outputs(self, ctx: PipelineContext) -> list[Path]:
         return [ctx.workspace.opencv_validation_dir]
 
-    def execute(self, ctx: "PipelineContext") -> StepResult:
+    def execute(self, ctx: PipelineContext) -> StepResult:
         pdf_path = ctx.workspace.source_pdf
         doctags_path = ctx.workspace.doctags
         output_dir = ctx.workspace.opencv_validation_dir

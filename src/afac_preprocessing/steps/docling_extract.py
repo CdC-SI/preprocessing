@@ -13,8 +13,9 @@ import json
 import logging
 import re
 import time
+from collections.abc import Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Sequence
+from typing import TYPE_CHECKING, Any
 
 from ..core.step import PipelineStep, StepResult, StepStatus
 from ..exceptions import StepFailed
@@ -39,7 +40,7 @@ def build_converter(
     device: str,
     extract_images: bool = False,
     images_scale: float = 2.0,
-) -> "DocumentConverter":
+) -> DocumentConverter:
     """
     Configure the Docling converter with OCR, table, thread and device options.
 
@@ -115,7 +116,7 @@ def export_docling_images(conv_result: Any, output_dir: Path) -> int:
 
 
 # Export text formats, former function from pipeline_multietape.py (stage 1)
-def export_text_formats(conv_result: "ConversionResult", output_dir: Path, formats: frozenset[str]) -> None:
+def export_text_formats(conv_result: ConversionResult, output_dir: Path, formats: frozenset[str]) -> None:
     """
     Export the requested text formats (json, md, txt, doctags) from the Docling conversion result.
 
@@ -148,7 +149,7 @@ def export_text_formats(conv_result: "ConversionResult", output_dir: Path, forma
 
 
 # Export tables, former function from export_table_docling.py (stage 2)
-def export_tables(conv_result: "ConversionResult", output_dir: Path, formats: frozenset[str]) -> None:
+def export_tables(conv_result: ConversionResult, output_dir: Path, formats: frozenset[str]) -> None:
     """
     Extracts and exports the tables detected in the Docling document to the requested formats
     (csv, html). Named <stem>-table-{i:02d}_page{page}_x{x0}_y{y0}_x{x1}_y{y1} — the
@@ -224,15 +225,15 @@ class DoclingExtractStep(PipelineStep):
         self.device = device
         self.images_scale = images_scale
 
-    def inputs(self, ctx: "PipelineContext") -> list[Path]:
+    def inputs(self, ctx: PipelineContext) -> list[Path]:
         return [ctx.workspace.source_pdf]
 
-    def outputs(self, ctx: "PipelineContext") -> list[Path]:
+    def outputs(self, ctx: PipelineContext) -> list[Path]:
         ws = ctx.workspace
         return [ws.doctags, ws.docling_json, ws.markdown, ws.text_dump,
                 ws.tables_dir, ws.used_images_dir]
 
-    def execute(self, ctx: "PipelineContext") -> StepResult:
+    def execute(self, ctx: PipelineContext) -> StepResult:
         input_path = ctx.workspace.source_pdf
         output_dir = ctx.workspace.root
         output_dir.mkdir(parents=True, exist_ok=True)

@@ -110,7 +110,7 @@ async def process_page(
     pdf_path: Path,
     semaphore: asyncio.Semaphore,
     *,
-    vlm: "AsyncVlmClient",
+    vlm: AsyncVlmClient,
     prompt_template: str,
 ) -> tuple[int, str]:
     """
@@ -234,17 +234,17 @@ class UrlTuningStep(PipelineStep):
         self.max_concurrency = max_concurrency
         self.prompt_template = VLM_PROMPT_CORRECTION_STAGE_3_EN  # variante v2 (défaut pipeline)
 
-    def inputs(self, ctx: "PipelineContext") -> list[Path]:
+    def inputs(self, ctx: PipelineContext) -> list[Path]:
         ws = ctx.workspace
         return [ws.source_pdf, ws.reordered_with_tables_pictures_doctags, ws.hyperlinks_jsonl]
 
-    def outputs(self, ctx: "PipelineContext") -> list[Path]:
+    def outputs(self, ctx: PipelineContext) -> list[Path]:
         return [ctx.workspace.url_vlm_doctags]
 
-    def execute(self, ctx: "PipelineContext") -> StepResult:
+    def execute(self, ctx: PipelineContext) -> StepResult:
         return ctx.run_async(self._execute_async(ctx))  # ⚠ PAS asyncio.run() (P7)
 
-    async def _execute_async(self, ctx: "PipelineContext") -> StepResult:
+    async def _execute_async(self, ctx: PipelineContext) -> StepResult:
         ws = ctx.workspace
         pdf_path = ws.source_pdf
         doctags_path = ws.reordered_with_tables_pictures_doctags

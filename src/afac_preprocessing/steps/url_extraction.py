@@ -130,13 +130,13 @@ class UrlExtractionStep(PipelineStep):
     description = "Extraction des hyperliens du PDF"
     requires_vlm = False
 
-    def inputs(self, ctx: "PipelineContext") -> list[Path]:
+    def inputs(self, ctx: PipelineContext) -> list[Path]:
         return [ctx.workspace.source_pdf]
 
-    def outputs(self, ctx: "PipelineContext") -> list[Path]:
+    def outputs(self, ctx: PipelineContext) -> list[Path]:
         return [ctx.workspace.hyperlinks_jsonl]
 
-    def execute(self, ctx: "PipelineContext") -> StepResult:
+    def execute(self, ctx: PipelineContext) -> StepResult:
         pdf_path = ctx.workspace.source_pdf
         output_path = ctx.workspace.hyperlinks_jsonl
         output_path.parent.mkdir(parents=True, exist_ok=True)

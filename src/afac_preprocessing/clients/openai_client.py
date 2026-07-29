@@ -54,7 +54,7 @@ def _to_base_url(raw_url: str) -> str:
 
 # Client construction — corps identiques à utils/vlm_client.py, entrée = Settings
 def build_async_client(
-    settings: "Settings", *, timeout: float = DEFAULT_TIMEOUT, max_retries: int = DEFAULT_MAX_RETRIES
+    settings: Settings, *, timeout: float = DEFAULT_TIMEOUT, max_retries: int = DEFAULT_MAX_RETRIES
 ) -> AsyncOpenAI:
     """Async client for concurrent vision/text calls."""
     return AsyncOpenAI(
@@ -67,7 +67,7 @@ def build_async_client(
 
 
 def build_async_embedding_client(
-    settings: "Settings", *, timeout: float = DEFAULT_TIMEOUT, max_retries: int = DEFAULT_MAX_RETRIES
+    settings: Settings, *, timeout: float = DEFAULT_TIMEOUT, max_retries: int = DEFAULT_MAX_RETRIES
 ) -> AsyncOpenAI:
     """Async client for embeddings — host distinct from the VLM chat one
     (EMBEDDING_URL != VLM_URL)."""

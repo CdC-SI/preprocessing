@@ -126,13 +126,13 @@ class CsvToJsonlinesStep(PipelineStep):
     description = "Conversion des tables CSV en JSONL"
     requires_vlm = False
 
-    def inputs(self, ctx: "PipelineContext") -> list[Path]:
+    def inputs(self, ctx: PipelineContext) -> list[Path]:
         return [ctx.workspace.tables_dir]
 
-    def outputs(self, ctx: "PipelineContext") -> list[Path]:
+    def outputs(self, ctx: PipelineContext) -> list[Path]:
         return [ctx.workspace.tables_dir]
 
-    def execute(self, ctx: "PipelineContext") -> StepResult:
+    def execute(self, ctx: PipelineContext) -> StepResult:
         input_dir = ctx.workspace.tables_dir
         output_dir = input_dir  # défaut historique : JSONL à côté des CSV
 

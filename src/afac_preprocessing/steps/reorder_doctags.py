@@ -305,13 +305,13 @@ class ReorderDoctagsStep(PipelineStep):
     description = "Réordonnancement des balises doctags"
     requires_vlm = False
 
-    def inputs(self, ctx: "PipelineContext") -> list[Path]:
+    def inputs(self, ctx: PipelineContext) -> list[Path]:
         return [ctx.workspace.doctags]
 
-    def outputs(self, ctx: "PipelineContext") -> list[Path]:
+    def outputs(self, ctx: PipelineContext) -> list[Path]:
         return [ctx.workspace.reordered_doctags]
 
-    def execute(self, ctx: "PipelineContext") -> StepResult:
+    def execute(self, ctx: PipelineContext) -> StepResult:
         input_path = ctx.workspace.doctags
         output_path = ctx.workspace.reordered_doctags
         output_path.parent.mkdir(parents=True, exist_ok=True)

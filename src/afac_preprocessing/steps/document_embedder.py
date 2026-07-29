@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 _log = logging.getLogger(__name__)
 
 
-def read_embed_markdown(workspace: "DocumentWorkspace") -> str:
+def read_embed_markdown(workspace: DocumentWorkspace) -> str:
     """
     Lit le markdown final pour un document donné.
 
@@ -37,7 +37,7 @@ def read_embed_markdown(workspace: "DocumentWorkspace") -> str:
     return ""
 
 
-def write_embedding_output(workspace: "DocumentWorkspace", embedding: list[float]) -> Path:
+def write_embedding_output(workspace: DocumentWorkspace, embedding: list[float]) -> Path:
     """Écrit le vecteur brut dans metadata/embedding.json (même format)."""
     workspace.metadata_dir.mkdir(parents=True, exist_ok=True)
     workspace.embedding_json.write_text(
@@ -49,11 +49,11 @@ def write_embedding_output(workspace: "DocumentWorkspace", embedding: list[float
 class DocumentEmbedder:
     """Génère et écrit l'embedding du markdown final — contrat async."""
 
-    def __init__(self, embeddings: "AsyncEmbeddingClient", embedding_model_name: str) -> None:
+    def __init__(self, embeddings: AsyncEmbeddingClient, embedding_model_name: str) -> None:
         self._embeddings = embeddings
         self.embedding_model_name = embedding_model_name
 
-    async def run(self, workspace: "DocumentWorkspace") -> tuple[str, str]:
+    async def run(self, workspace: DocumentWorkspace) -> tuple[str, str]:
         """Équivalent de run_embedding : lit le markdown, génère l'embedding,
         écrit embedding.json, retourne (embedding_string, embedding_model_name)."""
         markdown_content = read_embed_markdown(workspace)

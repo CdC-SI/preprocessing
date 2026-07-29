@@ -9,7 +9,7 @@ de câblage et ``steps --graph``.
 
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 from .step import PipelineStep
 

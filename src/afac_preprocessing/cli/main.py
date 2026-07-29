@@ -17,7 +17,6 @@ from __future__ import annotations
 import importlib.metadata
 import platform
 from pathlib import Path
-from typing import Optional
 
 import typer
 
@@ -47,7 +46,7 @@ def _exit_code(exc: AfacError) -> int:
     return 1
 
 
-def _resolve_dotenv(dotenv: Optional[Path]) -> Optional[Path]:
+def _resolve_dotenv(dotenv: Path | None) -> Path | None:
     """--dotenv explicite sinon .env puis .env.test du répertoire courant."""
     if dotenv is not None:
         return dotenv
@@ -64,8 +63,8 @@ def _csv(value: str) -> list[str]:
 def _build_pipeline(
     *,
     profile: str,
-    from_step: Optional[str],
-    to_step: Optional[str],
+    from_step: str | None,
+    to_step: str | None,
     skip: str,
     only: str,
     with_opencv_check: bool,
@@ -105,10 +104,10 @@ def _discover_pdfs(input_path: Path) -> list[Path]:
 @app.command()
 def run(
     input: Path = typer.Option(..., "--input", "-i", help="PDF ou dossier (exploré récursivement)."),
-    dotenv: Optional[Path] = typer.Option(None, help="Fichier .env (défaut : .env puis .env.test)."),
+    dotenv: Path | None = typer.Option(None, help="Fichier .env (défaut : .env puis .env.test)."),
     profile: str = typer.Option("default", help=f"Profil : {', '.join(sorted(PROFILES))}."),
-    from_step: Optional[str] = typer.Option(None, "--from-step", help="Première étape (nom ou numéro)."),
-    to_step: Optional[str] = typer.Option(None, "--to-step", help="Dernière étape (nom ou numéro)."),
+    from_step: str | None = typer.Option(None, "--from-step", help="Première étape (nom ou numéro)."),
+    to_step: str | None = typer.Option(None, "--to-step", help="Dernière étape (nom ou numéro)."),
     skip: str = typer.Option("", "--skip", help="Étapes à sauter (noms/numéros, séparés par des virgules)."),
     only: str = typer.Option("", "--only", help="N'exécuter que ces étapes (prime sur from/to/skip)."),
     no_ocr: bool = typer.Option(False, "--no-ocr", help="Transmis à docling-extract uniquement."),
@@ -199,7 +198,7 @@ def steps(
 
 @app.command()
 def doctor(
-    dotenv: Optional[Path] = typer.Option(None, help="Fichier .env à diagnostiquer."),
+    dotenv: Path | None = typer.Option(None, help="Fichier .env à diagnostiquer."),
 ) -> None:
     """Diagnostique l'installation et dit quoi faire pour chaque problème."""
     import httpx

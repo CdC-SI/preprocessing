@@ -70,7 +70,64 @@ build-backend = "hatchling.build"
 dev = [
     "mypy>=2.3.0",
     "pytest>=9.1.1",
+    "ruff>=0.16.0",
 ]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/afac_preprocessing"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: test lent (exclu de la CI par défaut)",
+    "vlm: test nécessitant un endpoint VLM réel",
+]
+addopts = "-q --strict-markers"
+
+[tool.ruff]
+line-length = 110
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "RET", "ARG", "PTH", "TID"]
+ignore = [
+    "E501",    # longueur de ligne — gérée par line-length, pas bloquante
+    "B008",    # typer.Option() en défaut d'argument : idiome de la CLI
+    "ARG002",  # arguments présents pour respecter un contrat (Protocol, PipelineStep)
+    # Les imports internes SONT relatifs par décision d'architecture (§ 2.3 du
+    # plan de refactor) : c'est TID251 (sys.path.insert) qu'on veut, pas TID252.
+    "TID252",
+    # Règles qui exigeraient de réécrire des fonctions déplacées telles quelles
+    # au lot 6 (invariant n°1 : le refactor change la structure, pas le corps).
+    "PTH123",  # open() vs Path.open() dans le code métier déplacé
+    "E741",    # noms de variables courts (l, …) hérités des scripts d'origine
+]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"sys.path.insert".msg = "Ne jamais bricoler sys.path — utiliser le package afac_preprocessing."
+
+# ⚠ Les 4 dossiers du lot 9 ne sont pas encore refactorés : les exempter,
+#    sinon `ruff check src/` échoue sur ~16 sys.path.insert hors périmètre.
+[tool.ruff.lint.per-file-ignores]
+"src/afac_preprocessing/pipeline_baseline/**" = ["E402", "TID251", "F401", "ARG", "RET", "PTH", "B", "UP", "I"]
+"src/afac_preprocessing/retrieval_protocol_evaluation/**" = ["E402", "TID251", "F401", "ARG", "RET", "PTH", "B", "UP", "I"]
+"src/afac_preprocessing/neo4j_graphrag_ontology/**" = ["E402", "TID251", "F401", "ARG", "RET", "PTH", "B", "UP", "I"]
+"src/afac_preprocessing/graph_url/**" = ["E402", "TID251", "F401", "ARG", "RET", "PTH", "B", "UP", "I"]
+# Outils legacy restants du périmètre (migrent au lot 9, décision n°14)
+"src/afac_preprocessing/pipeline_preprocessing/**" = ["E402", "TID251", "ARG", "RET", "PTH", "B", "UP"]
+# Tests : fixtures pytest et signatures imposées par les Protocols (doubles
+# async) produisent des arguments légitimement inutilisés.
+"tests/**" = ["ARG001", "ARG002"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = [
+    "src/afac_preprocessing/settings.py",
+    "src/afac_preprocessing/workspace.py",
+    "src/afac_preprocessing/context.py",
+    "src/afac_preprocessing/exceptions.py",
+    "src/afac_preprocessing/logging_config.py",
+    "src/afac_preprocessing/clients",
+    "src/afac_preprocessing/core",
+]

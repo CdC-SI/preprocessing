@@ -1,19 +1,31 @@
-"""afac_preprocessing — pipeline de prétraitement de documents.
+"""afac_preprocessing — pipeline de prétraitement de documents PDF.
 
-API publique du noyau (lot 2). ``Pipeline`` et le registre d'étapes arrivent
-au lot 4 ; la liste ``__all__`` définitive est fixée au lot 8.
+API publique : tout ce qui est listé dans ``__all__`` est stable et destiné
+à l'usage bibliothèque ; le reste est interne et peut bouger.
+
+    from afac_preprocessing import Pipeline, PipelineContext, Settings
+
+    settings = Settings.from_dotenv(".env")
+    ctx = PipelineContext.for_pdf(Path("doc.pdf"), settings)
+    report = Pipeline.default().select(skip=["opencv-check"]).run(ctx)
+
+En ligne de commande : ``afac-preprocess run --input <PDF ou dossier>``.
 """
 
+from .clients.bundle import ClientBundle
 from .context import PipelineContext
 from .core import (
+    PROFILES,
+    STEP_REGISTRY,
     BatchReport,
+    InProcessRunner,
     Pipeline,
     PipelineReport,
     PipelineStep,
     StepResult,
+    StepRunner,
     StepStatus,
-    STEP_REGISTRY,
-    PROFILES,
+    SubprocessRunner,
 )
 from .exceptions import (
     AfacError,
@@ -28,20 +40,28 @@ from .settings import Settings
 from .workspace import DocumentWorkspace
 
 __all__ = [
-    "AfacError",
-    "BatchReport",
+    # Orchestration
     "PROFILES",
+    "STEP_REGISTRY",
+    "BatchReport",
     "Pipeline",
     "PipelineReport",
     "PipelineStep",
-    "STEP_REGISTRY",
     "StepResult",
     "StepStatus",
-    "ConfigError",
+    # Exécution : contexte, configuration, chemins, clients
+    "ClientBundle",
     "DocumentWorkspace",
-    "EmbeddingUnavailable",
     "PipelineContext",
     "Settings",
+    # Seam in-process / subprocess (lot 7)
+    "InProcessRunner",
+    "StepRunner",
+    "SubprocessRunner",
+    # Erreurs métier
+    "AfacError",
+    "ConfigError",
+    "EmbeddingUnavailable",
     "StepFailed",
     "StepInputMissing",
     "UnknownStep",

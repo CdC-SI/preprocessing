@@ -11,8 +11,9 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Iterable, Sequence
+from typing import TYPE_CHECKING
 
 from ..exceptions import AfacError, UnknownStep
 from .registry import build_default_steps
@@ -64,7 +65,7 @@ class Pipeline:
         self.runner: StepRunner = runner if runner is not None else InProcessRunner()
 
     @classmethod
-    def default(cls, runner: StepRunner | None = None) -> "Pipeline":
+    def default(cls, runner: StepRunner | None = None) -> Pipeline:
         """Les 13 étapes, dans l'ordre canonique."""
         return cls(build_default_steps(), runner)
 
@@ -89,7 +90,7 @@ class Pipeline:
         skip: Iterable[str | int] = (),
         only: Iterable[str | int] = (),
         include_disabled: bool = False,
-    ) -> "Pipeline":
+    ) -> Pipeline:
         """Sous-pipeline, toujours dans l'ordre canonique (méthode pure).
 
         ``only`` prime sur from/to/skip et inclut même les étapes désactivées
@@ -115,7 +116,7 @@ class Pipeline:
 
     # --- exécution ---
 
-    def run(self, ctx: "PipelineContext") -> PipelineReport:
+    def run(self, ctx: PipelineContext) -> PipelineReport:
         """Exécute les étapes dans l'ordre ; s'arrête à la première en échec
         (comportement actuel de l'orchestrateur)."""
         report = PipelineReport(doc_name=ctx.workspace.doc_name)
@@ -135,7 +136,7 @@ class Pipeline:
                 break
         return report
 
-    def run_batch(self, contexts: Iterable["PipelineContext"]) -> BatchReport:
+    def run_batch(self, contexts: Iterable[PipelineContext]) -> BatchReport:
         """Un run par document ; un échec isolé n'arrête pas le batch
         (comportement actuel, conservé à l'identique)."""
         batch = BatchReport()

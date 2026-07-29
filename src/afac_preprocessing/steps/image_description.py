@@ -273,7 +273,7 @@ def crop_to_b64(pdf_doc: fitz.Document, pic: PictureTag, norm: int = NORM, dpi: 
     return base64.b64encode(pix.tobytes("png")).decode("utf-8")
 
 
-async def describe_image_b64(image_b64: str, prompt: str, vlm: "AsyncVlmClient") -> str:
+async def describe_image_b64(image_b64: str, prompt: str, vlm: AsyncVlmClient) -> str:
     """Send the image (base64) + prompt to the VLM and return the description.
 
     (Async depuis la vague D — même contrat : retourne "" en cas d'erreur.)
@@ -324,7 +324,7 @@ def export_picture_images(
 async def _describe_task(
     task: ImageTask,
     semaphore: asyncio.Semaphore,
-    vlm: "AsyncVlmClient",
+    vlm: AsyncVlmClient,
 ) -> tuple[int, VLMResult]:
     """Équivalent async du corps de _vlm_worker : un appel VLM par image,
     résultat indexé par task.index — l'ordre final suit les images."""
@@ -354,7 +354,7 @@ async def describe_all_pictures(
     pdf_path: Path,
     pictures: list[PictureTag],
     doc_elements: list[DocElement],
-    vlm: "AsyncVlmClient",
+    vlm: AsyncVlmClient,
     language: str = "french",
     n_before: int = N_BEFORE,
     n_after: int = N_AFTER,
@@ -537,19 +537,19 @@ class ImageDescriptionStep(PipelineStep):
         self.dpi = dpi
         self.norm = norm
 
-    def inputs(self, ctx: "PipelineContext") -> list[Path]:
+    def inputs(self, ctx: PipelineContext) -> list[Path]:
         return [ctx.workspace.source_pdf, ctx.workspace.reordered_with_tables_doctags]
 
-    def outputs(self, ctx: "PipelineContext") -> list[Path]:
+    def outputs(self, ctx: PipelineContext) -> list[Path]:
         return [
             ctx.workspace.reordered_with_tables_pictures_doctags,
             ctx.workspace.image_descriptions,
         ]
 
-    def execute(self, ctx: "PipelineContext") -> StepResult:
+    def execute(self, ctx: PipelineContext) -> StepResult:
         return ctx.run_async(self._execute_async(ctx))  # ⚠ PAS asyncio.run() (P7)
 
-    async def _execute_async(self, ctx: "PipelineContext") -> StepResult:
+    async def _execute_async(self, ctx: PipelineContext) -> StepResult:
         ws = ctx.workspace
         doctags_path = ws.reordered_with_tables_doctags
         pdf_path = ws.source_pdf

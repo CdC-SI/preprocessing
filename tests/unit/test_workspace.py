@@ -94,7 +94,7 @@ def test_for_document_computes_relative_dir_and_flat_root(tmp_path: Path) -> Non
 def test_for_document_outside_input_files_gets_dot_relative_dir(tmp_path: Path) -> None:
     settings = _settings(tmp_path)
     ws = DocumentWorkspace.for_document(Path("/elsewhere/Doc.pdf"), settings)
-    assert ws.relative_dir == Path(".")
+    assert ws.relative_dir == Path()
     assert ws.root == tmp_path / "data" / "output_files_preprocessing" / "Doc"
 
 

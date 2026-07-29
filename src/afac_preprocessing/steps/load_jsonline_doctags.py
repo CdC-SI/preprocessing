@@ -191,13 +191,13 @@ class LoadJsonlineDoctagsStep(PipelineStep):
     description = "Doctags enrichis des tables (et images)"
     requires_vlm = False
 
-    def inputs(self, ctx: "PipelineContext") -> list[Path]:
+    def inputs(self, ctx: PipelineContext) -> list[Path]:
         return [ctx.workspace.reordered_doctags, ctx.workspace.tables_dir]
 
-    def outputs(self, ctx: "PipelineContext") -> list[Path]:
+    def outputs(self, ctx: PipelineContext) -> list[Path]:
         return [ctx.workspace.reordered_with_tables_doctags]
 
-    def validate_inputs(self, ctx: "PipelineContext") -> None:
+    def validate_inputs(self, ctx: PipelineContext) -> None:
         """Seul le doctags est requis : un dossier tables/ absent était un
         passthrough (copie sans modification, exit 0) — comportement conservé."""
         from ..exceptions import StepInputMissing
@@ -207,7 +207,7 @@ class LoadJsonlineDoctagsStep(PipelineStep):
                 f"Step '{self.name}': missing input(s): {ctx.workspace.reordered_doctags}"
             )
 
-    def execute(self, ctx: "PipelineContext") -> StepResult:
+    def execute(self, ctx: PipelineContext) -> StepResult:
         doctags_path = ctx.workspace.reordered_doctags
         tables_dir = ctx.workspace.tables_dir
         output_path = ctx.workspace.reordered_with_tables_doctags

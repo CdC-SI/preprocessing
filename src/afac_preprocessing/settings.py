@@ -96,7 +96,7 @@ class Settings(BaseSettings):
         return value
 
     @model_validator(mode="after")
-    def _derive_data_root(self) -> "Settings":
+    def _derive_data_root(self) -> Settings:
         """PROJECT_ROOT surchargé sans DATA_ROOT ⇒ data_root suit project_root."""
         if "data_root" not in self.model_fields_set and "project_root" in self.model_fields_set:
             self.data_root = self.project_root / "data"
@@ -118,7 +118,7 @@ class Settings(BaseSettings):
         return self.data_root / "output_files_preprocessing"
 
     @classmethod
-    def from_dotenv(cls, path: Path | None = None) -> "Settings":
+    def from_dotenv(cls, path: Path | None = None) -> Settings:
         """Construit les Settings depuis un fichier .env (+ environnement).
 
         Lève ``ConfigError`` (message lisible, pas un traceback pydantic brut)

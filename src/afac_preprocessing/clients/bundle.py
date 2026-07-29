@@ -13,8 +13,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable
 from types import TracebackType
-from typing import TYPE_CHECKING, Awaitable, TypeVar
+from typing import TYPE_CHECKING, TypeVar
 
 from ..exceptions import EmbeddingUnavailable, VlmUnavailable
 from .base import AsyncEmbeddingClient, AsyncVlmClient
@@ -32,11 +33,11 @@ _T = TypeVar("_T")
 class ClientBundle:
     """Propriétaire unique de la boucle async et des clients du run."""
 
-    def __init__(self, settings: "Settings") -> None:
+    def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._loop: asyncio.AbstractEventLoop | None = None
-        self._vlm_raw: "AsyncOpenAI | None" = None
-        self._embedding_raw: "AsyncOpenAI | None" = None
+        self._vlm_raw: AsyncOpenAI | None = None
+        self._embedding_raw: AsyncOpenAI | None = None
         self._vlm: AsyncVlmClient | None = None
         self._embedding: AsyncEmbeddingClient | None = None
 
@@ -93,7 +94,7 @@ class ClientBundle:
         self._vlm = self._vlm_raw = None
         self._embedding = self._embedding_raw = None
 
-    def __enter__(self) -> "ClientBundle":
+    def __enter__(self) -> ClientBundle:
         return self
 
     def __exit__(

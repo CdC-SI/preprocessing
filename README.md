@@ -55,5 +55,6 @@ uv sync --all-extras    # tout
 
 ## Documentation
 
+- [docs/architecture.md](docs/architecture.md) — les 13 étapes, le contrat `PipelineStep`, les règles du noyau
+- [CONTRIBUTING.md](CONTRIBUTING.md) — ajouter une étape, lancer les vérifications
 - [docs/README-details.md](docs/README-details.md) — anciens points d'entrée et liens détaillés
-- [src/afac_preprocessing/pipeline_preprocessing/README.md](src/afac_preprocessing/pipeline_preprocessing/README.md) — référence des 13 étapes

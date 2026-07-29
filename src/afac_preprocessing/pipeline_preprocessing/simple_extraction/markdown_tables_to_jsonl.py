@@ -34,9 +34,51 @@ from pathlib import Path
 
 import jsonlines
 
-from ...utils.paths import project_root, resolve_doc_name
+from ...settings import _find_project_root
 
 _log = logging.getLogger(__name__)
+
+
+def project_root() -> Path:
+    """Racine du projet (dossier contenant pyproject.toml), PROJECT_ROOT prioritaire.
+
+    Helper local depuis le lot 8 : la couche de compat ``utils/`` a été
+    supprimée et ce script reste un outil hors pipeline (décision n°14) —
+    il migre au lot 9.
+    """
+    import os
+
+    if "PROJECT_ROOT" in os.environ:
+        return Path(os.environ["PROJECT_ROOT"]).resolve()
+    return _find_project_root()
+
+
+def resolve_doc_name(args: argparse.Namespace, *, primary_flag: str = "--doc-name") -> str:
+    """DOC_NAME depuis --doc-name, le .env de --dotenv, ou l'environnement.
+
+    Helper local (voir project_root ci-dessus) — même message d'erreur qu'avant.
+    """
+    import os
+
+    from dotenv import load_dotenv
+
+    doc_name = (getattr(args, "doc_name", None) or "").strip()
+    if doc_name:
+        return doc_name
+    dotenv = getattr(args, "dotenv", None)
+    if dotenv:
+        resolved = Path(dotenv).resolve()
+        if not resolved.exists():
+            raise SystemExit(f"Error: .env file not found — {resolved}")
+        load_dotenv(dotenv_path=resolved)
+    doc_name = os.environ.get("DOC_NAME", "").strip()
+    if doc_name:
+        return doc_name
+    raise SystemExit(
+        f"Error: provide {primary_flag} <value>, or --dotenv <file> with DOC_NAME, "
+        "or set the DOC_NAME variable in the environment."
+    )
+
 
 DEFAULT_STAGE5 = project_root() / "data" / "output_files_preprocessing"
 

@@ -45,7 +45,7 @@ class HyQOutput(BaseModel):
     hyq: list[str]
 
 
-def read_final_markdown(workspace: "DocumentWorkspace") -> str:
+def read_final_markdown(workspace: DocumentWorkspace) -> str:
     """Markdown final du document (équivalent de _read_markdown : _final.md)."""
     if workspace.final_markdown.exists():
         return workspace.final_markdown.read_text(encoding="utf-8")
@@ -53,7 +53,7 @@ def read_final_markdown(workspace: "DocumentWorkspace") -> str:
 
 
 def write_enrichment_output(
-    workspace: "DocumentWorkspace",
+    workspace: DocumentWorkspace,
     resume: str,
     intent: list[str],
     hyq: list[str],
@@ -81,7 +81,7 @@ def write_enrichment_output(
 class MetadataEnhancer:
     """Les 3 générations VLM de l'enrichissement — mêmes prompts, contrat async."""
 
-    def __init__(self, vlm: "AsyncVlmClient") -> None:
+    def __init__(self, vlm: AsyncVlmClient) -> None:
         self._vlm = vlm
 
     async def generate_resume(self, markdown_content: str) -> str:
@@ -116,7 +116,7 @@ class MetadataEnhancer:
         )
         return result.hyq
 
-    async def run(self, workspace: "DocumentWorkspace") -> dict:
+    async def run(self, workspace: DocumentWorkspace) -> dict:
         """Équivalent de run_enhancement : lit le markdown final, appelle les 3
         générations VLM et écrit resume.md / intent.json / hyq.json."""
         markdown_content = read_final_markdown(workspace)

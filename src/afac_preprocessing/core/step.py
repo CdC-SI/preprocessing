@@ -55,19 +55,19 @@ class PipelineStep(ABC):
     requires_vlm: ClassVar[bool] = False
     enabled_by_default: ClassVar[bool] = True  # opencv-check → False
 
-    def inputs(self, ctx: "PipelineContext") -> list[Path]:
+    def inputs(self, ctx: PipelineContext) -> list[Path]:
         """Ce que l'étape lit (déclaratif)."""
         return []
 
-    def outputs(self, ctx: "PipelineContext") -> list[Path]:
+    def outputs(self, ctx: PipelineContext) -> list[Path]:
         """Ce que l'étape écrit (déclaratif)."""
         return []
 
-    def is_applicable(self, ctx: "PipelineContext") -> bool:
+    def is_applicable(self, ctx: PipelineContext) -> bool:
         """False ⇒ l'étape est un passthrough pour ce document."""
         return True
 
-    def validate_inputs(self, ctx: "PipelineContext") -> None:
+    def validate_inputs(self, ctx: PipelineContext) -> None:
         """Lève StepInputMissing (PAS sys.exit) si une entrée déclarée manque."""
         missing = [p for p in self.inputs(ctx) if not p.exists()]
         if missing:
@@ -77,11 +77,11 @@ class PipelineStep(ABC):
             )
 
     @abstractmethod
-    def execute(self, ctx: "PipelineContext") -> StepResult:
+    def execute(self, ctx: PipelineContext) -> StepResult:
         """Le travail de l'étape. Ni os.environ, ni argv, ni sys.exit, ni
         logging.basicConfig, ni asyncio.run (invariant n°3)."""
 
-    def run(self, ctx: "PipelineContext") -> StepResult:
+    def run(self, ctx: PipelineContext) -> StepResult:
         """Template : applicable ? → valider les entrées → exécuter (chronométré)."""
         start = time.perf_counter()
         if not self.is_applicable(ctx):
