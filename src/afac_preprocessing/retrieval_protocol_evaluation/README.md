@@ -28,10 +28,10 @@ Aucun venv séparé — dépendances déclarées dans le `pyproject.toml` racine
 
 ```bash
 # Un document, toutes ses questions (debug/inspection)
-uv run python retrieval_protocol_evaluation/evaluate.py --doc-name "Adhésion traitement"
+uv run python -m afac_preprocessing.retrieval_protocol_evaluation.evaluate --doc-name "Adhésion traitement"
 
 # Tout le corpus — semantic + reranker, résumé global
-uv run python retrieval_protocol_evaluation/evaluate_all_docs.py
+uv run python -m afac_preprocessing.retrieval_protocol_evaluation.evaluate_all_docs
 ```
 
 `--help` sur chaque script pour la liste des paramètres (`--stage5`, `--output-dir`,

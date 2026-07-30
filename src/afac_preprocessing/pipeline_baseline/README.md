@@ -4,8 +4,7 @@ Mesure l'apport (ou le coût) du pipeline de prétraitement en comparant deux re
 d'un même corpus de documents, évaluées avec **les mêmes questions HyQ** et **les mêmes
 métriques** (Recall/Precision/nDCG/MRR@k) :
 - **baseline** : markdown produit directement par Docling (`<doc>.md`), sans aucun enrichissement.
-- **pipeline** : markdown enrichi par le pipeline de prétraitement (cf.
-  `pipeline_preprocessing/orchestrators/`).
+- **pipeline** : markdown enrichi par le pipeline de prétraitement (CLI `afac-preprocess run`).
 
 Seule la représentation du document change ; les questions HyQ (texte + embedding) sont
 toujours réutilisées telles quelles depuis `metadata/hyq_<doc>/question_N.csv` — jamais
@@ -26,19 +25,19 @@ régénérées, pour garantir une comparaison à questions identiques d'un bout 
 ## Workflow type (corpus complet)
 
 Prérequis : le pipeline de prétraitement a déjà tourné sur le corpus cible
-(cf. `pipeline_preprocessing/orchestrators/batch_pipeline_all_pdfs.py`), donc chaque
+(`uv run afac-preprocess run --input <dossier>`), donc chaque
 document a un `<doc>.md` (brut), un `metadata/hyq.json` + `metadata/hyq_<doc>/question_N.csv`
 (questions HyQ déjà embeddées).
 
 ```bash
 # 1. Baseline (docling brut) — CSV + résultats
-uv run python pipeline_baseline/single_docling_baseline.py --dotenv .env.test
+uv run python -m afac_preprocessing.pipeline_baseline.single_docling_baseline --dotenv .env.test
 
 # 2. Évaluation du pipeline avec les mêmes métriques (sortie : data/pipeline_evaluation/global_summary.csv)
-uv run python retrieval_protocol_evaluation/evaluate_all_docs.py
+uv run python -m afac_preprocessing.retrieval_protocol_evaluation.evaluate_all_docs
 
 # 3. Rapport de comparaison (sortie : data/baseline_evaluation/comparison_report.md)
-uv run python pipeline_baseline/compare_baseline_report.py --dotenv .env.test
+uv run python -m afac_preprocessing.pipeline_baseline.compare_baseline_report --dotenv .env.test
 ```
 
 ## Sorties

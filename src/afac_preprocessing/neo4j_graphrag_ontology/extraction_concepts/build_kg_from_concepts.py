@@ -67,11 +67,11 @@ Usage :
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import logging
 import os
 import re
-import sys
 import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -79,27 +79,26 @@ from pathlib import Path
 import neo4j
 from dotenv import load_dotenv
 
-THIS_DIR = Path(__file__).resolve().parent            # .../extraction_concepts
-KG_DIR = THIS_DIR.parent                                # .../neo4j_graphrag_ontology
-PROJECT_ROOT = KG_DIR.parent                            # .../afac-preprocessing
-for p in (str(PROJECT_ROOT), str(KG_DIR)):
-    if p not in sys.path:
-        sys.path.insert(0, p)
+from ...settings import _find_project_root
+
+THIS_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = _find_project_root()
 
 from neo4j_graphrag.embeddings import OpenAIEmbeddings  # noqa: E402
 from neo4j_graphrag.indexes import create_vector_index  # noqa: E402
 
-from ontology.afac_ontology import normalize_name  # noqa: E402
-from shared.extraction_vlm_common import (  # noqa: E402
+from ...clients.openai_client import build_async_client, text_completion_async  # noqa: E402
+from ...settings import Settings  # noqa: E402
+from ..ontology.afac_ontology import normalize_name  # noqa: E402
+from ..shared.extraction_vlm_common import (  # noqa: E402
     DEFAULT_OUTPUT_DIR,
     DOMAIN_CONTEXT,
     DocumentLocator,
     TextChunker,
     TolerantJsonParser,
 )
-from shared.kg_shared_utils import EmbedderFactory, GraphNormalizer  # noqa: E402
-from schema import DocConcepts, ThemeConcepts  # noqa: E402
-from utils.vlm_client import build_sync_client, build_vlm_config, text_completion  # noqa: E402
+from ..shared.kg_shared_utils import EmbedderFactory, GraphNormalizer  # noqa: E402
+from .schema import DocConcepts, ThemeConcepts  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
 _log = logging.getLogger("build_kg_from_concepts")
@@ -209,7 +208,7 @@ pour CHAQUE concept de la liste ci-dessus. N'entoure pas le JSON de backticks. N
 le JSON, rien d'autre.
 """
 
-    def assign_types(self, concepts: list[str]) -> dict[str, str]:
+    async def assign_types(self, concepts: list[str]) -> dict[str, str]:
         if not concepts:
             return {}
         glossary: dict[str, str] = {}
@@ -217,7 +216,9 @@ le JSON, rien d'autre.
         for i, batch in enumerate(batches, 1):
             _log.info("  typage lot %d/%d (%d concepts)…", i, len(batches), len(batch))
             system_prompt = self._build_prompt(batch)
-            raw = text_completion(self.client, self.model, system_prompt, "Assigne les types demandés.")
+            raw = await text_completion_async(
+                self.client, self.model, system_prompt, "Assigne les types demandés."
+            )
             parsed = self._json_parser.parse(raw)
             types = parsed.get("types", {})
             glossary.update({c: types.get(c, "Concept") for c in batch})
@@ -269,7 +270,7 @@ class ThemeVocabulary:
             seen.setdefault(canonical.lower(), canonical)
         return list(seen.values())
 
-    def build_glossary(self, typer: ConceptTyper, *, force: bool = False) -> dict[str, str]:
+    async def build_glossary(self, typer: ConceptTyper, *, force: bool = False) -> dict[str, str]:
         if not force and self.glossary_cache_path.exists():
             self._glossary = json.loads(self.glossary_cache_path.read_text(encoding="utf-8"))
             _log.info("Glossaire de types chargé depuis le cache (%s, %d concepts).",
@@ -278,7 +279,7 @@ class ThemeVocabulary:
 
         names = self.concept_names()
         _log.info("Typage de %d concept(s) du thème « %s » (1 appel VLM)…", len(names), self.theme)
-        self._glossary = typer.assign_types(names)
+        self._glossary = await typer.assign_types(names)
         self.glossary_cache_path.write_text(
             json.dumps(self._glossary, ensure_ascii=False, indent=2), encoding="utf-8"
         )
@@ -353,7 +354,7 @@ Retourne un objet JSON de la forme :
 que le JSON, rien d'autre.
 """
 
-    def extract(self, text: str, concepts: list[str]) -> list[ChunkExtraction]:
+    async def extract(self, text: str, concepts: list[str]) -> list[ChunkExtraction]:
         system_prompt = self._build_prompt(concepts)
         concept_set = set(concepts)
         ignored = 0
@@ -364,7 +365,9 @@ que le JSON, rien d'autre.
             extraction = ChunkExtraction(index=i, text=chunk)
             results.append(extraction)
 
-            raw = text_completion(self.client, self.model, system_prompt, chunk, temperature=self.temperature)
+            raw = await text_completion_async(
+                self.client, self.model, system_prompt, chunk, temperature=self.temperature
+            )
             try:
                 parsed = self._json_parser.parse(raw)
             except json.JSONDecodeError as exc:
@@ -438,7 +441,7 @@ class LexicalGraphLoader:
             source_extension=source_path.suffix if source_path else None,
         )
 
-    def create_chunks(self, doc_name: str, chunks: list["ChunkExtraction"]) -> None:
+    def create_chunks(self, doc_name: str, chunks: list[ChunkExtraction]) -> None:
         for chunk in chunks:
             uid = chunk_uid(doc_name, chunk.index)
             embedding = self.embedder.embed_query(chunk.text) if self.embedder else None
@@ -623,7 +626,7 @@ class ConceptKGBatchBuilder:
             )
         return DocConcepts.model_validate_json(path.read_text(encoding="utf-8"))
 
-    def run_document(self, doc_name: str) -> None:
+    async def run_document(self, doc_name: str) -> None:
         doc_concepts = self._load_doc_concepts(doc_name)
         concepts = self.vocabulary.concepts_for_doc(doc_concepts)
         if not concepts:
@@ -633,7 +636,7 @@ class ConceptKGBatchBuilder:
         text = self._doc_locator.resolve_final_md(doc_name).read_text(encoding="utf-8")
 
         self.lexical_loader.create_document(doc_name, self.theme)
-        chunks = self.extractor.extract(text, concepts)
+        chunks = await self.extractor.extract(text, concepts)
         self.lexical_loader.create_chunks(doc_name, chunks)
         self.loader.load_triples(chunks, doc_name)
 
@@ -641,12 +644,12 @@ class ConceptKGBatchBuilder:
         _log.info("%s : %d concept(s) ancré(s), %d chunk(s), %d relation(s) chargée(s).",
                    doc_name, len(concepts), len(chunks), n_triples)
 
-    def run_batch(self, doc_names: list[str], driver: neo4j.Driver) -> None:
+    async def run_batch(self, doc_names: list[str], driver: neo4j.Driver) -> None:
         ok, failed = 0, []
         for i, doc in enumerate(doc_names, 1):
             try:
                 _log.info("[%d/%d] %s", i, len(doc_names), doc)
-                self.run_document(doc)
+                await self.run_document(doc)
                 ok += 1
             except Exception:
                 _log.exception("[%d/%d] ÉCHEC %s — batch poursuivi.", i, len(doc_names), doc)
@@ -678,7 +681,7 @@ def source_tag(theme: str) -> str:
     return f"concept_kg_{normalize_name(theme).lower().replace(' ', '_')}"
 
 
-def main() -> None:
+async def main() -> None:
     ap = argparse.ArgumentParser(
         description="Construit le KG AFAC 'concept-guided' pour tous les documents d'un thème."
     )
@@ -708,8 +711,8 @@ def main() -> None:
         return
 
     if args.index_only:
-        cfg = build_vlm_config(Path(args.dotenv))
-        embedder = EmbedderFactory(cfg).build()
+        settings = Settings.from_dotenv(Path(args.dotenv))
+        embedder = EmbedderFactory(settings).build()
         resolver = SourceFileResolver(Path(args.input_files_dir))
         LexicalGraphLoader(driver, source, resolver, embedder).ensure_vector_index()
         driver.close()
@@ -718,16 +721,16 @@ def main() -> None:
     normalizer = EntityNameNormalizer()
     vocabulary = ThemeVocabulary(args.theme, Path(args.concepts_dir), normalizer)
 
-    cfg = build_vlm_config(Path(args.dotenv))
-    client = build_sync_client(cfg)
+    settings = Settings.from_dotenv(Path(args.dotenv))
+    client = build_async_client(settings)
 
-    typer = ConceptTyper(client, cfg.vlm_model_name)
-    vocabulary.build_glossary(typer, force=args.retype)
+    typer = ConceptTyper(client, settings.vlm_model_name)
+    await vocabulary.build_glossary(typer, force=args.retype)
 
-    extractor = ConceptRelationExtractor(client, cfg.vlm_model_name)
+    extractor = ConceptRelationExtractor(client, settings.vlm_model_name)
     loader = ConceptGraphLoader(driver, vocabulary, source)
     resolver = SourceFileResolver(Path(args.input_files_dir))
-    embedder = EmbedderFactory(cfg).build() if args.embeddings else None
+    embedder = EmbedderFactory(settings).build() if args.embeddings else None
     if not args.embeddings:
         _log.info("Embeddings désactivés (--no-embeddings) — pas d'index vectoriel créé.")
     lexical_loader = LexicalGraphLoader(driver, source, resolver, embedder)
@@ -738,10 +741,10 @@ def main() -> None:
     doc_names = args.doc_names or vocabulary.source_documents()
     _log.info("%d document(s) à charger pour le thème « %s » : %s", len(doc_names), args.theme, ", ".join(doc_names))
 
-    builder.run_batch(doc_names, driver)
+    await builder.run_batch(doc_names, driver)
     driver.close()
     print(f"\nGraphe concept-guided construit (test_source={source!r}). Ouvrir http://localhost:7474.")
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

@@ -11,15 +11,15 @@ from __future__ import annotations
 
 import json
 import re
-import sys
 from pathlib import Path
 
-THIS_DIR = Path(__file__).resolve().parent            # .../neo4j_graphrag_ontology/shared
-KG_DIR = THIS_DIR.parent                                # .../neo4j_graphrag_ontology
-PROJECT_ROOT = KG_DIR.parent                            # .../afac-preprocessing
-for p in (str(PROJECT_ROOT), str(KG_DIR)):
-    if p not in sys.path:
-        sys.path.insert(0, p)
+from ...settings import _find_project_root
+
+# ⚠ Lot 9 : ``PROJECT_ROOT`` valait ``Path(__file__).parents[2]``, c'est-à-dire
+# le dossier du PACKAGE — d'où un ``DEFAULT_OUTPUT_DIR`` pointant vers
+# ``src/afac_preprocessing/data/``, qui n'existe plus depuis que le lot 1 a
+# sorti ``data/`` de ``src/``. On lit désormais la vraie racine du dépôt.
+PROJECT_ROOT = _find_project_root()
 
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "data" / "output_files_preprocessing"
 

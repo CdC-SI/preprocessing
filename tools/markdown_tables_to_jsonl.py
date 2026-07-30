@@ -20,10 +20,10 @@ la ligne d'en-tête au début d'une nouvelle page sans nouvelle ligne de sépara
 que traitée comme une ligne de données.
 
 Usage :
-    uv run python markdown_tables_to_jsonl.py --markdown data/output_files_preprocessing/MonDoc/MonDoc_final.md
-    uv run python markdown_tables_to_jsonl.py --dotenv .env.test --stage5 data/output_files_preprocessing
-    uv run python markdown_tables_to_jsonl.py --markdown ... --output-dir data/output_files_preprocessing/MonDoc/tables_markdown
-    uv run python markdown_tables_to_jsonl.py --markdown MonDoc_final.md --embed-output MonDoc_final_embed.md
+    uv run python tools/markdown_tables_to_jsonl.py --markdown data/output_files_preprocessing/MonDoc/MonDoc_final.md
+    uv run python tools/markdown_tables_to_jsonl.py --dotenv .env.test --stage5 data/output_files_preprocessing
+    uv run python tools/markdown_tables_to_jsonl.py --markdown ... --output-dir data/output_files_preprocessing/MonDoc/tables_markdown
+    uv run python tools/markdown_tables_to_jsonl.py --markdown MonDoc_final.md --embed-output MonDoc_final_embed.md
 """
 import argparse
 import json
@@ -34,7 +34,7 @@ from pathlib import Path
 
 import jsonlines
 
-from ...settings import _find_project_root
+from afac_preprocessing.settings import _find_project_root
 
 _log = logging.getLogger(__name__)
 
@@ -268,9 +268,9 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Exemples :\n"
-            "  uv run python markdown_tables_to_jsonl.py \\\n"
+            "  uv run python tools/markdown_tables_to_jsonl.py \\\n"
             "      --markdown data/output_files_preprocessing/MonDoc/MonDoc_final.md\n"
-            "  uv run python markdown_tables_to_jsonl.py --dotenv .env.test --stage5 data/output_files_preprocessing\n"
+            "  uv run python tools/markdown_tables_to_jsonl.py --dotenv .env.test --stage5 data/output_files_preprocessing\n"
         ),
     )
     parser.add_argument(

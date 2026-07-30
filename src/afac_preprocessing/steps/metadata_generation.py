@@ -6,7 +6,9 @@ DÉPLACÉES telles quelles (invariant n°1). Les deux collaborateurs VLM
 (``MetadataEnhancer``, ``DocumentEmbedder`` — piège P4) portent les appels
 modèle, en async (contrainte C2), via les clients du ClientBundle.
 
-Champs du bloc METADATA : voir build_metadata.
+Champs du bloc METADATA : les 21 champs structurels sont listés dans le docstring
+de ``build_metadata`` ; ``resume`` / ``intent`` / ``hyq`` sont ajoutés ensuite par
+``MetadataGenerationStep._execute_async`` depuis le MetadataEnhancer (24 au total).
 
 ⚠ Lot F3 : ``title`` porte le nom du fichier SANS extension et ``doctype``
 l'extension seule, en minuscules — le nom de la clé ne change pas, seule sa
@@ -336,6 +338,42 @@ def build_metadata(
     Depuis le lot F1, tous les chemins du document viennent du ``workspace``
     (qui porte l'arborescence miroir) ; ``out_root`` ne sert plus qu'au
     balayage inter-documents des incoming_links (décision n°10).
+
+    Champs produits (21) :
+
+    - uuid : uuid5 déterministe basé sur le chemin relatif du document (stable entre les runs)
+    - user_uuid : chaîne vide par défaut
+    - source : premier segment du chemin (ex : "afac"), "afac" par défaut si le chemin
+      est à plat ou absolu (cf. get_hierarchy)
+    - title : nom du fichier SANS extension (ex : "Annulation d'une dispense") — lot F3
+    - doctype : extension du chemin seule, en minuscules (pdf, docx, html…) — lot F3,
+      ce n'est plus le mimetype Docling
+    - version : dernière valeur de la colonne "Version" de la première table du JSON
+      Docling qui en porte une, sinon chaîne vide
+    - visibility : "internal" par défaut (VISIBILITY_DEFAULT ; "internal" / "public" / "sensitive")
+    - language : "fr" (tous les documents AF)
+    - outgoing_links : liens hypertextes sortants extraits du document (hyperlinks_data_*.jsonl),
+      sous forme {text, url, page}
+    - incoming_links : références au document trouvées dans les hyperlinks des autres
+      documents, balayage RÉCURSIF depuis out_root, sous forme {from_doc, text, url}
+    - created_at : date de création du PDF lue via fitz (ISO 8601 YYYY-MM-DDTHH:MM:SSZ),
+      sinon chaîne vide
+    - updated_at : horodatage UTC courant (ISO 8601)
+    - media_type : noms des images extraites du document (used_images/, .png/.jpg/.jpeg triés)
+    - parent_label : dossier parent du document (ex : ["DISPENSE"]), [] si chemin à plat
+    - children_label : sous-dossiers présents dans le dossier du document
+    - sibling : autres fichiers présents dans le même dossier (hors document lui-même)
+    - content : nom du fichier markdown utilisé comme CONTENT — <doc>_final_embed.md s'il
+      existe, sinon <doc>_final.md (cf. _resolve_markdown_file)
+    - page_count : nombre de pages du document (clé "pages" du JSON Docling)
+    - page_num : numéros de page en chaîne CSV (ex : "1,2,3"), chaîne vide si page_count <= 0
+    - chunk_count : 1 si le markdown final existe, sinon 0
+    - embedding_model : nom du modèle d'embedding (résolu par DocumentEmbedder depuis la config VLM)
+
+    Trois champs supplémentaires sont ajoutés APRÈS cet appel, dans
+    ``MetadataGenerationStep._execute_async``, depuis le MetadataEnhancer (VLM) :
+    ``resume`` (résumé du document), ``intent`` et ``hyq`` (listes jointes par ", ").
+    Le bloc METADATA écrit dans le CSV compte donc 24 champs.
 
     :param relative_doc_path: Chemin relatif dans folder_source (ex: "Taxation/MonDoc.pdf")
     :param folder_source: Racine de la hiérarchie documentaire (data/input_files/)

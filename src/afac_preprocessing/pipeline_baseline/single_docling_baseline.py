@@ -47,6 +47,7 @@ uv run python single_docling_baseline.py
 uv run python single_docling_baseline.py --dotenv ../.env.test --top-ks 1,3,5,10,20
 """
 import argparse
+import asyncio
 import csv
 import json
 import logging
@@ -56,26 +57,21 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from openai import OpenAI
+from openai import AsyncOpenAI
 
-# Bootstrap sys.path from the on-disk layout (not PROJECT_ROOT-aware: this locates the
-# *source* directories to import sibling packages from, distinct from utils.paths.project_root()
-# below which resolves *data* paths and does honor a PROJECT_ROOT override).
-_HERE = Path(__file__).resolve().parent
-_SRC_ROOT = _HERE.parent
-_RETRIEVAL_EVAL_DIR = _SRC_ROOT / "retrieval_protocol_evaluation"
-_EMBEDDING_MODULE_DIR = _SRC_ROOT / "pipeline_preprocessing" / "metadata"
+from ..clients.openai_client import (
+    build_async_embedding_client,
+    embedding_to_string,
+    get_embedding_async,
+)
+from ..retrieval_protocol_evaluation.config import TOP_KS
+from ..retrieval_protocol_evaluation.evaluate_all_docs import evaluate_doc
+from ..retrieval_protocol_evaluation.loaders import parse_embedding as parse_embedding_field
+from ..settings import Settings, _find_project_root
 
-for _path in (_SRC_ROOT, _RETRIEVAL_EVAL_DIR, _EMBEDDING_MODULE_DIR):
-    if str(_path) not in sys.path:
-        sys.path.insert(0, str(_path))
-
-from utils.paths import project_root  # noqa: E402
-from utils.vlm_client import build_vlm_config, build_embedding_client, embedding_to_string  # noqa: E402
-from embedding_metadata import generate_embedding  # noqa: E402
-from evaluate_all_docs import evaluate_doc  # noqa: E402
-from loaders import parse_embedding as parse_embedding_field  # noqa: E402
-from config import TOP_KS  # noqa: E402
+# ``generate_embedding`` (metadata/embedding_metadata.py) n'était qu'un alias de
+# ``get_embedding`` ; le module a disparu au lot 6 (→ steps/document_embedder.py).
+project_root = _find_project_root
 
 _log = logging.getLogger(__name__)
 
@@ -99,11 +95,12 @@ def discover_doc_names(stage5_dir: Path) -> list[str]:
     return names
 
 
-def build_baseline_embedding_client(dotenv_path: Path | None) -> tuple[OpenAI, str]:
+def build_baseline_embedding_client(dotenv_path: Path | None) -> tuple[AsyncOpenAI, str]:
     """Client + model name for the baseline's own embedding calls — same helpers the rest
-    of the pipeline uses (utils.vlm_client), so retry/timeout/CA handling stays identical."""
-    cfg = build_vlm_config(dotenv_path=dotenv_path)
-    return build_embedding_client(cfg), cfg.embedding_model_name
+    of the pipeline uses (clients/openai_client.py), so retry/timeout/CA handling stays
+    identical."""
+    settings = Settings.from_dotenv(dotenv_path)
+    return build_async_embedding_client(settings), settings.embedding_model_name
 
 
 def copy_raw_markdown(doc_name: str, stage5_dir: Path, docs_output_dir: Path) -> None:
@@ -116,10 +113,10 @@ def copy_raw_markdown(doc_name: str, stage5_dir: Path, docs_output_dir: Path) ->
 
 
 # baseline_metadata.csv
-def build_baseline_metadata(
+async def build_baseline_metadata(
     doc_names: list[str],
     stage5_dir: Path,
-    client: OpenAI,
+    client: AsyncOpenAI,
     embedding_model_name: str,
     docs_output_dir: Path,
 ) -> list[dict]:
@@ -141,7 +138,7 @@ def build_baseline_metadata(
         }
 
         _log.info("Embedding baseline '%s' (%d chars)", doc_name, len(content))
-        embedding = generate_embedding(content, client, embedding_model_name)
+        embedding = await get_embedding_async(client, embedding_model_name, content)
 
         rows.append({
             "doc_name": doc_name,
@@ -164,7 +161,7 @@ def save_baseline_metadata(rows: list[dict], output_path: Path) -> None:
 
 
 # Evaluation — reuses evaluate_doc() (semantic pipeline) from evaluate_all_docs.py
-def evaluate_baseline(
+async def evaluate_baseline(
     doc_names: list[str],
     doc_embeddings: np.ndarray,
     stage5_dir: Path,
@@ -173,7 +170,7 @@ def evaluate_baseline(
     rows: list[dict] = []
     for doc_name in doc_names:
         _log.info("── %s", doc_name)
-        sem_rows, _ = evaluate_doc(
+        sem_rows, _ = await evaluate_doc(
             doc_name=doc_name,
             doc_names=doc_names,
             doc_embeddings=doc_embeddings,
@@ -210,7 +207,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> None:
+async def main() -> None:
     args = parse_args()
     logging.basicConfig(
         level=getattr(logging, args.log_level),
@@ -228,14 +225,14 @@ def main() -> None:
 
     client, embedding_model_name = build_baseline_embedding_client(args.dotenv)
 
-    metadata_rows = build_baseline_metadata(
+    metadata_rows = await build_baseline_metadata(
         doc_names, args.stage5, client, embedding_model_name, args.docs_output_dir
     )
     save_baseline_metadata(metadata_rows, args.output_dir / "baseline_metadata.csv")
 
     doc_embeddings = np.stack([parse_embedding_field(row["EMBEDDING"]) for row in metadata_rows])
 
-    results_rows = evaluate_baseline(doc_names, doc_embeddings, args.stage5, top_ks)
+    results_rows = await evaluate_baseline(doc_names, doc_embeddings, args.stage5, top_ks)
     if not results_rows:
         _log.error("No evaluation result generated.")
         sys.exit(1)
@@ -248,4 +245,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

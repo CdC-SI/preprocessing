@@ -18,11 +18,11 @@ from pathlib import Path
 
 import numpy as np
 
-from config import DEFAULT_STAGE5, DEFAULT_OUTPUT_DIR, TOP_KS
-from loaders import load_hyq_questions, load_all_doc_embeddings
-from similarity import compute_similarity_matrix, rank_docs
-from metrics import evaluate_all_metrics
-from report import save_results_csv, plot_all_charts
+from .config import DEFAULT_OUTPUT_DIR, DEFAULT_STAGE5, TOP_KS
+from .loaders import load_all_doc_embeddings, load_hyq_questions
+from .metrics import evaluate_all_metrics
+from .report import plot_all_charts, save_results_csv
+from .similarity import compute_similarity_matrix, rank_docs
 
 _log = logging.getLogger(__name__)
 

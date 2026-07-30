@@ -7,10 +7,11 @@ signatures d'entrée changent (``Settings`` au lieu du dict de config).
 - ➕ ``text_completion_structured_async`` et ``get_embedding_async`` — elles
   n'existaient pas (piège P6), calquées sur leurs jumelles sync et sur
   ``vision_completion_async``.
-- ➖ ``text_completion`` / ``text_completion_async`` / ``text_completion_thinking``
-  ne sont PAS portées ici : le contrat du noyau est async-only (C2) et leurs
-  seuls appelants vivent dans les dossiers hors périmètre (lot 9), qui
-  continuent de passer par ``utils/vlm_client.py``.
+- ➕ ``text_completion_async`` et ``text_completion_thinking_async`` (lot 9) —
+  les variantes **sync** ``text_completion`` / ``text_completion_thinking`` ne
+  sont pas portées : tous les appels du dépôt sont async (exigence métier).
+  Leurs appelants (``neo4j_graphrag_ontology/``, ``pipeline_baseline/``) ont
+  été convertis en async au lot 9.
 - Le client d'embedding devient ``AsyncOpenAI`` (C2) — même construction que
   ``build_embedding_client``, variante async.
 
@@ -40,6 +41,7 @@ _T = TypeVar("_T", bound=BaseModel)
 DEFAULT_MAX_RETRIES = 3
 DEFAULT_TIMEOUT = 120.0
 _ENABLE_THINKING_FALSE = {"chat_template_kwargs": {"enable_thinking": False}}  # avoids content=null (Qwen3)
+_ENABLE_THINKING_TRUE = {"chat_template_kwargs": {"enable_thinking": True}}
 
 
 def _to_base_url(raw_url: str) -> str:
@@ -153,6 +155,66 @@ async def text_completion_structured_async(
     if parsed is None:
         raise ValueError(f"VLM returned parsed=null. Full response: {response}")
     return parsed
+
+
+async def text_completion_async(
+    client: AsyncOpenAI,
+    model: str,
+    system_prompt: str,
+    user_content: str,
+    *,
+    temperature: float = 0.0,
+) -> str:
+    """Complétion texte libre, sans contrainte de schéma (few-shot prompting).
+
+    Portée ici au lot 9 : ses appelants (``neo4j_graphrag_ontology/``,
+    ``pipeline_baseline/``) passaient par la variante sync de
+    ``utils/vlm_client.py``, supprimée au lot 8.
+    """
+    response = await client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content},
+        ],
+        temperature=temperature,
+        extra_body=_ENABLE_THINKING_FALSE,
+    )
+    content = response.choices[0].message.content
+    if content is None:
+        raise ValueError(f"VLM returned content=null. Full response: {response}")
+    return content.strip()
+
+
+async def text_completion_thinking_async(
+    client: AsyncOpenAI,
+    model: str,
+    system_prompt: str,
+    user_content: str,
+    *,
+    temperature: float = 0.0,
+) -> str:
+    """Complétion texte libre avec le mode thinking de Qwen3 activé, pour les
+    prompts qui gagnent à raisonner avant de répondre (extraction de concepts
+    ouverte).
+
+    ⚠ Ne jamais combiner avec une sortie structurée : thinking +
+    ``response_format`` est exactement la combinaison que le reste du module
+    évite via ``_ENABLE_THINKING_FALSE`` (elle produit ``content=null``).
+    """
+    response = await client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content},
+        ],
+        temperature=temperature,
+        extra_body=_ENABLE_THINKING_TRUE,
+    )
+    content = response.choices[0].message.content
+    if content is None:
+        raise ValueError(f"VLM returned content=null (thinking mode). Full response: {response}")
+    return content.strip()
 
 
 async def get_embedding_async(client: AsyncOpenAI, model: str, text: str) -> list[float]:

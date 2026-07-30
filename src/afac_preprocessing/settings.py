@@ -29,6 +29,23 @@ def _find_project_root() -> Path:
     return Path.cwd()
 
 
+def default_dotenv() -> Path | None:
+    """``.env`` puis ``.env.test``, cherchés dans le répertoire courant **puis**
+    à la racine du dépôt.
+
+    Le répertoire courant d'abord, pour que la CLI reste lançable depuis
+    n'importe où avec un .env local ; la racine ensuite, parce que les scripts
+    autonomes (baseline, évaluation, KG) étaient lancés depuis leur propre
+    dossier et comptaient sur ``project_root() / ".env.test"``.
+    """
+    for base in (Path.cwd(), _find_project_root()):
+        for name in (".env", ".env.test"):
+            candidate = base / name
+            if candidate.exists():
+                return candidate
+    return None
+
+
 class Settings(BaseSettings):
     """Configuration d'un run, validée à la construction.
 
@@ -53,7 +70,6 @@ class Settings(BaseSettings):
     enable_image_extraction: bool = Field(
         default=False, validation_alias="ENABLE_IMAGE_EXTRACTION"
     )
-    gen_id: str = Field(default="", validation_alias="GEN_ID")
     vlm_temperature: float = Field(default=0.0, validation_alias="VLM_TEMPERATURE")
     project_root: Path = Field(
         default_factory=_find_project_root, validation_alias="PROJECT_ROOT"
@@ -80,7 +96,7 @@ class Settings(BaseSettings):
         return value
 
     @field_validator(
-        "enable_image_description", "enable_image_extraction", "vlm_temperature", "gen_id",
+        "enable_image_description", "enable_image_extraction", "vlm_temperature",
         mode="before",
     )
     @classmethod
@@ -90,7 +106,6 @@ class Settings(BaseSettings):
                 "enable_image_description": True,
                 "enable_image_extraction": False,
                 "vlm_temperature": 0.0,
-                "gen_id": "",
             }
             return defaults[info.field_name]
         return value

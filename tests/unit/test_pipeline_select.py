@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from afac_preprocessing import Pipeline, PipelineContext, Settings
+from afac_preprocessing.core.step import StepStatus
 from afac_preprocessing.exceptions import UnknownStep
 
 ALL_NAMES = [
@@ -87,6 +88,30 @@ def test_select_is_pure_and_chainable() -> None:
     assert len(base.steps) == 13  # l'original n'est pas modifié
     chained = base.select(to="markdown-convert").select(skip=["reorder-doctags"])
     assert "reorder-doctags" not in _names(chained)
+
+
+# --- dry-run : le drapeau doit réellement empêcher l'exécution ---
+
+
+def test_dry_run_executes_nothing_and_writes_nothing(tmp_path: Path) -> None:
+    """``--dry-run`` rapportait OK en ayant tout exécuté : le drapeau était
+    porté par le contexte mais lu nulle part. Ce test verrouille le contrat."""
+    settings = Settings(
+        vlm_url="http://vlm.local/v1",  # type: ignore[arg-type]
+        project_root=tmp_path,
+        data_root=tmp_path / "data",
+    )
+    pdf = tmp_path / "data" / "input_files" / "afac" / "Adhésion" / "Mineur.pdf"
+    ctx = PipelineContext.for_pdf(pdf, settings, dry_run=True)
+
+    report = Pipeline.default().run(ctx)
+
+    assert report.ok
+    assert len(report.results) == 13
+    assert {result.status for _, result in report.results} == {StepStatus.SKIPPED}
+    # Le PDF n'existe même pas : sans le court-circuit, docling-extract aurait échoué.
+    assert not (tmp_path / "data" / "output_files_preprocessing").exists()
+    ctx.clients.close()
 
 
 # --- test de câblage (§ 2.2) : le mauvais chaînage devient impossible ---

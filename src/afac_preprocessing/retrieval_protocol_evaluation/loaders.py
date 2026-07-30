@@ -7,7 +7,7 @@ from pathlib import Path
 
 import numpy as np
 
-from config import DOC_FOLDER_SUFFIX, HYQ_FOLDER_PREFIX, DOC_CSV_SUFFIX
+from .config import DOC_CSV_SUFFIX, DOC_FOLDER_SUFFIX, HYQ_FOLDER_PREFIX
 
 _log = logging.getLogger(__name__)
 

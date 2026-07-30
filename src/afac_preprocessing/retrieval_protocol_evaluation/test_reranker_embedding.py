@@ -1,26 +1,44 @@
+"""Banc de test manuel embedding + reranker.
+
+Lot 9 : ``sys.path.insert`` + ``utils.config`` remplacés par ``Settings``, et
+``requests`` par ``httpx.AsyncClient`` — tous les appels réseau du dépôt sont
+asynchrones (exigence métier).
+
+Lancement : ``uv run python -m afac_preprocessing.retrieval_protocol_evaluation.test_reranker_embedding``
+(malgré son nom, ce n'est pas un test pytest : ``testpaths`` ne couvre que ``tests/``).
+"""
+
+import asyncio
+
+import httpx
 import numpy as np
-from sklearn.metrics import precision_score, recall_score, ndcg_score
-import requests
-from pathlib import Path
-import sys
+from sklearn.metrics import ndcg_score, precision_score, recall_score
 
-# Call configuration functions to retrieve the necessary paths and parameters
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PROJECT_ROOT))
+from ..settings import Settings, default_dotenv
 
-from utils.config import load_vlm_config
+# Résolution PARESSEUSE : la config était lue au niveau module, ce qui rendait
+# le simple import impossible sans VLM_URL. Les constantes restent des noms de
+# module (le corps des fonctions est inchangé), remplies par _init_config().
+CA_PATH = ""
+EMBEDDING_MODEL_NAME = ""
+EMBEDDING_URL = ""
+RERANKER_URL = ""
+RERANKER_MODEL_NAME = ""
 
-config = load_vlm_config()
-CA_PATH = config["CA_PATH"]
-EMBEDDING_MODEL_NAME = config["EMBEDDING_MODEL_NAME"]
-EMBEDDING_URL = config["EMBEDDING_URL"]
-RERANKER_URL = config["RERANKER_URL"]
-RERANKER_MODEL_NAME = config["RERANKER_MODEL_NAME"]
+
+def _init_config() -> None:
+    global CA_PATH, EMBEDDING_MODEL_NAME, EMBEDDING_URL, RERANKER_URL, RERANKER_MODEL_NAME
+    settings = Settings.from_dotenv(default_dotenv())
+    CA_PATH = settings.resolved_ca_path
+    EMBEDDING_MODEL_NAME = settings.embedding_model_name
+    EMBEDDING_URL = str(settings.embedding_url).rstrip("/") if settings.embedding_url else ""
+    RERANKER_URL = str(settings.reranker_url).rstrip("/") if settings.reranker_url else ""
+    RERANKER_MODEL_NAME = settings.reranker_model_name
 
 k = 5 # for top-k metrics
 
 
-def test_embedding_connection() -> bool:
+async def test_embedding_connection() -> bool:
     """
     - Tests the connection to the embedding API by sending a test request and checking the response.
 
@@ -32,24 +50,20 @@ def test_embedding_connection() -> bool:
             "model": EMBEDDING_MODEL_NAME,
             "input": "test"
         }
-        resp = requests.post(f"{EMBEDDING_URL}/v1/embeddings", 
-                             json=payload, 
-                             verify=CA_PATH, # Necessary if self-signed certificate, otherwise can be omitted
-                             timeout=10
-                             )
-        resp.raise_for_status()
-        data = resp.json()
+        async with httpx.AsyncClient(verify=CA_PATH, timeout=10) as client:
+            resp = await client.post(f"{EMBEDDING_URL}/v1/embeddings", json=payload)
+            resp.raise_for_status()
+            data = resp.json()
         if "data" in data and data["data"]:
             print("Embedding model connection: OK")
             return True
-        else:
-            print("Embedding model connection: FAIL (no data)")
-            return False
+        print("Embedding model connection: FAIL (no data)")
+        return False
     except Exception as e:
         print(f"Embedding model connection: FAIL ({e})")
         return False
     
-def test_reranker_with_prompt(query, relevant_idx, documents=None) -> tuple[float, float, float, float]:
+async def test_reranker_with_prompt(query, relevant_idx, documents=None) -> tuple[float, float, float, float]:
     """
     - Tests the connection to the reranking API by sending a test request with a formatted prompt and checking the response.
     - Formats the prompt for the reranker by including a clear instruction, the user's query, and the documents to evaluate.
@@ -89,19 +103,18 @@ def test_reranker_with_prompt(query, relevant_idx, documents=None) -> tuple[floa
     graded = {str(i): 1 for i in relevant_idx}
 
     try:
-        response = requests.post(
-            f"{RERANKER_URL}/score",
-            json={
-                "model": RERANKER_MODEL_NAME,
-                "text_1": queries_formatted,
-                "text_2": documents_formatted,
-                "truncate_prompt_tokens": -1,
-            },
-            verify=CA_PATH, # Necessary if self-signed certificate, otherwise can be omitted
-            timeout=20,
-        )
-        response.raise_for_status()
-        result = response.json()
+        async with httpx.AsyncClient(verify=CA_PATH, timeout=20) as client:
+            response = await client.post(
+                f"{RERANKER_URL}/score",
+                json={
+                    "model": RERANKER_MODEL_NAME,
+                    "text_1": queries_formatted,
+                    "text_2": documents_formatted,
+                    "truncate_prompt_tokens": -1,
+                },
+            )
+            response.raise_for_status()
+            result = response.json()
         scores = [item["score"] for item in result["data"]]
         reranked = [{"doc_id": str(i), "score": s} for i, s in enumerate(scores)]
         reranked = sorted(reranked, key=lambda x: x["score"], reverse=True)
@@ -127,7 +140,7 @@ def test_reranker_with_prompt(query, relevant_idx, documents=None) -> tuple[floa
         return 0.0, 0.0, 0.0, 0.0
     
 
-def get_query_embedding(query) -> list[float]:
+async def get_query_embedding(query) -> list[float]:
     """
     - Sends a request to the embedding API to obtain the embedding of the user query.
     - Formats the request with the embedding model name and the query text, then sends a POST request to the embedding endpoint.
@@ -141,12 +154,13 @@ def get_query_embedding(query) -> list[float]:
         "model": EMBEDDING_MODEL_NAME,
         "input": query
     }
-    response = requests.post(f"{EMBEDDING_URL}/v1/embeddings", json=payload, timeout=60)
-    response.raise_for_status()
-    return response.json()["data"][0]["embedding"]
+    async with httpx.AsyncClient(verify=CA_PATH, timeout=60) as client:
+        response = await client.post(f"{EMBEDDING_URL}/v1/embeddings", json=payload)
+        response.raise_for_status()
+        return response.json()["data"][0]["embedding"]
 
 
-def remote_rerank(query, docs, server_url) -> list[float]:
+async def remote_rerank(query, docs, server_url) -> list[float]:
     """
     - Sends a request to the reranking API to obtain the relevance scores of the documents with respect to the query.
     - Formats the request with the user query and the documents to evaluate, then sends a POST request to the reranking endpoint.
@@ -162,9 +176,10 @@ def remote_rerank(query, docs, server_url) -> list[float]:
         "query": query,
         "documents": docs
     }
-    response = requests.post(f"{server_url}/rerank", json=payload, timeout=60)
-    response.raise_for_status()
-    return response.json()["scores"]
+    async with httpx.AsyncClient(verify=CA_PATH, timeout=60) as client:
+        response = await client.post(f"{server_url}/rerank", json=payload)
+        response.raise_for_status()
+        return response.json()["scores"]
 
 
 def cosine_similarity(a, b) -> float:
@@ -280,8 +295,9 @@ def reciprocal_rank_at_k(reranked_topk, relevant) -> float:
     return 0.0
 
 # Call in main
-if __name__ == "__main__":
-    embedding_ok = test_embedding_connection()
+async def main() -> None:
+    _init_config()
+    embedding_ok = await test_embedding_connection()
     all_rr = []
     all_prec = []
     all_rec = []
@@ -295,8 +311,8 @@ if __name__ == "__main__":
             {1, 5},  # relevant_idx for first query
             # Add relevant_idx sets for each query
         ]
-        for q_idx, (query, relevant_idx) in enumerate(zip(queries, relevant_indices_list)):
-            rr, prec, rec, ndcg = test_reranker_with_prompt(query, relevant_idx)
+        for q_idx, (query, relevant_idx) in enumerate(zip(queries, relevant_indices_list, strict=False)):
+            rr, prec, rec, ndcg = await test_reranker_with_prompt(query, relevant_idx)
             all_rr.append(rr)
             all_prec.append(prec)
             all_rec.append(rec)
@@ -311,3 +327,7 @@ if __name__ == "__main__":
             print(f"Mean nDCG@{k}: {np.mean(all_ndcg):.4f}")
     else:
         print("Connection problem with at least one model.")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

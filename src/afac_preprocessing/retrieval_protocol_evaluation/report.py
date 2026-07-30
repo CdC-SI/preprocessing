@@ -36,7 +36,7 @@ def _plot_single_metric(
 
     fig, ax = plt.subplots(figsize=(7, 4))
     ax.plot(top_ks, means, marker="o", linewidth=2, color=color)
-    for x, y in zip(top_ks, means):
+    for x, y in zip(top_ks, means, strict=False):
         ax.annotate(f"{y:.3f}", (x, y), textcoords="offset points", xytext=(4, 6), fontsize=8)
     ax.set_xlabel("k")
     ax.set_ylabel(f"{label} (mean over {len(df)} questions)")

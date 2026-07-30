@@ -25,8 +25,8 @@ Checks per document:
                             content — informational, heuristic
 
 Usage:
-    uv run python audit_pipeline_output.py --stage5 data/output_files_preprocessing
-    uv run python audit_pipeline_output.py --stage5 data/output_files_preprocessing --json
+    uv run python tools/audit_pipeline_output.py --stage5 data/output_files_preprocessing
+    uv run python tools/audit_pipeline_output.py --stage5 data/output_files_preprocessing --json
 """
 import argparse
 import json
@@ -204,8 +204,8 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Exemples :\n"
-            "  uv run python audit_pipeline_output.py --stage5 data/output_files_preprocessing\n"
-            "  uv run python audit_pipeline_output.py --stage5 data/output_files_preprocessing --json\n"
+            "  uv run python tools/audit_pipeline_output.py --stage5 data/output_files_preprocessing\n"
+            "  uv run python tools/audit_pipeline_output.py --stage5 data/output_files_preprocessing --json\n"
         ),
     )
     parser.add_argument("--stage5", type=Path, required=True, help="Racine de sortie du pipeline à auditer.")

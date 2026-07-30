@@ -63,4 +63,17 @@ uv sync --all-extras    # tout
 
 - [docs/architecture.md](docs/architecture.md) — les 13 étapes, le contrat `PipelineStep`, les règles du noyau
 - [CONTRIBUTING.md](CONTRIBUTING.md) — ajouter une étape, lancer les vérifications
-- [docs/README-details.md](docs/README-details.md) — anciens points d'entrée et liens détaillés
+
+## Outils hors pipeline
+
+Scripts autonomes, à lancer séparément (chacun a son `--help`) :
+
+```bash
+uv run python tools/audit_pipeline_output.py --stage5 data/output_files_preprocessing
+uv run python tools/markdown_tables_to_jsonl.py --markdown <doc>_final.md --embed-output <doc>_final_embed.md
+uv run python tools/compare_outputs.py <référence> <sortie>
+```
+
+- `audit_pipeline_output.py` — contrôle santé read-only d'un arbre de sortie : détecte les étapes ayant échoué silencieusement.
+- `markdown_tables_to_jsonl.py` — exporte les tables Markdown d'un `_final.md` en JSONL. Avec `--embed-output`, produit le `_final_embed.md` que le pipeline préfère comme CONTENT et comme source d'embedding s'il existe.
+- `compare_outputs.py` — compare deux arbres de sortie (STRICT / STRUCTUREL / TOLERANT).

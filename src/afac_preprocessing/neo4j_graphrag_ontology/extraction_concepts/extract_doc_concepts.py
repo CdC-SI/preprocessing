@@ -10,22 +10,20 @@ Usage :
 from __future__ import annotations
 
 import argparse
+import asyncio
 import logging
-import sys
 from pathlib import Path
 
-THIS_DIR = Path(__file__).resolve().parent            # .../extraction_concepts
-KG_DIR = THIS_DIR.parent                                # .../neo4j_graphrag_ontology
-PROJECT_ROOT = KG_DIR.parent                            # .../afac-preprocessing
-for p in (str(PROJECT_ROOT), str(KG_DIR)):
-    if p not in sys.path:
-        sys.path.insert(0, p)
+from ...settings import _find_project_root  # noqa: F401
 
-from shared.extraction_vlm_common import DEFAULT_OUTPUT_DIR, DocumentLocator  # noqa: E402
-from compare_concepts import ConceptComparator  # noqa: E402
-from concept_extraction_llm import ConceptLLMExtractor  # noqa: E402
-from keyword_extraction import TOP_N_DEFAULT, KeywordExtractor  # noqa: E402
-from schema import DocConcepts, Keyword, normalize_concepts  # noqa: E402
+THIS_DIR = Path(__file__).resolve().parent
+
+
+from ..shared.extraction_vlm_common import DEFAULT_OUTPUT_DIR, DocumentLocator  # noqa: E402
+from .compare_concepts import ConceptComparator  # noqa: E402
+from .concept_extraction_llm import ConceptLLMExtractor  # noqa: E402
+from .keyword_extraction import TOP_N_DEFAULT, KeywordExtractor  # noqa: E402
+from .schema import DocConcepts, Keyword, normalize_concepts  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
 _log = logging.getLogger("extract_doc_concepts")
@@ -48,7 +46,7 @@ class DocConceptsExtractor:
         self._comparator = ConceptComparator()
         self.theme = theme
 
-    def extract(self, doc_name: str, output_dir: Path = DEFAULT_OUTPUT_DIR, top_n_keywords: int = TOP_N_DEFAULT) -> DocConcepts:
+    async def extract(self, doc_name: str, output_dir: Path = DEFAULT_OUTPUT_DIR, top_n_keywords: int = TOP_N_DEFAULT) -> DocConcepts:
         _log.info("[%s] === début extraction ===", doc_name)
         text = DocumentLocator(output_dir).resolve_final_md(doc_name).read_text(encoding="utf-8")
 
@@ -57,7 +55,7 @@ class DocConceptsExtractor:
         _log.info("[%s] étape 1/3 — %d mots-clés retenus", doc_name, len(keywords))
 
         _log.info("[%s] étape 2/3 — concepts VLM (Qwen thinking)...", doc_name)
-        vlm_concepts_raw = self._llm_extractor.extract(doc_name, output_dir)
+        vlm_concepts_raw = await self._llm_extractor.extract(doc_name, output_dir)
         _log.info("[%s] étape 2/3 — %d concepts bruts", doc_name, len(vlm_concepts_raw))
 
         result = DocConcepts(
@@ -121,7 +119,7 @@ class DocConceptsExtractor:
         return json_path, md_path
 
 
-def main() -> None:
+async def main() -> None:
     ap = argparse.ArgumentParser(description="Extraction de concepts (mots-clés + LLM) sur un document AFAC.")
     ap.add_argument("--doc-name", default="Mineur")
     ap.add_argument("--dotenv", default=".env.test")
@@ -134,7 +132,7 @@ def main() -> None:
     llm_extractor = ConceptLLMExtractor(args.dotenv)
 
     extractor = DocConceptsExtractor(keyword_extractor, llm_extractor, theme=args.theme)
-    result = extractor.extract(args.doc_name, preprocessing_output_dir)
+    result = await extractor.extract(args.doc_name, preprocessing_output_dir)
 
     print(f"\n=== {result.doc_name} ({result.theme}) ===")
     print(f"{len(result.spacy_keywords)} mots-clés spaCy, {len(result.vlm_concepts)} concepts VLM Qwen")
@@ -147,4 +145,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

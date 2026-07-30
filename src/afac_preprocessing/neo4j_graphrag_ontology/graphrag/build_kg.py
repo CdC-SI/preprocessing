@@ -6,7 +6,7 @@ build_kg.py — Construit le knowledge graph AFAC dans Neo4j à partir d'un docu
 (ontology/afac_ontology.py), puis écrit nœuds et relations dans Neo4j.
 
 On réutilise :
-  - la config VLM/embedding du projet (utils.vlm_client : base_url réduite + CA système) ;
+  - la config VLM/embedding du projet (Settings : base_url réduite + CA système) ;
   - les identifiants Neo4j de .env.test (NEO4J_URI / NEO4J_USER / NEO4J_PASSWORD).
 
 Le pipeline neo4j-graphrag s'exécute en asynchrone : le LLM reçoit donc un httpx.AsyncClient
@@ -23,26 +23,23 @@ import argparse
 import asyncio
 import logging
 import os
-import sys
 from pathlib import Path
 
 import httpx
 import neo4j
+from dotenv import load_dotenv
 from neo4j_graphrag.experimental.components.types import LexicalGraphConfig
 from neo4j_graphrag.experimental.pipeline.kg_builder import SimpleKGPipeline
 from neo4j_graphrag.llm import OpenAILLM
 
-# --- chemins projet : rend importables `utils.*` (racine projet) et `ontology.*` (dossier KG)
-THIS_DIR = Path(__file__).resolve().parent          # .../neo4j_graphrag_ontology/graphrag
-KG_DIR = THIS_DIR.parent                              # .../neo4j_graphrag_ontology
-PROJECT_ROOT = KG_DIR.parent                          # .../afac-preprocessing
-for p in (str(PROJECT_ROOT), str(KG_DIR)):
-    if p not in sys.path:
-        sys.path.insert(0, p)
+from ...settings import _find_project_root
 
-from ontology.afac_ontology import NODE_TYPES, RELATIONSHIP_TYPES, PATTERNS  # noqa: E402
-from shared.kg_shared_utils import EmbedderFactory  # noqa: E402
-from utils.vlm_client import build_vlm_config  # noqa: E402
+PROJECT_ROOT = _find_project_root()
+
+from ...clients.openai_client import _to_base_url  # noqa: E402
+from ...settings import Settings  # noqa: E402
+from ..ontology.afac_ontology import NODE_TYPES, PATTERNS, RELATIONSHIP_TYPES  # noqa: E402
+from ..shared.kg_shared_utils import EmbedderFactory  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
 _log = logging.getLogger("build_kg")
@@ -76,14 +73,14 @@ def resolve_final_md(doc_ref: str, output_dir: Path) -> Path:
     raise FileNotFoundError(f"Aucun markdown final trouvé pour « {doc_ref} » dans {doc_dir}")
 
 
-def build_llm(cfg) -> OpenAILLM:
+def build_llm(settings: Settings) -> OpenAILLM:
     """LLM d'extraction pointé sur le VLM interne (client async avec CA système)."""
     return OpenAILLM(
-        model_name=cfg.vlm_model_name,
+        model_name=settings.vlm_model_name,
         model_params={"temperature": 0.0, "extra_body": _ENABLE_THINKING_FALSE},
-        base_url=cfg.vlm_base_url,
+        base_url=_to_base_url(str(settings.vlm_url)),
         api_key="no-key",
-        http_client=httpx.AsyncClient(verify=cfg.ca_path, timeout=180.0),
+        http_client=httpx.AsyncClient(verify=settings.resolved_ca_path, timeout=180.0),
     )
 
 
@@ -131,7 +128,11 @@ def graph_summary(driver: neo4j.Driver) -> None:
 
 
 async def run(doc_name: str, dotenv: str | None, output_dir: Path, use_embeddings: bool, wipe: bool) -> None:
-    cfg = build_vlm_config(Path(dotenv) if dotenv else None)  # charge aussi .env dans os.environ
+    # ⚠ load_dotenv explicite : Settings.from_dotenv lit le fichier via pydantic
+    # mais ne peuple PAS os.environ, d'où viennent les identifiants NEO4J_*.
+    if dotenv:
+        load_dotenv(dotenv)
+    settings = Settings.from_dotenv(Path(dotenv) if dotenv else None)
 
     md_path = resolve_final_md(doc_name, output_dir)
     text = md_path.read_text(encoding="utf-8")
@@ -147,8 +148,8 @@ async def run(doc_name: str, dotenv: str | None, output_dir: Path, use_embedding
     if wipe:
         wipe_graph(driver)
 
-    llm = build_llm(cfg)
-    embedder = EmbedderFactory(cfg).build() if use_embeddings else None
+    llm = build_llm(settings)
+    embedder = EmbedderFactory(settings).build() if use_embeddings else None
     if not use_embeddings:
         _log.info("Embeddings désactivés (--no-embeddings)")
 

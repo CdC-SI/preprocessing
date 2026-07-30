@@ -93,9 +93,35 @@ process et configure le logging. Les erreurs métier sont des exceptions de
 `exceptions.py` ; la CLI les traduit en codes de sortie stables (2 = config,
 3 = étape inconnue, 4 = VLM indisponible).
 
-## Hors périmètre
+## Les autres chantiers du package
 
-`pipeline_baseline/`, `retrieval_protocol_evaluation/`,
-`neo4j_graphrag_ontology/` et `graph_url/` vivent dans le package mais n'ont
-pas encore été refactorés — ils sont exemptés des règles ruff via
-`per-file-ignores` et migreront séparément.
+`pipeline_baseline/`, `retrieval_protocol_evaluation/` et
+`neo4j_graphrag_ontology/` ne sont pas des étapes du pipeline, mais depuis le
+lot 9 ils suivent les mêmes règles : **zéro `sys.path.insert`**, imports
+relatifs au package, configuration par `Settings`, et aucune exemption ruff.
+Ils se lancent donc en `-m`, comme le reste :
+
+```bash
+uv run python -m afac_preprocessing.pipeline_baseline.single_docling_baseline --dotenv .env.test
+uv run python -m afac_preprocessing.retrieval_protocol_evaluation.evaluate_all_docs
+uv run python -m afac_preprocessing.neo4j_graphrag_ontology.graphrag.batch_build_kg --help
+```
+
+**Tous les appels VLM/embedding/reranker du dépôt sont asynchrones** (exigence
+métier). Les variantes synchrones de `utils/vlm_client.py` n'ont pas été
+restaurées : `text_completion_async` et `text_completion_thinking_async` ont
+été ajoutées au noyau au lot 9, et les scripts qui les appelaient sont devenus
+`async def` avec un `asyncio.run()` en point d'entrée. Le reranker et le banc
+de test embedding sont passés de `requests` à `httpx.AsyncClient`.
+
+Seule exception, documentée dans le code : `EmbedderFactory` construit un
+`httpx.Client` synchrone, parce que `neo4j_graphrag.embeddings.OpenAIEmbeddings`
+est synchrone par conception et que la bibliothèque l'appelle elle-même depuis
+`SimpleKGPipeline`.
+
+Reste connu : ces scripts gardent leur `argparse` et quelques `sys.exit` dans
+leur propre `main()` — seul `cli/main.py` en est exempt côté noyau.
+
+Les outils autonomes (hors pipeline, décision n°14) vivent dans `tools/` :
+`audit_pipeline_output.py`, `markdown_tables_to_jsonl.py`,
+`compare_outputs.py`.

@@ -24,25 +24,21 @@ Usage :
 from __future__ import annotations
 
 import argparse
+import asyncio
 import logging
-import sys
 from pathlib import Path
 
-THIS_DIR = Path(__file__).resolve().parent            # .../extraction_concepts
-KG_DIR = THIS_DIR.parent                                # .../neo4j_graphrag_ontology
-PROJECT_ROOT = KG_DIR.parent                            # .../afac-preprocessing
-for p in (str(PROJECT_ROOT), str(KG_DIR)):
-    if p not in sys.path:
-        sys.path.insert(0, p)
-
-from shared.extraction_vlm_common import (  # noqa: E402
+from ...clients.openai_client import build_async_client, text_completion_thinking_async  # noqa: E402
+from ...settings import (
+    Settings,  # noqa: E402
+    )
+from ..shared.extraction_vlm_common import (  # noqa: E402
     DEFAULT_OUTPUT_DIR,
     DOMAIN_CONTEXT,
     DocumentLocator,
     TextChunker,
     TolerantJsonParser,
 )
-from utils.vlm_client import build_sync_client, build_vlm_config, text_completion_thinking  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
 _log = logging.getLogger("concept_extraction_llm")
@@ -58,14 +54,15 @@ _CONCEPT_DEFINITION = (
 class ConceptLLMExtractor:
     """Extrait la liste des concepts métier d'un document via Qwen (thinking activé).
 
-    Instanciation : `ConceptLLMExtractor(dotenv)`. `extract(doc_name, output_dir)` par
-    document — reconstruit le client une seule fois, réutilisé pour tous les appels.
+    Instanciation : `ConceptLLMExtractor(dotenv)`. `await extract(doc_name, output_dir)`
+    par document — construit le client une seule fois, réutilisé pour tous les appels.
+    Async depuis le lot 9 : tous les appels VLM du dépôt le sont (exigence métier).
     """
 
     def __init__(self, dotenv: str | None = None) -> None:
-        cfg = build_vlm_config(Path(dotenv) if dotenv else None)
-        self.model_name = cfg.vlm_model_name
-        self._client = build_sync_client(cfg)
+        settings = Settings.from_dotenv(Path(dotenv) if dotenv else None)
+        self.model_name = settings.vlm_model_name
+        self._client = build_async_client(settings)
         self._chunker = TextChunker()
         self._json_parser = TolerantJsonParser()
 
@@ -83,7 +80,7 @@ Retourne un objet JSON de la forme : {{"concepts": ["...", "..."]}}
 N'entoure pas le JSON de backticks. Ne renvoie que le JSON, rien d'autre.
 """
 
-    def extract(self, doc_name: str, output_dir: Path = DEFAULT_OUTPUT_DIR) -> list[str]:
+    async def extract(self, doc_name: str, output_dir: Path = DEFAULT_OUTPUT_DIR) -> list[str]:
         """Concepts bruts (non normalisés, non dédupliqués au-delà des chunks) pour un doc."""
         text = DocumentLocator(output_dir).resolve_final_md(doc_name).read_text(encoding="utf-8")
         system_prompt = self._build_system_prompt()
@@ -93,7 +90,9 @@ N'entoure pas le JSON de backticks. Ne renvoie que le JSON, rien d'autre.
         all_concepts: list[str] = []
         for i, chunk in enumerate(chunks, 1):
             _log.info("[%s] chunk %d/%d — appel VLM (thinking activé)...", doc_name, i, len(chunks))
-            raw = text_completion_thinking(self._client, self.model_name, system_prompt, chunk)
+            raw = await text_completion_thinking_async(
+                self._client, self.model_name, system_prompt, chunk
+            )
             parsed = self._json_parser.parse(raw)
             chunk_concepts = [c.strip() for c in parsed.get("concepts", []) if c and c.strip()]
             _log.info("[%s] chunk %d/%d — %d concepts bruts", doc_name, i, len(chunks), len(chunk_concepts))
@@ -108,7 +107,7 @@ N'entoure pas le JSON de backticks. Ne renvoie que le JSON, rien d'autre.
         return list(seen.values())
 
 
-def main() -> None:
+async def main() -> None:
     ap = argparse.ArgumentParser(description="Extraction libre de concepts métier via Qwen (thinking activé) sur un document AFAC.")
     ap.add_argument("--doc-name", default="Mineur")
     ap.add_argument("--dotenv", default=".env.test")
@@ -116,7 +115,7 @@ def main() -> None:
     args = ap.parse_args()
 
     extractor = ConceptLLMExtractor(args.dotenv)
-    concepts = extractor.extract(args.doc_name, Path(args.output_dir))
+    concepts = await extractor.extract(args.doc_name, Path(args.output_dir))
 
     print(f"\n=== Concepts LLM ({extractor.model_name}) — {args.doc_name} ===")
     print(f"{len(concepts)} concepts")
@@ -125,4 +124,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

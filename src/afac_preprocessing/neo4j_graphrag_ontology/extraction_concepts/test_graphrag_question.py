@@ -11,7 +11,7 @@ auparavant (664 triplets sur le thème Adhésion, sans lien avec la question pos
 Text2CypherRetriever reste une piste pour plus tard (cf. PLAN_vector_cypher_retriever.md,
 section "Future work"), une fois le vocabulaire des prédicats canonicalisé.
 
-Génération : UN appel VLM ASYNCHRONE (utils.vlm_client.text_completion_async), qui répond à la
+Génération : UN appel VLM ASYNCHRONE (clients.openai_client.text_completion_async), qui répond à la
 question uniquement à partir des relations retrouvées dans le graphe.
 
 Citations : chaque relation du contexte est annotée de son document source (`r.doc_name`,
@@ -52,7 +52,6 @@ import argparse
 import asyncio
 import os
 import re
-import sys
 import unicodedata
 from datetime import datetime
 from pathlib import Path
@@ -62,17 +61,13 @@ from dotenv import load_dotenv
 from neo4j_graphrag.retrievers import VectorCypherRetriever, VectorRetriever
 from neo4j_graphrag.types import RetrieverResultItem
 
-THIS_DIR = Path(__file__).resolve().parent            # .../extraction_concepts
-KG_DIR = THIS_DIR.parent                                # .../neo4j_graphrag_ontology
-PROJECT_ROOT = KG_DIR.parent                            # .../afac-preprocessing
-for p in (str(PROJECT_ROOT), str(KG_DIR)):
-    if p not in sys.path:
-        sys.path.insert(0, p)
+from ...clients.openai_client import build_async_client, text_completion_async
+from ...settings import Settings
+from ..shared.extraction_vlm_common import DOMAIN_CONTEXT
+from ..shared.kg_shared_utils import EmbedderFactory
+from .build_kg_from_concepts import ANCHOR_LABEL, CHUNK_VECTOR_INDEX_NAME, source_tag
 
-from build_kg_from_concepts import ANCHOR_LABEL, CHUNK_VECTOR_INDEX_NAME, source_tag  # noqa: E402
-from shared.extraction_vlm_common import DOMAIN_CONTEXT  # noqa: E402
-from shared.kg_shared_utils import EmbedderFactory  # noqa: E402
-from utils.vlm_client import build_async_client, build_vlm_config, text_completion_async  # noqa: E402
+THIS_DIR = Path(__file__).resolve().parent
 
 QUESTION = (
     "Un étudiant (26 ans) ayant commencé ses études il y a 4 mois et résidant en Angleterre "
@@ -369,11 +364,11 @@ async def run(
 
     source = source_tag(theme)
 
-    # cfg/embedder construits AVANT la récupération du contexte : contrairement à l'ancien
+    # settings/embedder construits AVANT la récupération du contexte : contrairement à l'ancien
     # GraphContextRetriever (pur Cypher), VectorGraphContextRetriever a besoin d'embedder la
     # question pour la recherche vectorielle.
-    cfg = build_vlm_config(Path(dotenv))
-    embedder = EmbedderFactory(cfg).build()
+    settings = Settings.from_dotenv(Path(dotenv))
+    embedder = EmbedderFactory(settings).build()
 
     retriever = VectorGraphContextRetriever(
         driver, embedder, source, seed_top_k=seed_top_k, hop_depth=hop_depth,
@@ -412,8 +407,8 @@ async def run(
               f"L'index « {CHUNK_VECTOR_INDEX_NAME} » existe-t-il ? "
               "Il est créé par build_kg_from_concepts.py — sans --no-embeddings.)")
 
-    client = build_async_client(cfg)
-    answerer = AsyncGraphRAGAnswerer(client, cfg.vlm_model_name)
+    client = build_async_client(settings)
+    answerer = AsyncGraphRAGAnswerer(client, settings.vlm_model_name)
 
     print(f"\n=== Question ===\n{question}")
     print("\n=== Réponse (appel VLM asynchrone) ===")

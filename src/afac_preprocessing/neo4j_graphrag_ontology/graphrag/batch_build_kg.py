@@ -17,13 +17,19 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 from pathlib import Path
 
 import neo4j
+from dotenv import load_dotenv
 from neo4j_graphrag.experimental.pipeline.kg_builder import SimpleKGPipeline
 
-# Réutilise la config/paths/helpers du script unitaire (met aussi sys.path en place).
-from build_kg import (
+from ...settings import Settings
+from ..ontology.afac_ontology import NODE_TYPES, PATTERNS, RELATIONSHIP_TYPES
+from ..shared.kg_shared_utils import EmbedderFactory, GraphNormalizer
+
+# Réutilise la config/les helpers du script unitaire.
+from .build_kg import (
     DEFAULT_OUTPUT_DIR,
     LEXICAL_GRAPH_CONFIG,
     build_llm,
@@ -31,9 +37,6 @@ from build_kg import (
     resolve_final_md,
     strip_internal_labels,
 )
-from ontology.afac_ontology import NODE_TYPES, PATTERNS, RELATIONSHIP_TYPES
-from shared.kg_shared_utils import EmbedderFactory, GraphNormalizer
-from utils.vlm_client import build_vlm_config
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
 _log = logging.getLogger("batch_build_kg")
@@ -53,8 +56,11 @@ def list_documents(output_dir: Path) -> list[str]:
 
 
 async def run(dotenv: str | None, output_dir: Path, use_embeddings: bool, wipe: bool) -> None:
-    cfg = build_vlm_config(Path(dotenv) if dotenv else None)
-    import os
+    # ⚠ load_dotenv explicite : Settings.from_dotenv ne peuple pas os.environ,
+    # d'où viennent les identifiants NEO4J_*.
+    if dotenv:
+        load_dotenv(dotenv)
+    settings = Settings.from_dotenv(Path(dotenv) if dotenv else None)
     uri = os.environ.get("NEO4J_URI") or "bolt://localhost:7687"
     driver = neo4j.GraphDatabase.driver(
         uri, auth=(os.environ.get("NEO4J_USER", "neo4j"), os.environ.get("NEO4J_PASSWORD", "")),
@@ -69,8 +75,8 @@ async def run(dotenv: str | None, output_dir: Path, use_embeddings: bool, wipe: 
     docs = list_documents(output_dir)
     _log.info("%d documents à charger : %s", len(docs), ", ".join(docs))
 
-    llm = build_llm(cfg)
-    embedder = EmbedderFactory(cfg).build() if use_embeddings else None
+    llm = build_llm(settings)
+    embedder = EmbedderFactory(settings).build() if use_embeddings else None
     pipeline = SimpleKGPipeline(
         llm=llm, driver=driver, embedder=embedder,
         entities=NODE_TYPES, relations=RELATIONSHIP_TYPES, potential_schema=PATTERNS,

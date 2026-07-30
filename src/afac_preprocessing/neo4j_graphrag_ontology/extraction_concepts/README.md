@@ -9,7 +9,7 @@ dans `data/output_files_preprocessing/`).
 
 **Prérequis** : le container `neo4j-afac` démarré (voir [`../README.md`](../README.md)) et
 `.env.test` présent — tous les scripts ci-dessous se lancent depuis
-`preprocessing/src/afac-preprocessing/`.
+`preprocessing/`.
 
 ---
 
@@ -21,7 +21,7 @@ Trois étapes dans les deux cas : **extraire les concepts** → **construire le 
 ### Exemple sur un seul document (`Mineur`)
 
 ```bash
-cd preprocessing/src/afac-preprocessing
+cd preprocessing
 
 # 1. Extraire les concepts de ce document (mots-clés + VLM)
 uv run --active python neo4j_graphrag_ontology/extraction_concepts/extract_doc_concepts.py \
@@ -42,7 +42,7 @@ suivants — y compris le batch complet ci-dessous — ne rappellent pas le VLM 
 ### Batch complet (20 documents du thème Adhésion)
 
 ```bash
-cd preprocessing/src/afac-preprocessing
+cd preprocessing
 
 # 1. Extraire les concepts de tous les documents (fit TF-IDF une fois, puis boucle)
 uv run --active python neo4j_graphrag_ontology/extraction_concepts/batch_extract_concepts.py \

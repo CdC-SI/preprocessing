@@ -17,21 +17,14 @@ Usage :
 from __future__ import annotations
 
 import argparse
+import asyncio
 import logging
-import sys
 from pathlib import Path
 
-THIS_DIR = Path(__file__).resolve().parent            # .../extraction_concepts
-KG_DIR = THIS_DIR.parent                                # .../neo4j_graphrag_ontology
-PROJECT_ROOT = KG_DIR.parent                            # .../afac-preprocessing
-for p in (str(PROJECT_ROOT), str(KG_DIR)):
-    if p not in sys.path:
-        sys.path.insert(0, p)
-
-from shared.extraction_vlm_common import DEFAULT_OUTPUT_DIR, DocumentLocator  # noqa: E402
-from concept_extraction_llm import ConceptLLMExtractor  # noqa: E402
-from extract_doc_concepts import OUTPUT_DIR, THEME_DEFAULT, DocConceptsExtractor  # noqa: E402
-from keyword_extraction import KeywordExtractor  # noqa: E402
+from ..shared.extraction_vlm_common import DEFAULT_OUTPUT_DIR, DocumentLocator  # noqa: E402
+from .concept_extraction_llm import ConceptLLMExtractor  # noqa: E402
+from .extract_doc_concepts import OUTPUT_DIR, THEME_DEFAULT, DocConceptsExtractor  # noqa: E402
+from .keyword_extraction import KeywordExtractor  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
 _log = logging.getLogger("batch_extract_concepts")
@@ -47,7 +40,7 @@ class BatchConceptExtractor:
         llm_extractor = ConceptLLMExtractor(dotenv)
         self._doc_extractor = DocConceptsExtractor(keyword_extractor, llm_extractor, theme=theme)
 
-    def run(self, write_dir: Path = OUTPUT_DIR) -> dict[str, bool]:
+    async def run(self, write_dir: Path = OUTPUT_DIR) -> dict[str, bool]:
         docs = DocumentLocator(self.output_dir).list_documents()
         _log.info("%d documents à traiter (thème %s)", len(docs), self.theme)
 
@@ -55,7 +48,7 @@ class BatchConceptExtractor:
         for i, doc_name in enumerate(docs, 1):
             _log.info("[%d/%d] %s", i, len(docs), doc_name)
             try:
-                result = self._doc_extractor.extract(doc_name, self.output_dir)
+                result = await self._doc_extractor.extract(doc_name, self.output_dir)
                 self._doc_extractor.write(result, write_dir)
                 summary[doc_name] = True
             except Exception:  # noqa: BLE001 — on continue malgré l'échec d'un document
@@ -64,7 +57,7 @@ class BatchConceptExtractor:
         return summary
 
 
-def main() -> None:
+async def main() -> None:
     ap = argparse.ArgumentParser(description="Lance l'extraction de concepts sur tous les documents du corpus Adhésion.")
     ap.add_argument("--dotenv", default=".env.test")
     ap.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR))
@@ -72,7 +65,7 @@ def main() -> None:
     args = ap.parse_args()
 
     batch = BatchConceptExtractor(args.dotenv, Path(args.output_dir), args.theme)
-    summary = batch.run()
+    summary = await batch.run()
 
     print(f"\n=== Résumé — {len(summary)} documents ===")
     for doc, ok in summary.items():
@@ -84,4 +77,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

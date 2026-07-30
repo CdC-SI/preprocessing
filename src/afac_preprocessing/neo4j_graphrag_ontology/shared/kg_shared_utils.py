@@ -14,22 +14,15 @@ de fonctionner à l'identique via un ré-export.
 from __future__ import annotations
 
 import logging
-import sys
 from collections import defaultdict
-from pathlib import Path
 
 import httpx
 import neo4j
 from neo4j_graphrag.embeddings import OpenAIEmbeddings
 
-THIS_DIR = Path(__file__).resolve().parent          # .../neo4j_graphrag_ontology/shared
-KG_DIR = THIS_DIR.parent                              # .../neo4j_graphrag_ontology
-PROJECT_ROOT = KG_DIR.parent                          # .../afac-preprocessing
-for p in (str(PROJECT_ROOT), str(KG_DIR)):
-    if p not in sys.path:
-        sys.path.insert(0, p)
-
-from ontology.afac_ontology import normalize_name  # noqa: E402
+from ...clients.openai_client import _to_base_url
+from ...settings import Settings
+from ..ontology.afac_ontology import normalize_name
 
 _log = logging.getLogger("kg_shared_utils")
 
@@ -37,19 +30,25 @@ _log = logging.getLogger("kg_shared_utils")
 class EmbedderFactory:
     """Construit l'embedder officiel (neo4j_graphrag.embeddings.OpenAIEmbeddings) pointé sur
     l'endpoint d'embedding interne du projet (CA système, base_url réduite) — même client que
-    partout ailleurs dans le pipeline. Une classe plutôt qu'une fonction nue : `cfg` est fixé
-    une fois à la construction, interchangeable avec un autre provider/modèle sans toucher aux
-    appelants (qui n'interagissent qu'avec `.build()`)."""
+    partout ailleurs dans le pipeline. Une classe plutôt qu'une fonction nue : les `Settings`
+    sont fixés une fois à la construction, interchangeables avec un autre provider/modèle sans
+    toucher aux appelants (qui n'interagissent qu'avec `.build()`).
 
-    def __init__(self, cfg) -> None:
-        self.cfg = cfg
+    ⚠ Seul client `httpx.Client` (sync) restant du dépôt, et il n'est pas le nôtre :
+    `neo4j_graphrag.embeddings.OpenAIEmbeddings.embed_query()` est synchrone par
+    conception, et la bibliothèque l'appelle elle-même depuis `SimpleKGPipeline`.
+    Lui passer un `AsyncClient` la casserait. Tous les appels VLM/embedding écrits
+    dans ce dépôt, eux, sont async."""
+
+    def __init__(self, settings: Settings) -> None:
+        self.settings = settings
 
     def build(self) -> OpenAIEmbeddings:
         return OpenAIEmbeddings(
-            model=self.cfg.embedding_model_name,
-            base_url=self.cfg.embedding_base_url,
+            model=self.settings.embedding_model_name,
+            base_url=_to_base_url(str(self.settings.embedding_url)),
             api_key="no-key",
-            http_client=httpx.Client(verify=self.cfg.ca_path, timeout=120.0),
+            http_client=httpx.Client(verify=self.settings.resolved_ca_path, timeout=120.0),
         )
 
 
@@ -79,7 +78,7 @@ class GraphNormalizer:
             groups[key].append(r["id"])
 
         merged, renamed = 0, 0
-        for (labels, canonical), ids in groups.items():
+        for (_labels, canonical), ids in groups.items():
             if len(ids) > 1:
                 self.driver.execute_query(
                     """

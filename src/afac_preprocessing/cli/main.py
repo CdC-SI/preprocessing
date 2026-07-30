@@ -134,6 +134,14 @@ def run(
                     step.ocr = False
 
         typer.echo(f"{len(pdfs)} PDF(s) — étapes : {', '.join(s.name for s in pipeline.steps)}")
+        if dry_run:
+            # Ni client VLM, ni agrégation : un dry-run ne doit toucher NI le
+            # réseau NI le disque. Sans ce court-circuit, ClientBundle sonde le
+            # VLM et run_batch réécrit les CSV globaux.
+            for pdf in pdfs:
+                typer.echo(f"  · {pdf}")
+            typer.echo("--dry-run : aucune étape exécutée, aucun fichier écrit.")
+            raise typer.Exit(0)
         with ClientBundle(settings) as bundle:
             contexts = (
                 PipelineContext.for_pdf(pdf, settings, clients=bundle, dry_run=dry_run)

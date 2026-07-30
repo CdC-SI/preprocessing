@@ -24,23 +24,14 @@ Usage:
 import argparse
 import csv
 import json
-import sys
 from pathlib import Path
 
 import numpy as np
 
-# Bootstrap sys.path from the on-disk layout (not PROJECT_ROOT-aware: this locates the
-# *source* directories to import sibling packages from, distinct from utils.paths.project_root()
-# below which resolves *data* paths and does honor a PROJECT_ROOT override).
-_HERE = Path(__file__).resolve().parent
-_SRC_ROOT = _HERE.parent
-_RETRIEVAL_EVAL_DIR = _SRC_ROOT / "retrieval_protocol_evaluation"
-for _p in (_SRC_ROOT, _RETRIEVAL_EVAL_DIR):
-    if str(_p) not in sys.path:
-        sys.path.insert(0, str(_p))
+from ..retrieval_protocol_evaluation.loaders import parse_embedding
+from ..settings import _find_project_root
 
-from utils.paths import project_root  # noqa: E402
-from loaders import parse_embedding  # noqa: E402 — même parseur (float32) que le reste du pipeline
+project_root = _find_project_root
 
 
 def cosine_sim(a: np.ndarray, b: np.ndarray) -> float:

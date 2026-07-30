@@ -11,7 +11,7 @@ from afac_preprocessing.settings import Settings
 _ENV_KEYS = [
     "VLM_URL", "VLM_MODEL_NAME", "EMBEDDING_URL", "EMBEDDING_MODEL_NAME",
     "RERANKER_URL", "RERANKER_MODEL_NAME", "VLM_CA_PEM", "ENABLE_IMAGE_DESCRIPTION",
-    "GEN_ID", "VLM_TEMPERATURE", "PROJECT_ROOT", "DATA_ROOT",
+    "VLM_TEMPERATURE", "PROJECT_ROOT", "DATA_ROOT",
 ]
 
 
@@ -35,7 +35,6 @@ def test_from_dotenv_reads_all_fields(tmp_path: Path) -> None:
         'VLM_MODEL_NAME="qwen-vl"\n'
         'EMBEDDING_URL="http://embed.local/v1/embeddings"\n'
         'EMBEDDING_MODEL_NAME="bge-m3"\n'
-        'GEN_ID="5"\n'
         'VLM_TEMPERATURE="0.6"\n',
     )
     settings = Settings.from_dotenv(dotenv)
@@ -43,7 +42,6 @@ def test_from_dotenv_reads_all_fields(tmp_path: Path) -> None:
     assert settings.vlm_model_name == "qwen-vl"
     assert settings.embedding_url is not None
     assert settings.embedding_model_name == "bge-m3"
-    assert settings.gen_id == "5"
     assert settings.vlm_temperature == 0.6
 
 

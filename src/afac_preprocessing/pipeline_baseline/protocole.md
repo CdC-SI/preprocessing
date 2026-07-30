@@ -5,15 +5,15 @@ représentations d'un même document :
 - **baseline** : markdown produit directement par Docling (OCR EasyOCR), sans aucun
   enrichissement.
 - **pipeline** : markdown enrichi (descriptions d'images VLM, tuning des URLs, contrôle
-  markdown VLM, structuration des tables) — actuellement la version « v2 »
-  (`pipeline_extraction.py`), sortie dans `data/output_files_preprocessing/`.
+  markdown VLM, structuration des tables) — produit par la CLI `afac-preprocess`,
+  sortie dans `data/output_files_preprocessing/`.
 
 Les deux représentations sont évaluées avec **les mêmes questions HyQ** et **les mêmes
 métriques** (Recall/Precision/nDCG/MRR@k) — seule la représentation du document change.
 Le delta mesure donc directement l'apport (ou le coût) du prétraitement.
 
-Toutes les commandes ci-dessous s'exécutent depuis la racine du projet :
-`preprocessing/src/afac-preprocessing/`.
+Toutes les commandes ci-dessous s'exécutent depuis la racine du dépôt :
+`preprocessing/`.
 
 ## 0. Prérequis
 
@@ -31,29 +31,27 @@ compter plusieurs dizaines de minutes pour l'étape 1.
 ## 1. Générer le pipeline de prétraitement sur tout le corpus
 
 ```bash
-uv run python pipeline_preprocessing/orchestrators/batch_pipeline_all_pdfs.py \
-  --dotenv .env.test \
-  --input-dir "data/input_files/afac/Adhésion"
+uv run afac-preprocess run --input "data/input_files/afac/Adhésion"
 ```
 
-Ce script boucle sur chaque PDF trouvé sous `--input-dir` et lance
-`pipeline_extraction.py` (13 étapes : extraction Docling/EasyOCR → réordonnancement
-→ enrichissement VLM → metadata + embedding). Sortie par document :
-`data/output_files_preprocessing/<doc>/` (dont `<doc>.md` = markdown brut, `<doc>_final.md`
-= markdown enrichi, `metadata/<doc>_final.csv` = CONTENT + METADATA + EMBEDDING,
-`metadata/hyq.json` + `metadata/hyq_<doc>/question_N.csv` = questions HyQ + leurs
-embeddings).
+`--input` accepte un PDF ou un dossier (exploré récursivement) et enchaîne les 13
+étapes (extraction Docling/EasyOCR → réordonnancement → enrichissement VLM →
+metadata + embedding). Depuis le lot F1, la sortie **reproduit l'arborescence
+d'entrée** : `data/output_files_preprocessing/<source>/<thème>/<doc>/` (dont
+`<doc>.md` = markdown brut, `<doc>_final.md` = markdown enrichi,
+`metadata/<doc>_final.csv` = CONTENT + METADATA + EMBEDDING, `metadata/hyq.json` +
+`metadata/hyq_<doc>/question_N.csv` = questions HyQ + leurs embeddings). En fin de
+batch, un CSV global par dossier racine est écrit (lot F2).
 
-**Si un document échoue** : le batch continue sur les suivants et liste les échecs à la
-fin (`Batch finished with N failure(s)`). Pour rejouer un seul document après
-correction :
+**Si un document échoue** : le batch continue sur les suivants et affiche le compte
+d'échecs en fin de run. Pour rejouer un seul document après correction :
 ```bash
-uv run python pipeline_preprocessing/orchestrators/pipeline_extraction.py \
-  --dotenv .env.test --input "data/input_files/afac/Adhésion/<doc>.pdf" --from-step N
+uv run afac-preprocess run \
+  --input "data/input_files/afac/Adhésion/<doc>.pdf" --from-step <nom-ou-numéro>
 ```
-(`--from-step` = numéro de la première étape en échec, cf. l'en-tête de
-`pipeline_extraction.py` pour la liste des 13 étapes — inutile de refaire
-l'extraction Docling si elle a déjà réussi).
+(`--from-step` = première étape à rejouer, par nom ou numéro 1-based — inutile de
+refaire l'extraction Docling si elle a déjà réussi. `afac-preprocess steps` liste les
+13 étapes, `--dry-run` affiche la sélection sans rien exécuter.)
 
 Vérifier que tous les documents ont bien produit `<doc>.md`, `metadata/hyq.json` et au
 moins un `metadata/hyq_<doc>/question_*.csv` avant de passer à l'étape suivante (ce sont
@@ -70,7 +68,7 @@ done
 ## 2. Générer la baseline (docling brut) à partir des mêmes documents
 
 ```bash
-uv run python pipeline_baseline/single_docling_baseline.py --dotenv .env.test
+uv run python -m afac_preprocessing.pipeline_baseline.single_docling_baseline --dotenv .env.test
 ```
 
 Ce script découvre automatiquement tous les documents sous
@@ -86,7 +84,7 @@ identiques). Sorties :
 ## 3. Évaluer le pipeline de prétraitement (mêmes métriques)
 
 ```bash
-uv run python retrieval_protocol_evaluation/evaluate_all_docs.py
+uv run python -m afac_preprocessing.retrieval_protocol_evaluation.evaluate_all_docs
 ```
 
 Calcule Recall/Precision/nDCG/MRR@k pour chaque document du pipeline (pipeline sémantique
@@ -97,7 +95,7 @@ seul + pipeline avec reranker), sur les mêmes questions HyQ. Sorties dans
 ## 4. Générer le rapport de comparaison
 
 ```bash
-uv run python pipeline_baseline/compare_baseline_report.py --dotenv .env.test
+uv run python -m afac_preprocessing.pipeline_baseline.compare_baseline_report --dotenv .env.test
 ```
 
 Fusionne `baseline_results.csv` (étape 2) et `global_summary.csv` (étape 3), calcule le
@@ -156,18 +154,21 @@ bon) pour un document donné :
 
 ```bash
 # 1. Pipeline de prétraitement sur les 20 documents
-uv run python pipeline_preprocessing/orchestrators/batch_pipeline_all_pdfs.py \
-  --dotenv .env.test --input-dir "data/input_files/afac/Adhésion"
+uv run afac-preprocess run --input "data/input_files/afac/Adhésion"
 
 # 2. Baseline docling brut
-uv run python pipeline_baseline/single_docling_baseline.py --dotenv .env.test
+uv run python -m afac_preprocessing.pipeline_baseline.single_docling_baseline --dotenv .env.test
 
 # 3. Évaluation du pipeline (Recall/Precision/nDCG/MRR@k)
-uv run python retrieval_protocol_evaluation/evaluate_all_docs.py
+uv run python -m afac_preprocessing.retrieval_protocol_evaluation.evaluate_all_docs
 
 # 4. Rapport de comparaison
-uv run python pipeline_baseline/compare_baseline_report.py --dotenv .env.test
+uv run python -m afac_preprocessing.pipeline_baseline.compare_baseline_report --dotenv .env.test
 ```
+
+⚠ Les étapes 2 et 4 (et `reranker.py` en 3) sont **cassées en l'état** : elles
+importent `utils.paths` / `utils.config`, façades supprimées au lot 8. Elles sont
+réparées par le lot 9 — voir `docs/architecture.md`, § Hors périmètre.
 
 Rapport final : `data/baseline_evaluation/comparison_report.md`.
 En cas d'erreur, voir §6 (pièges déjà rencontrés).

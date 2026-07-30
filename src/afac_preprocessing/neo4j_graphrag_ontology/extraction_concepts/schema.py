@@ -18,7 +18,7 @@ dédoublonnage), sans référentiel externe.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from pydantic import BaseModel, Field
@@ -59,7 +59,7 @@ class DocConcepts(BaseModel):
     vlm_concepts_raw: list[str] = Field(default_factory=list, description="Concepts bruts renvoyés par le VLM (Qwen), avant nettoyage — cf. concept_extraction_llm.py.")
     vlm_concepts: list[str] = Field(default_factory=list, description="vlm_concepts_raw nettoyés (espaces) et dédupliqués (casse) — sans référentiel externe.")
     comparison: ConceptComparison | None = Field(default=None, description="Recouvrement vlm_concepts/spacy_keywords — cf. compare_concepts.py.")
-    extracted_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    extracted_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
 
     def to_json_file(self, path: Path) -> None:
         path.write_text(self.model_dump_json(indent=2), encoding="utf-8")
@@ -99,7 +99,7 @@ class ThemeConcepts(BaseModel):
     theme_agreement: list[ThemeConceptRow] = Field(default_factory=list, description="Concepts en accord VLM/stat dans au moins un doc — candidats haute confiance pour l'ontologie du thème.")
     theme_vlm_only: list[str] = Field(default_factory=list, description="Concepts jamais corroborés par la stat sur tout le thème.")
     theme_stat_only: list[str] = Field(default_factory=list, description="Termes stat fréquents sur le thème mais absents de tout concept VLM.")
-    generated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    generated_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
 
     def to_json_file(self, path: Path) -> None:
         path.write_text(self.model_dump_json(indent=2), encoding="utf-8")

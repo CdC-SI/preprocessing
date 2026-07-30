@@ -24,22 +24,14 @@ from __future__ import annotations
 
 import logging
 import re
-import sys
 from collections import Counter
 from pathlib import Path
 
 import spacy
 from sklearn.feature_extraction.text import TfidfVectorizer
 
-THIS_DIR = Path(__file__).resolve().parent            # .../extraction_concepts
-KG_DIR = THIS_DIR.parent                                # .../neo4j_graphrag_ontology
-PROJECT_ROOT = KG_DIR.parent                            # .../afac-preprocessing
-for p in (str(PROJECT_ROOT), str(KG_DIR)):
-    if p not in sys.path:
-        sys.path.insert(0, p)
-
-from shared.extraction_vlm_common import DEFAULT_OUTPUT_DIR, DocumentLocator  # noqa: E402
-from schema import Keyword  # noqa: E402
+from ..shared.extraction_vlm_common import DEFAULT_OUTPUT_DIR, DocumentLocator  # noqa: E402
+from .schema import Keyword  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
 _log = logging.getLogger("keyword_extraction")
@@ -107,10 +99,10 @@ class KeywordExtractor:
         seuls. Bigrammes construits sur les termes déjà filtrés (pas sur le texte brut), donc
         cohérents avec le nettoyage POS/stopwords/bruit déjà appliqué."""
         unigrams = self._surface_terms(text)
-        bigrams = [f"{a} {b}" for a, b in zip(unigrams, unigrams[1:])]
+        bigrams = [f"{a} {b}" for a, b in zip(unigrams, unigrams[1:], strict=False)]
         return unigrams + bigrams
 
-    def fit(self, doc_texts: dict[str, str]) -> "KeywordExtractor":
+    def fit(self, doc_texts: dict[str, str]) -> KeywordExtractor:
         """Calcule les termes (uni+bigrammes) de chaque document et fit le TF-IDF sur le corpus."""
         self._doc_names = list(doc_texts.keys())
         _log.info("Extraction des termes (uni+bigrammes) de %d documents (corpus TF-IDF) :", len(self._doc_names))
@@ -159,7 +151,7 @@ class KeywordExtractor:
         keywords.sort(key=lambda kw: kw.count, reverse=True)
         return keywords
 
-    def fit_corpus_from_disk(self) -> "KeywordExtractor":
+    def fit_corpus_from_disk(self) -> KeywordExtractor:
         """Charge tous les _final.md du dossier de sortie et fit le TF-IDF dessus."""
         locator = DocumentLocator(self.output_dir)
         doc_names = locator.list_documents()

@@ -16,6 +16,7 @@ Usage:
     python evaluate_all_docs.py --no-reranker
 """
 import argparse
+import asyncio
 import logging
 import sys
 from pathlib import Path
@@ -23,12 +24,12 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from config import DEFAULT_STAGE5, DEFAULT_OUTPUT_DIR, TOP_KS, CANONICAL_K
-from loaders import load_all_doc_embeddings, load_hyq_questions, load_doc_resumes
-from similarity import compute_similarity_matrix, rank_docs
-from metrics import evaluate_all_metrics
-from reranker import rerank
-from report import save_results_csv, plot_all_charts, plot_global_barcharts
+from .config import CANONICAL_K, DEFAULT_OUTPUT_DIR, DEFAULT_STAGE5, TOP_KS
+from .loaders import load_all_doc_embeddings, load_doc_resumes, load_hyq_questions
+from .metrics import evaluate_all_metrics
+from .report import plot_all_charts, plot_global_barcharts, save_results_csv
+from .reranker import rerank
+from .similarity import compute_similarity_matrix, rank_docs
 
 _log = logging.getLogger(__name__)
 
@@ -70,7 +71,7 @@ def _build_row(
     return row
 
 
-def evaluate_doc(
+async def evaluate_doc(
     doc_name: str,
     doc_names: list[str],
     doc_embeddings: np.ndarray,
@@ -122,7 +123,7 @@ def evaluate_doc(
 
         # Reranker pipeline
         if use_reranker and not reranker_failed:
-            rer_raw = rerank(question.content, doc_texts)
+            rer_raw = await rerank(question.content, doc_texts)
             if rer_raw is None:
                 _log.warning("Reranker unavailable for '%s' — skipping reranker for this doc.", doc_name)
                 reranker_failed = True
@@ -225,7 +226,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> None:
+async def main() -> None:
     args = parse_args()
     logging.basicConfig(
         level=getattr(logging, args.log_level),
@@ -258,7 +259,7 @@ def main() -> None:
 
     for doc_name in target_docs:
         _log.info("── %s", doc_name)
-        sem_rows, rer_rows = evaluate_doc(
+        sem_rows, rer_rows = await evaluate_doc(
             doc_name=doc_name,
             doc_names=doc_names,
             doc_embeddings=doc_embeddings,
@@ -302,4 +303,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

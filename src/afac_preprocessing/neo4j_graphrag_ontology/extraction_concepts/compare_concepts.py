@@ -19,17 +19,14 @@ from __future__ import annotations
 
 import argparse
 import re
-import sys
 from pathlib import Path
 
-THIS_DIR = Path(__file__).resolve().parent            # .../extraction_concepts
-KG_DIR = THIS_DIR.parent                                # .../neo4j_graphrag_ontology
-PROJECT_ROOT = KG_DIR.parent                            # .../afac-preprocessing
-for p in (str(PROJECT_ROOT), str(KG_DIR)):
-    if p not in sys.path:
-        sys.path.insert(0, p)
+from ...settings import _find_project_root  # noqa: F401
 
-from schema import ConceptComparison, DocConcepts  # noqa: E402
+THIS_DIR = Path(__file__).resolve().parent
+
+
+from .schema import ConceptComparison, DocConcepts  # noqa: E402
 
 # Défini localement (pas importé depuis extract_doc_concepts.py) pour éviter un import
 # circulaire : extract_doc_concepts.py importe ConceptComparator de ce module pour persister
@@ -59,7 +56,7 @@ def _bigrams(text: str) -> set[str]:
     """Paires de mots consécutifs joints par espace — même format que les bigrammes produits
     côté spaCy (cf. keyword_extraction.KeywordExtractor._terms), pour un match direct."""
     words = _word_list(text)
-    return {f"{a} {b}" for a, b in zip(words, words[1:])}
+    return {f"{a} {b}" for a, b in zip(words, words[1:], strict=False)}
 
 
 class ConceptComparator:

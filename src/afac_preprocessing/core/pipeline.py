@@ -121,8 +121,20 @@ class Pipeline:
 
     def run(self, ctx: PipelineContext) -> PipelineReport:
         """Exécute les étapes dans l'ordre ; s'arrête à la première en échec
-        (comportement actuel de l'orchestrateur)."""
+        (comportement actuel de l'orchestrateur).
+
+        ``ctx.dry_run`` court-circuite l'exécution : les étapes sont rapportées
+        SKIPPED, aucune n'est lancée, aucun fichier n'est écrit. Le drapeau
+        existait depuis le lot 5 mais n'était lu nulle part — un ``--dry-run``
+        déroulait le pipeline complet, appels VLM compris.
+        """
         report = PipelineReport(doc_name=ctx.workspace.doc_name)
+        if ctx.dry_run:
+            for step in self.steps:
+                report.results.append(
+                    (step.name, StepResult(StepStatus.SKIPPED, message="dry-run"))
+                )
+            return report
         for step in self.steps:
             start = time.perf_counter()
             try:

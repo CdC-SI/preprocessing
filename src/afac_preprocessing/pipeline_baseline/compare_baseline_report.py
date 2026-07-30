@@ -26,6 +26,7 @@ Usage:
     uv run python compare_baseline_report.py --dotenv ../.env.test --no-vlm-analysis
 """
 import argparse
+import asyncio
 import logging
 import sys
 from datetime import datetime
@@ -37,20 +38,11 @@ import numpy as np
 import pandas as pd
 from pydantic import BaseModel
 
-# Bootstrap sys.path from the on-disk layout (not PROJECT_ROOT-aware: this locates the
-# *source* directories to import sibling packages from, distinct from utils.paths.project_root()
-# below which resolves *data* paths and does honor a PROJECT_ROOT override).
-_HERE = Path(__file__).resolve().parent
-_SRC_ROOT = _HERE.parent
-_RETRIEVAL_EVAL_DIR = _SRC_ROOT / "retrieval_protocol_evaluation"
+from ..clients.openai_client import build_async_client, text_completion_structured_async
+from ..retrieval_protocol_evaluation.config import CANONICAL_K, TOP_KS
+from ..settings import Settings, _find_project_root
 
-for _path in (_SRC_ROOT, _RETRIEVAL_EVAL_DIR):
-    if str(_path) not in sys.path:
-        sys.path.insert(0, str(_path))
-
-from utils.paths import project_root  # noqa: E402
-from utils.vlm_client import build_vlm_config, build_sync_client, text_completion_structured  # noqa: E402
-from config import TOP_KS, CANONICAL_K  # noqa: E402
+project_root = _find_project_root
 
 _log = logging.getLogger(__name__)
 
@@ -178,7 +170,7 @@ def render_per_doc_section(comparison: pd.DataFrame, canonical_k: int) -> list[s
 def plot_global_bars_at_k(comparison: pd.DataFrame, canonical_k: int, output_dir: Path) -> Path:
     """4 subplots (one per metric): Pipeline vs Baseline at the canonical k."""
     fig, axes = plt.subplots(2, 2, figsize=(9, 7))
-    for ax, m in zip(axes.flat, _METRICS):
+    for ax, m in zip(axes.flat, _METRICS, strict=False):
         pipe_val = comparison[f"{m}@{canonical_k}_pipeline"].mean()
         base_val = comparison[f"{m}@{canonical_k}_baseline"].mean()
         bars = ax.bar(["Pipeline", "Baseline"], [pipe_val, base_val],
@@ -199,15 +191,15 @@ def plot_global_bars_at_k(comparison: pd.DataFrame, canonical_k: int, output_dir
 def plot_metrics_by_k(comparison: pd.DataFrame, top_ks: list[int], output_dir: Path) -> Path:
     """4 subplots: Pipeline vs Baseline trend across k, one per metric."""
     fig, axes = plt.subplots(2, 2, figsize=(10, 7))
-    for ax, m in zip(axes.flat, _METRICS):
+    for ax, m in zip(axes.flat, _METRICS, strict=False):
         pipe_means = [comparison[f"{m}@{k}_pipeline"].mean() for k in top_ks]
         base_means = [comparison[f"{m}@{k}_baseline"].mean() for k in top_ks]
         ax.plot(top_ks, pipe_means, marker="o", linewidth=2, label="Pipeline", color=_PIPELINE_COLOR)
         ax.plot(top_ks, base_means, marker="o", linewidth=2, label="Baseline", color=_BASELINE_COLOR)
-        for x, y in zip(top_ks, pipe_means):
+        for x, y in zip(top_ks, pipe_means, strict=False):
             ax.annotate(f"{y:.3f}", (x, y), textcoords="offset points", xytext=(0, 7),
                         ha="center", fontsize=7, color=_PIPELINE_COLOR)
-        for x, y in zip(top_ks, base_means):
+        for x, y in zip(top_ks, base_means, strict=False):
             ax.annotate(f"{y:.3f}", (x, y), textcoords="offset points", xytext=(0, -11),
                         ha="center", fontsize=7, color=_BASELINE_COLOR)
         ax.set_title(_METRIC_LABELS[m])
@@ -305,11 +297,11 @@ def render_verdict_section(verdict: ComparisonVerdict) -> str:
 
 
 # VLM analysis
-def analyze_with_vlm(report_body: str, dotenv_path: Path | None) -> ComparisonVerdict:
-    cfg = build_vlm_config(dotenv_path=dotenv_path)
-    client = build_sync_client(cfg)
-    return text_completion_structured(
-        client, cfg.vlm_model_name, ANALYSIS_PROMPT, report_body, ComparisonVerdict
+async def analyze_with_vlm(report_body: str, dotenv_path: Path | None) -> ComparisonVerdict:
+    settings = Settings.from_dotenv(dotenv_path)
+    client = build_async_client(settings)
+    return await text_completion_structured_async(
+        client, settings.vlm_model_name, ANALYSIS_PROMPT, report_body, ComparisonVerdict
     )
 
 
@@ -354,7 +346,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> None:
+async def main() -> None:
     args = parse_args()
     logging.basicConfig(
         level=getattr(logging, args.log_level),
@@ -381,7 +373,7 @@ def main() -> None:
     if not args.no_vlm_analysis:
         try:
             _log.info("Analyzing the report with the VLM...")
-            verdict = analyze_with_vlm(body, args.dotenv)
+            verdict = await analyze_with_vlm(body, args.dotenv)
             verdict_section = render_verdict_section(verdict) + "\n"
             _log.info("VLM verdict: %s", verdict.verdict)
         except Exception:
@@ -402,4 +394,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
