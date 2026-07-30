@@ -10,8 +10,12 @@
 # Python cache files remove
 *.pyc
 
-# Removing all sources of data files, except for the input/output/evaluation directories and their .gitkeep files
+# Removing all sources of data files, except for the 5 input/output/evaluation
+# directories and their .gitkeep files — les scripts créent ces dossiers à la
+# volée, les .gitkeep servent à montrer la structure attendue à qui clone.
 # ⚠ data/ vit à la racine du dépôt, HORS de src/ (lot 1 du refactor)
+# ⚠ Les DEUX lignes sont nécessaires par dossier : la première ré-inclut le
+#   dossier (sinon git n'y entre pas), la seconde le fichier.
 data/**
 
 !data/input_files/
@@ -25,6 +29,10 @@ data/**
 
 !data/pipeline_evaluation/
 !data/pipeline_evaluation/.gitkeep
+
+# Rapport de comparaison final (comparison_report.md + charts/)
+!data/baseline_evaluation/
+!data/baseline_evaluation/.gitkeep
 
 # Not showing those repo repo (local test)
 src/afac_preprocessing/graph_url/

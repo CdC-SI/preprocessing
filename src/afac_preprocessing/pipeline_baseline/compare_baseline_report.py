@@ -40,7 +40,7 @@ from pydantic import BaseModel
 
 from ..clients.openai_client import build_async_client, text_completion_structured_async
 from ..retrieval_protocol_evaluation.config import CANONICAL_K, TOP_KS
-from ..settings import Settings, _find_project_root
+from ..settings import Settings, _find_project_root, default_dotenv
 
 project_root = _find_project_root
 
@@ -321,7 +321,9 @@ def parse_args() -> argparse.Namespace:
         help=f"Comma-separated k values. Default: {','.join(map(str, TOP_KS))}",
     )
     parser.add_argument("--canonical-k", type=int, default=CANONICAL_K)
-    parser.add_argument("--dotenv", type=Path, default=None)
+    # Défaut = default_dotenv() : .env puis .env.test, cwd puis racine du
+    # dépôt — même résolution que la CLI afac-preprocess.
+    parser.add_argument("--dotenv", type=Path, default=default_dotenv())
     parser.add_argument(
         "--no-vlm-analysis",
         action="store_true",

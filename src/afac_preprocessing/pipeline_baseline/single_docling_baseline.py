@@ -67,7 +67,8 @@ from ..clients.openai_client import (
 from ..retrieval_protocol_evaluation.config import TOP_KS
 from ..retrieval_protocol_evaluation.evaluate_all_docs import evaluate_doc
 from ..retrieval_protocol_evaluation.loaders import parse_embedding as parse_embedding_field
-from ..settings import Settings, _find_project_root
+from ..retrieval_protocol_evaluation.loaders import resolve_doc_dir
+from ..settings import Settings, _find_project_root, default_dotenv
 
 # ``generate_embedding`` (metadata/embedding_metadata.py) n'était qu'un alias de
 # ``get_embedding`` ; le module a disparu au lot 6 (→ steps/document_embedder.py).
@@ -87,7 +88,7 @@ def discover_doc_names(stage5_dir: Path) -> list[str]:
     for csv_path in sorted(stage5_dir.rglob("metadata/*_final.csv")):
         doc_name = csv_path.stem.removesuffix("_final")
         hyq_dir = csv_path.parent / f"hyq_{doc_name}"
-        raw_md = stage5_dir / doc_name / f"{doc_name}.md"
+        raw_md = csv_path.parent.parent / f"{doc_name}.md"
         if raw_md.exists() and hyq_dir.exists() and any(hyq_dir.glob("question_*.csv")):
             names.append(doc_name)
         else:
@@ -106,7 +107,7 @@ def build_baseline_embedding_client(dotenv_path: Path | None) -> tuple[AsyncOpen
 def copy_raw_markdown(doc_name: str, stage5_dir: Path, docs_output_dir: Path) -> None:
     """Copy <stage5_dir>/<doc>/<doc>.md (raw docling, source of the baseline embedding) into
     <docs_output_dir>/<doc>/<doc>.md, so it can be browsed the same way as output_files_preprocessing."""
-    src = stage5_dir / doc_name / f"{doc_name}.md"
+    src = resolve_doc_dir(stage5_dir, doc_name) / f"{doc_name}.md"
     dst = docs_output_dir / doc_name / f"{doc_name}.md"
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, dst)
@@ -123,10 +124,11 @@ async def build_baseline_metadata(
     """One row per doc: raw docling CONTENT, minimal METADATA, associated HYQ (traceability only), new EMBEDDING."""
     rows = []
     for doc_name in doc_names:
-        content = (stage5_dir / doc_name / f"{doc_name}.md").read_text(encoding="utf-8")
+        doc_dir = resolve_doc_dir(stage5_dir, doc_name)
+        content = (doc_dir / f"{doc_name}.md").read_text(encoding="utf-8")
         copy_raw_markdown(doc_name, stage5_dir, docs_output_dir)
 
-        hyq_path = stage5_dir / doc_name / "metadata" / "hyq.json"
+        hyq_path = doc_dir / "metadata" / "hyq.json"
         questions = json.loads(hyq_path.read_text(encoding="utf-8")) if hyq_path.exists() else []
 
         metadata = {
@@ -193,7 +195,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--stage5", type=Path, default=DEFAULT_STAGE5)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--docs-output-dir", type=Path, default=DEFAULT_DOCS_OUTPUT_DIR)
-    parser.add_argument("--dotenv", type=Path, default=None)
+    # Défaut = default_dotenv() : .env puis .env.test, cwd puis racine du
+    # dépôt — même résolution que la CLI afac-preprocess.
+    parser.add_argument("--dotenv", type=Path, default=default_dotenv())
     parser.add_argument(
         "--top-ks",
         default=",".join(map(str, TOP_KS)),

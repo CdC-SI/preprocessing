@@ -35,9 +35,30 @@ def _read_single_csv_row(path: Path) -> dict:
         return next(csv.DictReader(f))
 
 
+def resolve_doc_dir(stage5_dir: Path, doc_name: str) -> Path:
+    """Dossier de sortie d'un document, quel que soit le layout.
+
+    ⚠ Lot 9 : ces loaders supposaient ``stage5_dir / doc_name`` — le layout
+    PLAT d'avant F1. Depuis, la sortie reproduit l'arborescence d'entrée
+    (``<source>/<thème>/<doc>/``) et cette hypothèse ne trouvait plus rien :
+    l'évaluation et la baseline retournaient silencieusement 0 document.
+
+    On cherche d'abord à plat (rétrocompatible avec les sorties pré-F1), puis
+    récursivement. Le dossier retenu doit porter un ``metadata/``, pour ne pas
+    confondre avec un dossier de thème homonyme.
+    """
+    flat = stage5_dir / f"{doc_name}{DOC_FOLDER_SUFFIX}"
+    if (flat / "metadata").is_dir():
+        return flat
+    for candidate in sorted(stage5_dir.rglob(f"{doc_name}{DOC_FOLDER_SUFFIX}")):
+        if candidate.is_dir() and (candidate / "metadata").is_dir():
+            return candidate
+    return flat  # laisse l'appelant lever son FileNotFoundError habituel
+
+
 def load_hyq_questions(stage5_dir: Path, doc_name: str) -> list[QuestionRecord]:
     """Load HyQ questions from hyq.json (text) and question_N.csv files (embeddings only)."""
-    metadata_dir = stage5_dir / f"{doc_name}{DOC_FOLDER_SUFFIX}" / "metadata"
+    metadata_dir = resolve_doc_dir(stage5_dir, doc_name) / "metadata"
     hyq_path = metadata_dir / "hyq.json"
 
     if not hyq_path.exists():
@@ -70,8 +91,9 @@ def load_hyq_questions(stage5_dir: Path, doc_name: str) -> list[QuestionRecord]:
 def load_all_doc_embeddings(stage5_dir: Path) -> list[DocRecord]:
     """Load all *_final.csv document embedding files found under stage5_dir."""
     records: list[DocRecord] = []
-    pattern = f"*{DOC_FOLDER_SUFFIX}/metadata/*{DOC_CSV_SUFFIX}"
-    for csv_path in sorted(stage5_dir.glob(pattern)):
+    # rglob (et non glob) depuis F1 : les documents vivent sous
+    # <source>/<thème>/<doc>/metadata/, plus directement sous stage5_dir.
+    for csv_path in sorted(stage5_dir.rglob(f"metadata/*{DOC_CSV_SUFFIX}")):
         doc_name = csv_path.stem.removesuffix("_final")
         try:
             row = _read_single_csv_row(csv_path)

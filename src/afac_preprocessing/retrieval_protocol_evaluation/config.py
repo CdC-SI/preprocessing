@@ -5,9 +5,13 @@ Ce module centralise tous les paramètres fixes utilisés par le pipeline :
 chemins de répertoires, valeurs de k pour les métriques de classement,
 et conventions de nommage des fichiers/dossiers.
 """
-from pathlib import Path
+from ..settings import _find_project_root
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+# ⚠ Lot 9 : ``PROJECT_ROOT`` valait ``Path(__file__).parents[1]``, c'est-à-dire
+# le dossier du PACKAGE — d'où des chemins par défaut sous
+# ``src/afac_preprocessing/data/``, qui n'existe plus depuis que le lot 1 a
+# sorti ``data/`` de ``src/``. On lit désormais la vraie racine du dépôt.
+PROJECT_ROOT = _find_project_root()
 DEFAULT_STAGE5 = PROJECT_ROOT / "data" / "output_files_preprocessing"
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "data" / "pipeline_evaluation"
 
