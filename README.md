@@ -115,6 +115,20 @@ uv run python -m afac_preprocessing.retrieval_protocol_evaluation.evaluate_all_d
 uv run python -m afac_preprocessing.pipeline_baseline.compare_baseline_report
 ```
 
+**Variante HTML sans VLM.** Même calcul, mêmes chiffres (les fonctions
+d'agrégation sont partagées), mais la sortie est une page autoportante et le
+verdict est *calculé* — le signe du delta nDCG moyen — au lieu d'être rédigé
+par un modèle :
+
+```bash
+uv run python -m afac_preprocessing.pipeline_baseline.comparison_report_html
+```
+
+Elle est reproductible au bit près (le verdict VLM, lui, varie d'un run à
+l'autre : pas de cache, contrainte C1) et ne demande **pas** l'extra `viz` —
+les graphiques sont du SVG écrit à la main, pas du matplotlib. Sortie :
+`data/baseline_evaluation/comparison_report.html`, à ouvrir par double-clic.
+
 Ces scripts découvrent **automatiquement** tous les documents exploitables sous
 `data/output_files_preprocessing/`, à n'importe quelle profondeur. Pour
 restreindre le périmètre, pointez `--stage5` sur un sous-dossier :
@@ -142,7 +156,8 @@ Résultats produits :
 | `data/baseline_evaluation/baseline_metadata.csv` | une ligne par doc : CONTENT / METADATA / HYQ / EMBEDDING de la baseline |
 | `data/baseline_evaluation/baseline_results.csv` | une ligne par (doc, question), métriques @k |
 | `data/pipeline_evaluation/global_summary.csv` | moyennes par document, côté pipeline |
-| `data/baseline_evaluation/comparison_report.md` | **le rapport final** + graphiques dans `charts/` |
+| `data/baseline_evaluation/comparison_report.md` | **le rapport final** (markdown + verdict VLM) + graphiques dans `charts/` |
+| `data/baseline_evaluation/comparison_report.html` | le même, en page autoportante **sans VLM** |
 | `data/output_files_baseline/<doc>/<doc>.md` | copie du markdown brut évalué, pour inspection |
 
 Lecture du rapport : `delta = baseline − pipeline`. **Positif ⇒ la baseline fait

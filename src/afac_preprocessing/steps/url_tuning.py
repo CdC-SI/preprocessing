@@ -234,9 +234,28 @@ class UrlTuningStep(PipelineStep):
         self.max_concurrency = max_concurrency
         self.prompt_template = VLM_PROMPT_CORRECTION_STAGE_3_EN  # variante v2 (défaut pipeline)
 
+    def _source_doctags(self, ctx: PipelineContext) -> Path:
+        """Doctags à corriger : la variante enrichie par image-description (06)
+        si l'étape a tourné, sinon celle de load-jsonline-doctags (05).
+
+        Le repli rend le profil no-images exécutable : l'étape ne lit ce
+        fichier que pour le découper par page, les descriptions d'images n'y
+        jouent aucun rôle.
+        """
+        ws = ctx.workspace
+        for candidate in (
+            ws.reordered_with_tables_pictures_doctags,
+            ws.reordered_with_tables_doctags,
+        ):
+            if candidate.exists():
+                return candidate
+        # Aucun n'existe : on renvoie le nominal pour que validate_inputs
+        # produise le message d'erreur habituel.
+        return ws.reordered_with_tables_pictures_doctags
+
     def inputs(self, ctx: PipelineContext) -> list[Path]:
         ws = ctx.workspace
-        return [ws.source_pdf, ws.reordered_with_tables_pictures_doctags, ws.hyperlinks_jsonl]
+        return [ws.source_pdf, self._source_doctags(ctx), ws.hyperlinks_jsonl]
 
     def outputs(self, ctx: PipelineContext) -> list[Path]:
         return [ctx.workspace.url_vlm_doctags]
@@ -247,7 +266,7 @@ class UrlTuningStep(PipelineStep):
     async def _execute_async(self, ctx: PipelineContext) -> StepResult:
         ws = ctx.workspace
         pdf_path = ws.source_pdf
-        doctags_path = ws.reordered_with_tables_pictures_doctags
+        doctags_path = self._source_doctags(ctx)
         jsonl_path = ws.hyperlinks_jsonl
         output_path = ws.url_vlm_doctags
         vlm = ctx.vlm()

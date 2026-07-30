@@ -187,10 +187,25 @@ class InjectImageDescriptionsStep(PipelineStep):
     description = "Injection des descriptions d'images → _final.md"
     requires_vlm = False
 
+    def _source_markdown(self, ctx: PipelineContext) -> Path:
+        """Markdown à enrichir : la sortie de markdown-control (10) si l'étape
+        a tourné, sinon celle de markdown-convert (09).
+
+        markdown-control est sautée par le profil no-vlm ; l'injection des
+        descriptions ne dépend pas du contrôle VLM.
+        """
+        ws = ctx.workspace
+        for candidate in (ws.vlm_check_markdown, ws.url_vlm_markdown):
+            if candidate.exists():
+                return candidate
+        # Aucun n'existe : on renvoie le nominal pour que validate_inputs
+        # produise le message d'erreur habituel.
+        return ws.vlm_check_markdown
+
     def inputs(self, ctx: PipelineContext) -> list[Path]:
         # _image_descriptions.md est volontairement absent des entrées
         # déclarées : son absence est un cas nominal (0 image / désactivé).
-        return [ctx.workspace.vlm_check_markdown]
+        return [self._source_markdown(ctx)]
 
     def outputs(self, ctx: PipelineContext) -> list[Path]:
         return [ctx.workspace.final_markdown]
@@ -198,7 +213,7 @@ class InjectImageDescriptionsStep(PipelineStep):
     def execute(self, ctx: PipelineContext) -> StepResult:
         try:
             run_injection(
-                ctx.workspace.vlm_check_markdown,
+                self._source_markdown(ctx),
                 ctx.workspace.image_descriptions,
                 ctx.workspace.final_markdown,
             )

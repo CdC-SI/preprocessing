@@ -149,14 +149,33 @@ class MarkdownConvertStep(PipelineStep):
     description = "Conversion doctags → markdown"
     requires_vlm = False
 
+    def _source_doctags(self, ctx: PipelineContext) -> Path:
+        """Doctags à convertir : le dernier maillon effectivement produit.
+
+        url-tuning (08) puis image-description (06) sont tous deux sautables
+        (profils no-vlm, no-images) ; on remonte la chaîne jusqu'au doctags
+        disponible plutôt que d'exiger le plus enrichi.
+        """
+        ws = ctx.workspace
+        for candidate in (
+            ws.url_vlm_doctags,
+            ws.reordered_with_tables_pictures_doctags,
+            ws.reordered_with_tables_doctags,
+        ):
+            if candidate.exists():
+                return candidate
+        # Aucun n'existe : on renvoie le nominal pour que validate_inputs
+        # produise le message d'erreur habituel.
+        return ws.url_vlm_doctags
+
     def inputs(self, ctx: PipelineContext) -> list[Path]:
-        return [ctx.workspace.url_vlm_doctags]
+        return [self._source_doctags(ctx)]
 
     def outputs(self, ctx: PipelineContext) -> list[Path]:
         return [ctx.workspace.url_vlm_markdown]
 
     def execute(self, ctx: PipelineContext) -> StepResult:
-        input_path = ctx.workspace.url_vlm_doctags
+        input_path = self._source_doctags(ctx)
         output_path = ctx.workspace.url_vlm_markdown
 
         _log.info("Input   : %s", input_path)
