@@ -35,7 +35,6 @@ src/afac_preprocessing/neo4j_graphrag_ontology/examples
 src/afac_preprocessing/neo4j_graphrag_ontology/export/
 src/afac_preprocessing/pipeline_preprocessing/docling_image_png
 src/afac_preprocessing/neo4j_graphrag_ontology/extraction_concepts/output
-src/afac_preprocessing/neo4j_graphrag_ontology/trash
 src/afac_preprocessing/neo4j_graphrag_ontology/extraction_concepts/qa_runs
 
 # Others
@@ -46,3 +45,4 @@ tests/reference/
 tests/reference_F*/
 ETAT_REFACTOR.md
 csv_panda
+other_test
