@@ -194,6 +194,7 @@ uv sync --all-extras    # tout
 ## Documentation
 
 - [docs/architecture.md](docs/architecture.md) — les 13 étapes, le contrat `PipelineStep`, les règles du noyau
+- [docs/cli-options.md](docs/cli-options.md) — **toutes** les options des trois familles d'exécutables, les variables d'environnement, les recettes
 - [CONTRIBUTING.md](CONTRIBUTING.md) — ajouter une étape, lancer les vérifications
 
 ## Outils hors pipeline
