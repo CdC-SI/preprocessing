@@ -54,3 +54,10 @@ tests/reference_F*/
 ETAT_REFACTOR.md
 csv_panda
 other_test
+
+# From origin/main
+RUNBOOK.md
+src/eak-preprocessing/venv_eak_preprocessing
+src/intents-preprocessing
+src/utils
+config

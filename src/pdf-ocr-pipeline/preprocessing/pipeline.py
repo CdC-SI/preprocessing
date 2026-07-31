@@ -27,29 +27,31 @@ EMBEDDING_MODEL_NAME = os.environ.get("EMBEDDING_MODEL_NAME")
 TOKENIZER_URL = os.environ.get("TOKENIZER_URL")
 TOKENIZER_MODEL_NAME = os.environ.get("TOKENIZER_MODEL_NAME")
 MAX_EMBEDDING_TOKENS = int(os.environ.get("MAX_EMBEDDING_TOKENS", 32768))
+AUTH_TOKEN = os.environ.get("AUTH_TOKEN")
 
 sem = asyncio.Semaphore(4)
 
 http_client = httpx.AsyncClient(
     timeout=300.0,
     verify=False,
+    headers={"Authorization": f"Bearer {AUTH_TOKEN}"} if AUTH_TOKEN else {},
 )
 
 vlm_client = AsyncOpenAI(
     base_url=VLM_URL,
-    api_key="",
+    api_key=AUTH_TOKEN or "",
     http_client=http_client,
 )
 
 llm_client = AsyncOpenAI(
     base_url=LLM_URL,
-    api_key="",
+    api_key=AUTH_TOKEN or "",
     http_client=http_client,
 )
 
 embedding_client = AsyncOpenAI(
     base_url=EMBEDDING_URL,
-    api_key="",
+    api_key=AUTH_TOKEN or "",
     http_client=http_client,
 )
 

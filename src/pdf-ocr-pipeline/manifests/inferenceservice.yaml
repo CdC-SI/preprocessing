@@ -6,12 +6,14 @@ metadata:
     haproxy.router.openshift.io/timeout: 600s
     openshift.io/display-name: pdf-ocr-pipeline
     serving.kserve.io/deploymentMode: RawDeployment
+    security.opendatahub.io/enable-auth: "true"
   labels:
     networking.kserve.io/visibility: exposed
     opendatahub.io/dashboard: "true"
 spec:
   predictor:
     automountServiceAccountToken: false
+    serviceAccountName: model-serving-sa
     maxReplicas: 1
     minReplicas: 1
     model:
