@@ -41,6 +41,18 @@ l'agrégat dépend de tous les autres.
 | `Pipeline` | `core/pipeline.py` | Registre, sélection (`select()`), exécution (`run`, `run_batch`), rapports. |
 | `StepRunner` | `core/runner.py` | Seam in-process / subprocess. `InProcessRunner` par défaut. |
 
+### Comment ils s'assemblent
+
+> **Diagramme :** [`core-objects.mmd`](core-objects.mmd) — les objets du
+> noyau, qui construit qui, et par où passent les appels modèle.
+
+Trois arêtes portent l'essentiel des règles du noyau : `ENV → Settings`
+(personne d'autre ne lit l'environnement), `Step → ClientBundle` via
+`ctx.run_async` (personne n'ouvre sa propre boucle), et `Step → disque`
+toujours à travers `DocumentWorkspace` (personne ne reconstruit un chemin).
+`aggregate` est branché en pointillés parce qu'il n'est pas une étape : il se
+déclenche après le lot, quand tous les documents ont écrit leur CSV.
+
 ## Les 13 étapes
 
 `afac-preprocess steps --graph` imprime le chaînage réel, déduit des
@@ -65,6 +77,42 @@ déclarations `inputs()`/`outputs()`.
 Deux collaborateurs portent les appels modèle de l'étape 12 sans être des
 étapes du registre : `MetadataEnhancer` (resume / intent / hyq) et
 `DocumentEmbedder` (embedding du markdown).
+
+### Le chaînage réel
+
+> **Diagramme :** [`pipeline-steps.mmd`](pipeline-steps.mmd) — le DAG des
+> 13 étapes, étiqueté par le fichier qui circule sur chaque arête.
+
+Il transcrit ce qu'imprime `afac-preprocess steps --graph`, lui-même déduit des
+`inputs()`/`outputs()` déclarés (à une nuance près, signalée en fin de
+section). Les traits pointillés sont les chemins de repli, empruntés quand une
+étape a été sautée par un profil.
+
+Quatre choses que le graphe rend visibles et que la liste ordonnée cachait :
+
+- **Le PDF reste une entrée jusqu'à l'étape 10.** Six étapes le rouvrent —
+  pour rendre les pages, découper les images, lire les liens natifs ou
+  comparer le markdown à la page d'origine. Ce n'est pas une chaîne
+  linéaire : c'est un DAG dont le PDF est une source permanente.
+- **Deux branches parallèles se rejoignent en 08.** `url-extraction` (07) ne
+  dépend que du PDF : elle est indépendante de toute la branche doctags et
+  pourrait tourner n'importe quand avant l'étape 08.
+- **Le raccourci 01 → 12.** `metadata-generation` relit le `doc.json` de
+  Docling — pas seulement le markdown final — pour les métadonnées
+  structurelles. Sauter l'étape 01 ne casse donc pas que le début du
+  pipeline.
+- **Les replis sont ce qui rend les profils exécutables.** Sans l'arête
+  pointillée `05 ⇢ 08`, `--profile no-images` échouerait sur un fichier
+  manquant ; sans `09 ⇢ 11`, ce serait `no-vlm`. Chaque repli remonte la
+  chaîne jusqu'aux doctags ou au markdown réellement produits, au lieu
+  d'exiger la version la plus enrichie.
+
+Une réserve sur ce graphe, également notée en tête du `.mmd` : `steps --graph`
+attribue `tables/` à
+`docling-extract` pour l'étape 05, parce que 01 et 04 écrivent dans le **même
+répertoire** et que la résolution producteur→consommateur se fait par chemin.
+Le graphe ci-dessus rétablit la dépendance réelle (05 lit les `.jsonl` produits
+par 04) ; c'est la limite d'un contrat déclaratif au niveau du répertoire.
 
 ## Deux règles non négociables
 

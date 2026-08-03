@@ -1,36 +1,35 @@
-"""Hiérarchie d'erreurs métier du pipeline.
+"""Pipeline business error hierarchy.
 
-Le noyau lève ces exceptions — jamais ``sys.exit`` ni ``SystemExit``
-(invariant n°3 du refactor). Seule la CLI (``cli/main.py``) et la couche de
-compat ``utils/`` traduisent en codes de sortie.
+The core raises these exceptions, never sys.exit or SystemExit
+Only the CLI (cli/main.py) and the compatibility layer utils/ translate them into exit codes.
 """
 
 from __future__ import annotations
 
 
 class AfacError(Exception):
-    """Base commune de toutes les erreurs métier du pipeline."""
+    """Common base class for all pipeline business errors."""
 
 
 class ConfigError(AfacError):
-    """Configuration invalide ou incomplète (.env, variables, chemins)."""
+    """Invalid or incomplete configuration (`.env`, variables, paths)."""
 
 
 class StepInputMissing(AfacError):
-    """Une entrée déclarée d'une étape est absente du workspace."""
+    """An input declared by a step is missing from the workspace."""
 
 
 class StepFailed(AfacError):
-    """Une étape a échoué pendant son exécution."""
+    """A step failed during execution."""
 
 
 class VlmUnavailable(AfacError):
-    """Le client VLM est requis mais indisponible (URL absente ou injoignable)."""
+    """The VLM client is required but unavailable (missing URL or unreachable)."""
 
 
 class EmbeddingUnavailable(AfacError):
-    """Le client d'embedding est requis mais indisponible."""
+    """The embedding client is required but unavailable."""
 
 
 class UnknownStep(AfacError):
-    """Nom d'étape inconnu du registre."""
+    """Step name unknown to the registry."""

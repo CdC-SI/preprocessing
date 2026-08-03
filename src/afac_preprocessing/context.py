@@ -1,8 +1,8 @@
-"""PipelineContext — l'état d'un run, explicite et immuable.
+"""PipelineContext, the state of a run, explicit and immutable.
 
-Remplace la mutation d'``os.environ`` entre étapes (``_set_doc_env``).
-Le contexte ne construit jamais de client lui-même : il délègue au
-``ClientBundle``, qui possède LA boucle et LES clients du run (piège P7).
+Replaces the mutation of os.environ between steps (_set_doc_env).
+The context never builds clients itself: 
+it delegates to the ClientBundle, which owns THE loop and THE clients for the run.
 """
 
 from __future__ import annotations
@@ -20,9 +20,9 @@ from .workspace import DocumentWorkspace
 _T = TypeVar("_T")
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True) # Once created, its attributes cannot be modified.
 class PipelineContext:
-    """Tout ce qu'une étape a le droit de connaître d'un run."""
+    """Everything a step is allowed to know about a run."""
 
     settings: Settings
     workspace: DocumentWorkspace
@@ -30,32 +30,31 @@ class PipelineContext:
     dry_run: bool = False
 
     def vlm(self) -> AsyncVlmClient:
-        """Client VLM du run — lève ``VlmUnavailable``, ne renvoie jamais None."""
+        """Run VLM client, raises VlmUnavailable; never returns None."""
         return self.clients.vlm()
 
     def embeddings(self) -> AsyncEmbeddingClient:
-        """Client d'embedding du run — lève ``EmbeddingUnavailable`` si absent."""
+        """Run embedding client, raises EmbeddingUnavailable if unavailable."""
         return self.clients.embeddings()
 
     def run_async(self, coro: Awaitable[_T]) -> _T:
-        """Exécute *coro* sur LA boucle du run, celle que possède le ClientBundle.
-
-        ⚠ Jamais ``asyncio.run()`` dans une étape (piège P7) : chaque étape qui
-        ouvrirait sa propre boucle détruirait le pool de connexions httpx.
+        """Executes coro (co-routine) on THE run loop, the one owned by the ClientBundle.
+        Never use asyncio.run() inside a step: each step that
+        opened its own event loop would destroy the httpx connection pool.
         """
         return self.clients.run_async(coro)
 
     @classmethod
     def for_pdf(
-        cls,
+        cls, # https://realpython.com/ref/glossary/cls/
         pdf: Path,
         settings: Settings,
         *,
         clients: ClientBundle | None = None,
         dry_run: bool = False,
     ) -> PipelineContext:
-        """Contexte d'un document. En batch, passer le MÊME ``clients`` à chaque
-        document pour partager boucle et connexions sur tout le run."""
+        """Document context. In batch mode, pass the SAME clients instance to each
+        document to share the event loop and connections across the entire run."""
         workspace = DocumentWorkspace.for_document(pdf, settings)
         return cls(
             settings=settings,

@@ -1,0 +1,80 @@
+%% Le chaînage réel des 13 étapes, fichier par fichier.
+%% Référencé par docs/architecture.md § « Le chaînage réel ».
+%% Source de vérité : `afac-preprocess steps --graph`, lui-même déduit des
+%% inputs()/outputs() de src/afac_preprocessing/steps/*.py.
+%% Nuance connue : 05 lit les .jsonl produits par 04, mais `steps --graph`
+%% attribue tables/ à docling-extract — 01 et 04 écrivent dans le même
+%% répertoire et la résolution producteur→consommateur se fait par chemin.
+%% Ce graphe rétablit la dépendance réelle.
+flowchart TD
+    PDF(["doc.pdf"])
+
+    subgraph P1["Extraction — sans VLM"]
+        direction TB
+        S01["01 · docling-extract"]
+        S02["02 · reorder-doctags"]
+        S03["03 · opencv-check<br/>désactivée par défaut"]
+        S04["04 · csv-to-jsonlines"]
+        S05["05 · load-jsonline-doctags"]
+    end
+
+    subgraph P2["Enrichissement"]
+        direction TB
+        S06["06 · image-description"]
+        S07["07 · url-extraction"]
+        S08["08 · url-tuning"]
+    end
+
+    subgraph P3["Markdown"]
+        direction TB
+        S09["09 · markdown-convert"]
+        S10["10 · markdown-control"]
+        S11["11 · inject-image-descriptions"]
+    end
+
+    subgraph P4["Métadonnées & embeddings"]
+        direction TB
+        S12["12 · metadata-generation"]
+        S13["13 · hyq-embedding"]
+    end
+
+    OUT[/"metadata/doc_final.csv<br/>CONTENT · METADATA · EMBEDDING"/]
+    AGG[/"corpus.csv<br/>agrégat de fin de batch"/]
+
+    PDF --> S01
+    PDF -.->|"pages rendues"| S03
+    PDF -.->|"images"| S06
+    PDF -->|"liens PDF"| S07
+    PDF -->|"pagination"| S08
+    PDF -->|"pages de référence"| S10
+
+    S01 -->|"doc.doctags"| S02
+    S01 -.->|"doc.doctags"| S03
+    S01 -->|"tables/*.csv"| S04
+    S01 -->|"doc.json"| S12
+    S02 -->|"_reordered.doctags"| S05
+    S04 -->|"tables/*.jsonl"| S05
+    S05 -->|"_reordered_with_tables.doctags"| S06
+    S05 -.->|"repli no-images"| S08
+    S06 -->|"_reordered_with_tables_pictures.doctags"| S08
+    S07 -->|"hyperlinks_data_doc.jsonl"| S08
+    S08 -->|"_url_vlm.doctags"| S09
+    S05 -.->|"repli no-vlm"| S09
+    S09 -->|"_url_vlm.md"| S10
+    S10 -->|"_vlm_check.md"| S11
+    S09 -.->|"repli no-vlm"| S11
+    S06 -.->|"_image_descriptions.md<br/>absence = cas nominal"| S11
+    S11 -->|"_final.md"| S12
+    S12 -->|"hyq.json"| S13
+    S12 --> OUT
+    OUT --> AGG
+
+    classDef vlm fill:#fde7e9,stroke:#c5221f,color:#111
+    classDef plain fill:#e8f0fe,stroke:#3367d6,color:#111
+    classDef off fill:#f1f3f4,stroke:#9aa0a6,color:#5f6368
+    class S06,S08,S10,S12,S13 vlm
+    class S01,S02,S04,S05,S07,S09,S11 plain
+    class S03 off
+    style PDF fill:#e6f4ea,stroke:#137333,color:#111
+    style OUT fill:#fef7e0,stroke:#b06000,color:#111
+    style AGG fill:#fef7e0,stroke:#b06000,color:#111

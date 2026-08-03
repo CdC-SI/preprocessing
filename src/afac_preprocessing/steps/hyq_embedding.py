@@ -1,12 +1,12 @@
-"""Étape hyq-embedding — embeddings des questions hypothétiques (hyq).
+"""hyq-embedding stage, embeddings of hypothetical questions (hyq).
 
-Conversion de ``metadata/hyq_embedding_doc.py`` (vague D). Logique DÉPLACÉE
-telle quelle ; l'appel d'embedding passe en async (contrainte C2) via
-``embeddings.get_embedding`` — client du ClientBundle, jamais construit ici.
+Conversion of metadata/hyq_embedding_doc.py. Logic MOVED as-is,
+the embedding call is now asynchronous through
+embeddings.get_embedding. ClientBundle client, never constructed here.
 
-Lit hyq.json (écrit par metadata-generation), génère l'embedding de chaque
-question et écrit un CSV dédié par question :
-    metadata/hyq_<doc_name>/question_1.csv, question_2.csv, …
+Reads hyq.json (written by metadata-generation), generates the embedding for
+each question, and writes a dedicated CSV file per question:
+metadata/hyq_<doc_name>/question_1.csv, question_2.csv, …
 """
 
 from __future__ import annotations
@@ -31,14 +31,14 @@ _log = logging.getLogger(__name__)
 
 def load_hyq(workspace: DocumentWorkspace) -> list[str]:
     """
-    Lit le fichier hyq.json du document.
+    Reads the document's hyq.json file.
 
-    :return: Liste de questions hyq
+    :return: List of hyq questions
     """
     hyq_path = workspace.hyq_json
     if not hyq_path.exists():
         raise FileNotFoundError(
-            f"hyq.json introuvable pour '{workspace.doc_name}' dans {workspace.root.parent}"
+            f"hyq.json not found for '{workspace.doc_name}' in {workspace.root.parent}"
         )
     return json.loads(hyq_path.read_text(encoding="utf-8"))
 
@@ -49,20 +49,19 @@ async def write_hyq_csv(
     questions: list[str],
     embeddings: AsyncEmbeddingClient,
 ) -> tuple[Path, int]:
-    """
-    Pour chaque question hyq, génère son embedding et écrit un CSV dédié :
+    """For each hyq question, generates its embedding and writes a dedicated CSV:
     metadata/hyq_<doc_name>/question_1.csv, question_2.csv, …
 
-    Supprime d'abord tout question_*.csv préexistant : sans ça, relancer sur un
-    hyq.json régénéré avec moins de questions qu'avant laisse les fichiers en
-    trop d'une exécution précédente (ex. question_11.csv orphelin si hyq.json
-    est passé de 11 à 10 questions) — silencieusement inclus par tout code qui
-    lit hyq_<doc_name>/*.csv comme « l'ensemble courant des questions ».
+    First removes any existing question_*.csv files: without this, rerunning on a
+    regenerated hyq.json with fewer questions than before leaves leftover files
+    from a previous execution (e.g., orphaned question_11.csv if hyq.json went
+    from 11 to 10 questions) — silently included by any code that reads
+    hyq_<doc_name>/*.csv as “the current set of questions”.
 
-    Les erreurs par question sont loggées et ignorées — les questions suivantes
-    sont toujours traitées. (Boucle séquentielle, comme le script historique.)
+    Errors for individual questions are logged and ignored — subsequent
+    questions are still processed. (Sequential loop, like the historical script.)
 
-    :return: Tuple (chemin du dossier hyq créé, nombre de questions en erreur)
+    :return: Tuple (path of the created hyq folder, number of failed questions)
     """
     out_dir = workspace.hyq_dir
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -71,7 +70,7 @@ async def write_hyq_csv(
     n_err = 0
 
     for i, question in enumerate(questions, start=1):
-        _log.info("Embedding question %d/%d : %s...", i, len(questions), question[:60])
+        _log.info("Question embedding %d/%d : %s...", i, len(questions), question[:60])
         try:
             embedding = await embeddings.get_embedding(question)
             csv_path = out_dir / f"question_{i}.csv"
@@ -84,17 +83,17 @@ async def write_hyq_csv(
                     embedding_to_string(embedding),
                 ])
         except Exception:
-            _log.exception("Erreur question %d/%d — ignorée.", i, len(questions))
+            _log.exception("Question %d/%d error ignored.", i, len(questions))
             n_err += 1
 
     return out_dir, n_err
 
 
 class HyqEmbeddingStep(PipelineStep):
-    """Génère un CSV (CONTENT | METADATA | EMBEDDING) par question hyq."""
+    """Generates a CSV (CONTENT | METADATA | EMBEDDING) per hyq question."""
 
     name = "hyq-embedding"
-    description = "Embeddings des questions hypothétiques (hyq)"
+    description = "Hypothetical question embeddings (hyq)"
     requires_vlm = True
 
     def inputs(self, ctx: PipelineContext) -> list[Path]:
@@ -104,25 +103,25 @@ class HyqEmbeddingStep(PipelineStep):
         return [ctx.workspace.hyq_dir]
 
     def execute(self, ctx: PipelineContext) -> StepResult:
-        return ctx.run_async(self._execute_async(ctx))  # ⚠ PAS asyncio.run() (P7)
+        return ctx.run_async(self._execute_async(ctx)) 
 
     async def _execute_async(self, ctx: PipelineContext) -> StepResult:
         ws = ctx.workspace
-        doc_title = f"{ws.doc_name}.pdf"  # même défaut que --doc-title
+        doc_title = f"{ws.doc_name}.pdf" 
 
-        _log.info("Chargement des hyq pour : %s", ws.doc_name)
+        _log.info("Loading hyq for: %s", ws.doc_name)
         try:
             questions = load_hyq(ws)
         except FileNotFoundError as exc:
             raise StepFailed(str(exc)) from exc
-        _log.info("%d question(s) trouvée(s)", len(questions))
+        _log.info("%d question(s) found", len(questions))
 
         out_dir, n_err = await write_hyq_csv(ws, doc_title, questions, ctx.embeddings())
 
         n_ok = len(questions) - n_err
-        _log.info("%d/%d fichier(s) CSV écrits dans : %s", n_ok, len(questions), out_dir)
+        _log.info("%d/%d CSV file(s) written to: %s", n_ok, len(questions), out_dir)
         if n_err:
-            _log.warning("%d question(s) en erreur.", n_err)
+            _log.warning("%d question(s) failed.", n_err)
         return StepResult(
             StepStatus.OK, outputs=self.outputs(ctx), message=f"{n_ok}/{len(questions)} questions"
         )

@@ -1,15 +1,15 @@
-"""afac-preprocess — CLI du pipeline de prétraitement.
+"""afac-preprocess, CLI for the preprocessing pipeline.
 
-Seul endroit du dépôt autorisé à faire ``sys.exit`` (via ``typer.Exit``) et à
-configurer le logging. Aucune logique métier ici : la CLI construit
-``Settings``, un ``PipelineContext`` par PDF, appelle ``Pipeline``, imprime le
-rapport et convertit les exceptions métier en codes de sortie stables :
+The only place in the repo allowed to do ``sys.exit`` (via ``typer.Exit``)
+and to configure logging. No business logic here: the CLI builds
+``Settings``, one ``PipelineContext`` per PDF, calls ``Pipeline``, prints
+the report, and converts business exceptions into stable exit codes:
 
-    0  succès
-    1  étape en échec / erreur métier
-    2  configuration invalide (ConfigError)
-    3  étape ou profil inconnu (UnknownStep)
-    4  VLM/embedding indisponible
+    0  success
+    1  failed step / business error
+    2  invalid configuration (ConfigError)
+    3  unknown step or profile (UnknownStep)
+    4  VLM/embedding unavailable
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ from ..settings import Settings
 
 app = typer.Typer(
     name="afac-preprocess",
-    help="Pipeline de prétraitement AFAC : extraction Docling, enrichissement VLM, metadata.",
+    help="AFAC preprocessing pipeline: Docling extraction, VLM enrichment, metadata.",
     no_args_is_help=True,
     add_completion=False,
 )
@@ -49,7 +49,7 @@ def _exit_code(exc: AfacError) -> int:
 
 
 def _resolve_dotenv(dotenv: Path | None) -> Path | None:
-    """--dotenv explicite sinon .env puis .env.test du répertoire courant."""
+    """Explicit --dotenv, otherwise .env then .env.test in the current directory."""
     if dotenv is not None:
         return dotenv
     for candidate in (Path(".env"), Path(".env.test")):
@@ -91,7 +91,7 @@ def _build_pipeline(
 
 
 def _discover_pdfs(input_path: Path) -> list[Path]:
-    """Un PDF, ou un dossier exploré récursivement (comportement actuel préservé)."""
+    """A single PDF, or a directory explored recursively (current behavior preserved)."""
     resolved = input_path.resolve()
     if not resolved.exists():
         raise ConfigError(f"Input not found: {resolved}")
@@ -105,19 +105,19 @@ def _discover_pdfs(input_path: Path) -> list[Path]:
 
 @app.command()
 def run(
-    input: Path = typer.Option(..., "--input", "-i", help="PDF ou dossier (exploré récursivement)."),
-    dotenv: Path | None = typer.Option(None, help="Fichier .env (défaut : .env puis .env.test)."),
-    profile: str = typer.Option("default", help=f"Profil : {', '.join(sorted(PROFILES))}."),
-    from_step: str | None = typer.Option(None, "--from-step", help="Première étape (nom ou numéro)."),
-    to_step: str | None = typer.Option(None, "--to-step", help="Dernière étape (nom ou numéro)."),
-    skip: str = typer.Option("", "--skip", help="Étapes à sauter (noms/numéros, séparés par des virgules)."),
-    only: str = typer.Option("", "--only", help="N'exécuter que ces étapes (prime sur from/to/skip)."),
-    no_ocr: bool = typer.Option(False, "--no-ocr", help="Transmis à docling-extract uniquement."),
-    with_opencv_check: bool = typer.Option(False, "--with-opencv-check", help="Inclure l'étape opencv-check."),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Afficher les étapes sans les exécuter."),
+    input: Path = typer.Option(..., "--input", "-i", help="PDF or directory (explored recursively)."),
+    dotenv: Path | None = typer.Option(None, help="Env file (default: .env then .env.test)."),
+    profile: str = typer.Option("default", help=f"Profile: {', '.join(sorted(PROFILES))}."),
+    from_step: str | None = typer.Option(None, "--from-step", help="First step (name or number)."),
+    to_step: str | None = typer.Option(None, "--to-step", help="Last step (name or number)."),
+    skip: str = typer.Option("", "--skip", help="Steps to skip (names/numbers, comma-separated)."),
+    only: str = typer.Option("", "--only", help="Run only these steps (takes precedence over from/to/skip)."),
+    no_ocr: bool = typer.Option(False, "--no-ocr", help="Passed to docling-extract only."),
+    with_opencv_check: bool = typer.Option(False, "--with-opencv-check", help="Include the opencv-check step."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show the steps without running them."),
     verbose: int = typer.Option(0, "--verbose", "-v", count=True, help="-v = DEBUG."),
 ) -> None:
-    """Traite un PDF ou tous les PDF d'un dossier avec les 13 étapes du pipeline."""
+    """Processes a PDF or all the PDFs in a directory through the pipeline's 13 steps."""
     configure_logging(verbose)
     try:
         settings = Settings.from_dotenv(_resolve_dotenv(dotenv))
@@ -127,20 +127,20 @@ def run(
             skip=skip, only=only, with_opencv_check=with_opencv_check,
         )
         if not pipeline.steps:
-            raise ConfigError("No steps selected — check --from-step/--to-step/--skip/--only.")
+            raise ConfigError("No steps selected, check --from-step/--to-step/--skip/--only.")
         if no_ocr:
             for step in pipeline.steps:
                 if step.name == "docling-extract" and hasattr(step, "ocr"):
                     step.ocr = False
 
-        typer.echo(f"{len(pdfs)} PDF(s) — étapes : {', '.join(s.name for s in pipeline.steps)}")
+        typer.echo(f"{len(pdfs)} PDF(s) — steps: {', '.join(s.name for s in pipeline.steps)}")
         if dry_run:
-            # Ni client VLM, ni agrégation : un dry-run ne doit toucher NI le
-            # réseau NI le disque. Sans ce court-circuit, ClientBundle sonde le
-            # VLM et run_batch réécrit les CSV globaux.
+            # No VLM client, no aggregation: a dry-run must touch NEITHER the
+            # network NOR the disk. Without this short-circuit, ClientBundle
+            # probes the VLM and run_batch rewrites the global CSVs.
             for pdf in pdfs:
                 typer.echo(f"  · {pdf}")
-            typer.echo("--dry-run : aucune étape exécutée, aucun fichier écrit.")
+            typer.echo("--dry-run: no step executed, no file written.")
             raise typer.Exit(0)
         with ClientBundle(settings) as bundle:
             contexts = (
@@ -151,16 +151,16 @@ def run(
 
         for report in batch.reports:
             mark = "✓" if report.ok else "✗"
-            typer.echo(f"  {mark} {report.doc_name} — {len(report.results)} étape(s), {report.duration:.1f}s")
+            typer.echo(f"  {mark} {report.doc_name} — {len(report.results)} step(s), {report.duration:.1f}s")
             if not report.ok:
                 for name, result in report.results:
                     if not result.ok:
-                        typer.echo(f"      étape en échec : {name} — {result.message}")
+                        typer.echo(f"      failed step: {name} — {result.message}")
         for csv_path in batch.aggregated:
-            typer.echo(f"  CSV global : {csv_path}")
+            typer.echo(f"  Global CSV: {csv_path}")
         typer.echo(
-            f"{'OK' if batch.ok else 'ÉCHEC'} — {len(batch.reports)} document(s), "
-            f"{len(batch.failed)} échec(s)"
+            f"{'OK' if batch.ok else 'FAILED'} — {len(batch.reports)} document(s), "
+            f"{len(batch.failed)} failure(s)"
         )
         raise typer.Exit(0 if batch.ok else 1)
     except AfacError as exc:
@@ -171,15 +171,15 @@ def run(
 @app.command()
 def aggregate(
     root: str | None = typer.Option(
-        None, help="Dossier racine à agréger (ex. afac). Par défaut : toutes les racines."
+        None, help="Root directory to aggregate (e.g. afac). Default: all roots."
     ),
-    dotenv: Path | None = typer.Option(None, help="Fichier .env (défaut : .env puis .env.test)."),
+    dotenv: Path | None = typer.Option(None, help="Env file (default: .env then .env.test)."),
     verbose: int = typer.Option(0, "--verbose", "-v", count=True, help="-v = DEBUG."),
 ) -> None:
-    """Reconstruit le CSV global de chaque dossier racine (<racine>/<racine>.csv).
+    """Rebuilds the global CSV for each root directory (<root>/<root>.csv).
 
-    Concatène les CSV par document du sous-arbre, sans les modifier. Rejouable :
-    le fichier est reconstruit, jamais complété.
+    Concatenates the per-document CSVs of the subtree, without modifying
+    them. Replayable: the file is rebuilt, never appended to.
     """
     configure_logging(verbose)
     try:
@@ -190,12 +190,12 @@ def aggregate(
         else:
             written = aggregate_all_roots(out_root)
         if not written:
-            typer.echo(f"Aucun CSV par document trouvé sous {out_root}")
+            typer.echo(f"No per-document CSV found under {out_root}")
             raise typer.Exit(0)
         for path in written:
             with path.open(newline="", encoding="utf-8") as fh:
                 n_rows = sum(1 for _ in csv.reader(fh)) - 1
-            typer.echo(f"  ✓ {path} — {n_rows} ligne(s)")
+            typer.echo(f"  ✓ {path} — {n_rows} row(s)")
         raise typer.Exit(0)
     except AfacError as exc:
         typer.echo(f"Error: {exc}", err=True)
@@ -204,20 +204,20 @@ def aggregate(
 
 @app.command()
 def steps(
-    graph: bool = typer.Option(False, "--graph", help="Afficher le chaînage entrées ← sorties."),
+    graph: bool = typer.Option(False, "--graph", help="Show the inputs ← outputs chaining."),
 ) -> None:
-    """Liste les 13 étapes (fonctionne sans .env)."""
+    """Lists the 13 steps (works without .env)."""
     pipeline = Pipeline.default()
     if not graph:
-        typer.echo(f"{'#':>2}  {'Nom':<26} {'VLM':<4} {'Défaut':<7} Description")
+        typer.echo(f"{'#':>2}  {'Name':<26} {'VLM':<4} {'Default':<7} Description")
         for i, step in enumerate(pipeline.steps, start=1):
-            vlm = "oui" if step.requires_vlm else "—"
-            default = "oui" if step.enabled_by_default else "non"
+            vlm = "yes" if step.requires_vlm else "—"
+            default = "yes" if step.enabled_by_default else "no"
             typer.echo(f"{i:02d}  {step.name:<26} {vlm:<4} {default:<7} {step.description}")
         return
 
-    # Chaînage déduit de inputs()/outputs() (lot 4) — aucun .env requis :
-    # Settings synthétiques, chemins fictifs, on ne fait que comparer des Path.
+    # Chaining deduced from inputs()/outputs() (batch 4) — no .env required:
+    # synthetic Settings, fake paths, we're only comparing Path objects.
     settings = Settings(
         vlm_url="http://steps-graph.invalid/v1",  # type: ignore[arg-type]
         project_root=Path("/steps-graph"),
@@ -225,7 +225,7 @@ def steps(
     )
     ctx = PipelineContext.for_pdf(Path("/steps-graph/doc.pdf"), settings)
     producers: dict[Path, str] = {}
-    typer.echo("Chaînage des étapes (entrée ← produite par) :")
+    typer.echo("Step chaining (input ← produced by):")
     for step in pipeline.steps:
         needs = []
         for path in step.inputs(ctx):
@@ -244,9 +244,9 @@ def steps(
 
 @app.command()
 def doctor(
-    dotenv: Path | None = typer.Option(None, help="Fichier .env à diagnostiquer."),
+    dotenv: Path | None = typer.Option(None, help="Env file to diagnose."),
 ) -> None:
-    """Diagnostique l'installation et dit quoi faire pour chaque problème."""
+    """Diagnoses the installation and says what to do for each problem."""
     import httpx
 
     from ..clients.openai_client import _to_base_url
@@ -270,79 +270,79 @@ def doctor(
     if platform.python_version_tuple() >= ("3", "11"):
         ok(f"Python {platform.python_version()}")
     else:
-        fail(f"Python {platform.python_version()} < 3.11", "Installer Python ≥ 3.11 (uv python install 3.12).")
+        fail(f"Python {platform.python_version()} < 3.11", "Install Python ≥ 3.11 (uv python install 3.12).")
 
     # 2. .env
     resolved = _resolve_dotenv(dotenv)
     if resolved is None:
-        warn("aucun fichier .env trouvé (.env, .env.test)",
-             "cp .env.example .env puis renseigner VLM_URL (voir l'équipe infra).")
+        warn("no .env file found (.env, .env.test)",
+             "cp .env.example .env then fill in VLM_URL (see the infra team).")
     else:
-        ok(f".env : {resolved}")
+        ok(f".env: {resolved}")
 
     # 3. Settings
     try:
         settings = Settings.from_dotenv(resolved)
     except ConfigError as exc:
-        fail(f"configuration invalide : {exc}",
-             "Renseigner VLM_URL (et EMBEDDING_URL pour les étapes metadata/hyq) dans le .env.")
+        fail(f"invalid configuration: {exc}",
+             "Fill in VLM_URL (and EMBEDDING_URL for the metadata/hyq steps) in the .env.")
         raise typer.Exit(1) from exc
-    ok(f"VLM_URL : {settings.vlm_url} (modèle : {settings.vlm_model_name or 'non renseigné'})")
+    ok(f"VLM_URL: {settings.vlm_url} (model: {settings.vlm_model_name or 'not set'})")
 
-    # 4. Certificat
+    # 4. Certificate
     if settings.ca_pem is not None and settings.ca_pem.exists():
-        ok(f"certificat CA : {settings.ca_pem}")
+        ok(f"CA certificate: {settings.ca_pem}")
     elif settings.ca_pem is not None:
-        warn(f"VLM_CA_PEM introuvable ({settings.ca_pem}) — repli certifi",
-             "Vérifier le chemin du certificat fourni par l'équipe infra.")
+        warn(f"VLM_CA_PEM not found ({settings.ca_pem}) — falling back to certifi",
+             "Check the certificate path provided by the infra team.")
     else:
-        ok("certificat : certifi (aucun CA custom déclaré)")
+        ok("certificate: certifi (no custom CA declared)")
 
-    # 5. VLM joignable + modèle servi
+    # 5. VLM reachable + model served
     base = _to_base_url(str(settings.vlm_url))
     try:
         response = httpx.Client(verify=settings.resolved_ca_path, timeout=5.0).get(f"{base}/models")
         response.raise_for_status()
         models = [m.get("id", "?") for m in response.json().get("data", [])]
-        ok(f"VLM joignable — modèles servis : {models or ['(aucun)']}")
+        ok(f"VLM reachable — models served: {models or ['(none)']}")
         if settings.vlm_model_name and settings.vlm_model_name not in models:
-            fail(f"le modèle configuré '{settings.vlm_model_name}' n'est pas servi",
-                 f"Choisir un des modèles listés ci-dessus, ou vérifier le backend ({base}).")
+            fail(f"the configured model '{settings.vlm_model_name}' is not served",
+                 f"Choose one of the models listed above, or check the backend ({base}).")
     except Exception as exc:
-        fail(f"VLM injoignable ({base}) : {type(exc).__name__}",
-             "Vérifier VLM_URL, le VPN/réseau et le certificat (VLM_CA_PEM).")
+        fail(f"VLM unreachable ({base}): {type(exc).__name__}",
+             "Check VLM_URL, the VPN/network, and the certificate (VLM_CA_PEM).")
 
-    # 6. Embedding (optionnel)
+    # 6. Embedding (optional)
     if settings.embedding_url is None:
-        warn("EMBEDDING_URL non renseignée",
-             "Les étapes metadata-generation et hyq-embedding échoueront ; renseigner EMBEDDING_URL pour les activer.")
+        warn("EMBEDDING_URL not set",
+             "The metadata-generation and hyq-embedding steps will fail; set EMBEDDING_URL to enable them.")
     else:
-        ok(f"EMBEDDING_URL : {settings.embedding_url}")
+        ok(f"EMBEDDING_URL: {settings.embedding_url}")
 
     # 7. data/
     if settings.input_files_root.is_dir():
         pdf_count = sum(1 for _ in settings.input_files_root.rglob("*.pdf"))
-        ok(f"input_files : {settings.input_files_root} ({pdf_count} PDF)")
+        ok(f"input_files: {settings.input_files_root} ({pdf_count} PDF)")
     else:
-        fail(f"dossier d'entrée absent : {settings.input_files_root}",
-             "mkdir -p data/input_files puis y déposer les PDF (ou surcharger DATA_ROOT).")
+        fail(f"input directory missing: {settings.input_files_root}",
+             "mkdir -p data/input_files then drop the PDFs there (or override DATA_ROOT).")
     try:
         settings.output_files_root.mkdir(parents=True, exist_ok=True)
         probe = settings.output_files_root / ".doctor-write-check"
         probe.write_text("ok")
         probe.unlink()
-        ok(f"sorties inscriptibles : {settings.output_files_root}")
+        ok(f"outputs writable: {settings.output_files_root}")
     except OSError as exc:
-        fail(f"sorties non inscriptibles ({settings.output_files_root}) : {exc}",
-             "Vérifier les droits d'écriture ou surcharger DATA_ROOT.")
+        fail(f"outputs not writable ({settings.output_files_root}): {exc}",
+             "Check the write permissions or override DATA_ROOT.")
 
-    typer.echo("Tout est prêt." if failures == 0 else f"{failures} problème(s) à corriger.")
+    typer.echo("Everything is ready." if failures == 0 else f"{failures} problem(s) to fix.")
     raise typer.Exit(0 if failures == 0 else 1)
 
 
 @app.command()
 def version() -> None:
-    """Affiche la version installée."""
+    """Displays the installed version."""
     typer.echo(importlib.metadata.version("afac-preprocessing"))
 
 

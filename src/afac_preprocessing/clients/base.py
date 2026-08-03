@@ -1,5 +1,5 @@
-"""Protocols des clients modèle — async-first, il n'y a pas de variante sync
-dans le contrat (contrainte C2 : tous les appels VLM/embedding sont asynchrones).
+"""Model client protocols , async-first, there is no sync variant in the
+contract (constraint C2: all VLM/embedding calls are asynchronous).
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ DEFAULT_VISION_MAX_TOKENS = 8192
 
 @runtime_checkable
 class AsyncVlmClient(Protocol):
-    """Appels VLM (vision + texte structuré) utilisés par les 6 étapes modèle."""
+    """VLM calls (vision + structured text) used by the 6 model steps."""
 
     async def vision_completion(
         self,
@@ -38,7 +38,7 @@ class AsyncVlmClient(Protocol):
 
 @runtime_checkable
 class AsyncEmbeddingClient(Protocol):
-    """Appels d'embedding (metadata-generation, hyq-embedding)."""
+    """Embedding calls (metadata-generation, hyq-embedding)."""
 
     async def get_embedding(self, text: str) -> list[float]: ...
 

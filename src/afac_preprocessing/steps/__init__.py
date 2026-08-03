@@ -1,5 +1,5 @@
-"""Les 13 étapes du pipeline — 1 fichier = 1 étape = 1 classe (lot 6).
+"""The 13 pipeline steps, 1 file = 1 step = 1 class (batch 6).
 
-Converties par vagues depuis ``pipeline_preprocessing/`` ; tant qu'une étape
-n'est pas convertie, le registre la sert en ``ScriptStep``.
+Converted in waves from pipeline_preprocessing/,
+until a step is converted, the registry provides it as a ScriptStep.
 """

@@ -1,15 +1,15 @@
-"""afac_preprocessing — pipeline de prétraitement de documents PDF.
+"""afac_preprocessing — PDF document preprocessing pipeline.
 
-API publique : tout ce qui est listé dans ``__all__`` est stable et destiné
-à l'usage bibliothèque ; le reste est interne et peut bouger.
+Public API: everything listed in __all__ is stable and intended for library use,
+everything else is internal and may change.
 
-    from afac_preprocessing import Pipeline, PipelineContext, Settings
+from afac_preprocessing import Pipeline, PipelineContext, Settings
 
-    settings = Settings.from_dotenv(".env")
-    ctx = PipelineContext.for_pdf(Path("doc.pdf"), settings)
-    report = Pipeline.default().select(skip=["opencv-check"]).run(ctx)
+settings = Settings.from_dotenv(".env")
+ctx = PipelineContext.for_pdf(Path("doc.pdf"), settings)
+report = Pipeline.default().select(skip=["opencv-check"]).run(ctx)
 
-En ligne de commande : ``afac-preprocess run --input <PDF ou dossier>``.
+Command line usage: afac-preprocess run --input <PDF or folder>.
 """
 
 from .clients.bundle import ClientBundle
@@ -49,16 +49,16 @@ __all__ = [
     "PipelineStep",
     "StepResult",
     "StepStatus",
-    # Exécution : contexte, configuration, chemins, clients
+    # Execution: context, configuration, paths, clients
     "ClientBundle",
     "DocumentWorkspace",
     "PipelineContext",
     "Settings",
-    # Seam in-process / subprocess (lot 7)
+    # Seam in-process / subprocess
     "InProcessRunner",
     "StepRunner",
     "SubprocessRunner",
-    # Erreurs métier
+    # Business errors
     "AfacError",
     "ConfigError",
     "EmbeddingUnavailable",

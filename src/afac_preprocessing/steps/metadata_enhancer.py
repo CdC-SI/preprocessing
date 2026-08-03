@@ -1,10 +1,9 @@
-"""MetadataEnhancer — enrichissement VLM des métadonnées (resume, intent, hyq).
+"""MetadataEnhancer, VLM enrichment of metadata (summary, intent, hyq).
 
-Collaborateur de l'étape metadata-generation (piège P4 : ce n'est PAS une
-étape du registre). Conversion de ``metadata/enhancement_metadata.py``
-(vague D) : fonctions et prompts DÉPLACÉS tels quels ; les appels passent en
-async via ``vlm.text_completion_structured`` (la fonction écrite au lot 2,
-piège P6) — le client vient du ClientBundle, jamais construit ici.
+Collaborator of the metadata-generation stage. 
+Conversion of metadata/enhancement_metadata.py
+functions and prompts MOVED as-is; calls are now asynchronous
+via vlm.text_completion_structured, the client comes from the ClientBundle, never constructed here.
 """
 
 from __future__ import annotations
@@ -46,7 +45,7 @@ class HyQOutput(BaseModel):
 
 
 def read_final_markdown(workspace: DocumentWorkspace) -> str:
-    """Markdown final du document (équivalent de _read_markdown : _final.md)."""
+    """Final markdown of the document (equivalent to _read_markdown: _final.md)."""
     if workspace.final_markdown.exists():
         return workspace.final_markdown.read_text(encoding="utf-8")
     return ""
@@ -59,11 +58,12 @@ def write_enrichment_output(
     hyq: list[str],
 ) -> Path:
     """
-    Écrit les 3 fichiers d'enrichissement dans metadata/ (mêmes noms et mêmes
-    formats que le script historique) :
-        metadata/resume.md   - résumé en texte markdown
-        metadata/intent.json - liste d'intents (array JSON)
-        metadata/hyq.json    - liste de questions hypothétiques (array JSON)
+    Writes the 3 enrichment files into metadata/ (same names and same
+    formats as the historical script):
+    
+    metadata/resume.md - summary in Markdown text format
+    metadata/intent.json - list of intents (JSON array)
+    metadata/hyq.json - list of hypothetical questions (JSON array)
     """
     out_dir = workspace.metadata_dir
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -79,22 +79,22 @@ def write_enrichment_output(
 
 
 class MetadataEnhancer:
-    """Les 3 générations VLM de l'enrichissement — mêmes prompts, contrat async."""
+    """The 3 VLM generations of the enrichment — same prompts, asynchronous contract."""
 
     def __init__(self, vlm: AsyncVlmClient) -> None:
         self._vlm = vlm
 
     async def generate_resume(self, markdown_content: str) -> str:
-        """Génère un résumé court du document markdown via structured output."""
+        """Generates a short summary of the document markdown via structured output."""
         result = await self._vlm.text_completion_structured(
             RESUME_PROMPT, markdown_content, ResumeOutput
         )
         return result.resume
 
     async def generate_intent(self, markdown_content: str) -> list[str]:
-        """Génère une liste d'intents/objectifs du document depuis 3 perspectives
-        expertes. Les 3 appels sont fusionnés et dédupliqués (même logique que le
-        script — séquentiels, dans le même ordre de prompts)."""
+        """Generates a list of intents/objectives of the document from 3 expert
+        perspectives. The 3 calls are merged and deduplicated (same logic as the
+        script, sequential, in the same prompt order)."""
         intents: list[str] = []
         seen: set[str] = set()
         for system_prompt in [INTENT_PROMPT_1, INTENT_PROMPT_2, INTENT_PROMPT_3]:
@@ -109,33 +109,32 @@ class MetadataEnhancer:
         return intents
 
     async def generate_hyq(self, markdown_content: str) -> list[str]:
-        """Génère une liste de questions hypothétiques auxquelles le document
-        peut répondre."""
+        """Generates a list of hypothetical questions that the document can answer."""
         result = await self._vlm.text_completion_structured(
             HYQ_PROMPT, markdown_content, HyQOutput
         )
         return result.hyq
 
     async def run(self, workspace: DocumentWorkspace) -> dict:
-        """Équivalent de run_enhancement : lit le markdown final, appelle les 3
-        générations VLM et écrit resume.md / intent.json / hyq.json."""
+        """Equivalent of run_enhancement: reads the final markdown, calls the 3 VLM
+        generations, and writes resume.md / intent.json / hyq.json."""
         markdown_content = read_final_markdown(workspace)
         if not markdown_content:
             raise FileNotFoundError(
-                f"Aucun fichier markdown trouvé pour '{workspace.doc_name}' "
-                f"dans {workspace.root.parent}"
+                f"No markdown file found for '{workspace.doc_name}' "
+                f"in {workspace.root.parent}"
             )
 
-        _log.info("Création du résumé")
+        _log.info("Summary creation (resume)")
         resume = await self.generate_resume(markdown_content)
 
-        _log.info("Création des 'intents'")
+        _log.info("Intent creation (intent)")
         intent = await self.generate_intent(markdown_content)
 
-        _log.info("Création des questions hypothétiques (hyq)")
+        _log.info("Hypothetical questions creation (hyq)")
         hyq = await self.generate_hyq(markdown_content)
 
         out_dir = write_enrichment_output(workspace, resume, intent, hyq)
-        _log.info("Sortie écrite dans : %s", out_dir)
+        _log.info("Output written to : %s", out_dir)
 
         return {"resume": resume, "intent": intent, "hyq": hyq}

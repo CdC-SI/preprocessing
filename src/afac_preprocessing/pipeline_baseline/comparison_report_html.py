@@ -1,23 +1,22 @@
-"""Rapport de comparaison baseline vs pipeline, en HTML — **sans appel VLM**.
+"""Baseline vs pipeline comparison report, in HTML — **no VLM call**.
 
-Variante déterministe de ``compare_baseline_report.py`` : mêmes entrées
-(``baseline_results.csv`` + ``global_summary.csv``), même calcul de delta
-— les trois fonctions d'agrégation sont importées telles quelles, il n'y a
-qu'une seule source de vérité pour les chiffres — mais la sortie est une page
-HTML autonome au lieu d'un markdown + PNG, et **aucun VLM n'est sollicité**.
+Deterministic variant of ``compare_baseline_report.py``: same inputs
+(``baseline_results.csv`` + ``global_summary.csv``), same delta computation
+— the three aggregation functions are imported as-is, there is only one
+source of truth for the figures — but the output is a self-contained HTML
+page instead of a markdown + PNG, and **no VLM is invoked**.
 
-Deux conséquences pratiques :
+Two practical consequences:
 
-- rejouable hors ligne et reproductible au bit près (le verdict VLM, lui, varie
-  d'un run à l'autre : pas de cache, contrainte C1) ;
-- les graphiques sont du SVG écrit à la main, donc l'extra ``viz``
-  (matplotlib) n'est **pas** nécessaire — seul ``eval`` l'est, pour les
-  métriques amont.
+- replayable offline and reproducible bit-for-bit (the VLM verdict, on the
+  other hand, varies from one run to the next: no cache, constraint C1);
+- the charts are hand-written SVG, so the ``viz`` extra (matplotlib) is
+  **not** needed — only ``eval`` is, for the upstream metrics.
 
-La page est autoportante : aucun CSS, script, police ni image externe. Elle
-s'ouvre par double-clic et suit le thème clair/sombre du système.
+The page is self-contained: no external CSS, script, font, or image. It
+opens by double-click and follows the system's light/dark theme.
 
-Usage :
+Usage:
     uv run python -m afac_preprocessing.pipeline_baseline.comparison_report_html
     uv run python -m afac_preprocessing.pipeline_baseline.comparison_report_html --canonical-k 10
 """
@@ -59,15 +58,15 @@ METRIC_LABELS = {
     "mrr": "MRR",
 }
 
-# Marques (marks-and-anatomy) : barres ≤24px, extrémité arrondie 4px, écart de
-# 2px couleur surface entre barres adjacentes, lignes 2px, marqueurs r≥4 avec
-# anneau de 2px, grille en filet 1px pleine et discrète.
+# Marks (marks-and-anatomy): bars ≤24px, 4px rounded end, 2px surface-colored
+# gap between adjacent bars, 2px lines, r≥4 markers with a 2px ring, thin
+# solid and discreet 1px grid.
 BAR_MAX_THICKNESS = 24.0
 BAR_GAP = 2.0
 BAR_RADIUS = 4.0
 
 
-# --- helpers SVG -----------------------------------------------------------
+# --- SVG helpers ------------------------------------------------------------
 
 
 def _esc(text: object) -> str:
@@ -83,7 +82,7 @@ def _fmt_delta(value: float) -> str:
 
 
 def _bar_path(x: float, y: float, width: float, height: float, *, radius: float = BAR_RADIUS) -> str:
-    """Barre verticale : extrémité haute arrondie, pied carré sur la ligne de base."""
+    """Vertical bar: rounded top end, square foot on the baseline."""
     if height <= 0:
         return ""
     r = min(radius, width / 2, height)
@@ -98,7 +97,7 @@ def _bar_path(x: float, y: float, width: float, height: float, *, radius: float 
 
 
 def _hbar_path(x: float, y: float, width: float, height: float, *, to_right: bool) -> str:
-    """Barre horizontale divergente : extrémité arrondie côté valeur, carrée côté zéro."""
+    """Diverging horizontal bar: rounded end on the value side, square on the zero side."""
     if width <= 0:
         return ""
     r = min(BAR_RADIUS, height / 2, width)
@@ -120,7 +119,7 @@ def _hbar_path(x: float, y: float, width: float, height: float, *, to_right: boo
 
 
 def _y_ticks(vmax: float, count: int = 4) -> list[float]:
-    """Graduations rondes de 0 à vmax (les métriques vivent dans [0, 1])."""
+    """Round tick marks from 0 to vmax (metrics live in [0, 1])."""
     step = 0.25 if vmax > 0.5 else 0.1
     ticks, value = [], 0.0
     while value <= vmax + 1e-9 and len(ticks) <= count + 2:
@@ -131,13 +130,13 @@ def _y_ticks(vmax: float, count: int = 4) -> list[float]:
     return ticks
 
 
-# --- graphiques ------------------------------------------------------------
+# --- charts -----------------------------------------------------------------
 
 
 def svg_global_bars(global_means: dict[str, dict[str, float]], canonical_k: int) -> str:
-    """Barres groupées : les 4 métriques @k, baseline contre pipeline.
+    """Grouped bars: the 4 metrics @k, baseline against pipeline.
 
-    Job = distinguer deux séries → couleur catégorielle (slots 1 et 2).
+    Job = distinguish two series → categorical color (slots 1 and 2).
     """
     width, height = 720.0, 300.0
     pad_l, pad_r, pad_t, pad_b = 48.0, 16.0, 16.0, 44.0
@@ -176,7 +175,7 @@ def svg_global_bars(global_means: dict[str, dict[str, float]], canonical_k: int)
                 f'<path class="mark bar-{arm}" d="{_bar_path(x, y, bar_w, pad_t + plot_h - y)}" '
                 f'data-tip="{_esc(tip)}"><title>{_esc(tip)}</title></path>'
             )
-            # Label direct sur la tête de colonne : 8 barres seulement, lisible.
+            # Direct label on top of the bar: only 8 bars, still readable.
             parts.append(
                 f'<text class="value" x="{x + bar_w / 2:.2f}" y="{y - 6:.2f}" '
                 f'text-anchor="middle">{_fmt(value)}</text>'
@@ -199,11 +198,11 @@ def svg_global_bars(global_means: dict[str, dict[str, float]], canonical_k: int)
 
 
 def svg_metric_by_k(comparison: pd.DataFrame, metric: str, top_ks: list[int]) -> str:
-    """Une métrique en fonction de k — deux lignes (baseline, pipeline).
+    """One metric as a function of k — two lines (baseline, pipeline).
 
-    Facetté en petits multiples (une carte par métrique) plutôt qu'un seul
-    graphique à huit lignes : au-delà de ~4 séries qui convergent, les petits
-    multiples sont la bonne réponse.
+    Faceted into small multiples (one card per metric) rather than a single
+    eight-line chart: beyond ~4 converging series, small multiples are the
+    right answer.
     """
     width, height = 340.0, 190.0
     pad_l, pad_r, pad_t, pad_b = 40.0, 46.0, 14.0, 32.0
@@ -242,7 +241,7 @@ def svg_metric_by_k(comparison: pd.DataFrame, metric: str, top_ks: list[int]) ->
                 f'<circle class="dot dot-{arm}" cx="{x_of(i):.2f}" cy="{y_of(value):.2f}" r="4" '
                 f'data-tip="{_esc(tip)}"><title>{_esc(tip)}</title></circle>'
             )
-        # Label direct au dernier point seulement (jamais une valeur par point).
+        # Direct label on the last point only (never one value per point).
         last = len(series[arm]) - 1
         parts.append(
             f'<text class="value" x="{x_of(last) + 8:.2f}" y="{y_of(series[arm][last]) + 4:.2f}">'
@@ -267,10 +266,10 @@ def svg_metric_by_k(comparison: pd.DataFrame, metric: str, top_ks: list[int]) ->
 
 
 def svg_per_doc_delta(comparison: pd.DataFrame, canonical_k: int) -> str:
-    """Delta nDCG@k par document — barres divergentes autour de zéro.
+    """Delta nDCG@k per document — diverging bars around zero.
 
-    Job = polarité (au-dessus / en-dessous d'une ligne de base) → palette
-    divergente : deux pôles chaud/froid et un milieu neutre.
+    Job = polarity (above / below a baseline) → diverging palette: two
+    warm/cool poles and a neutral middle.
     """
     column = f"ndcg@{canonical_k}_delta"
     rows = comparison[["doc_name", column]].sort_values(column, ascending=False)
@@ -331,7 +330,7 @@ def svg_per_doc_delta(comparison: pd.DataFrame, canonical_k: int) -> str:
     )
 
 
-# --- page ------------------------------------------------------------------
+# --- page --------------------------------------------------------------------
 
 _CSS = """
 :root { color-scheme: light dark; }
@@ -461,7 +460,7 @@ def _global_means(comparison: pd.DataFrame, canonical_k: int) -> dict[str, dict[
 
 
 def _verdict(global_means: dict[str, dict[str, float]]) -> tuple[str, str]:
-    """Verdict calculé, pas rédigé : signe du delta nDCG moyen."""
+    """Computed verdict, not authored: sign of the mean nDCG delta."""
     delta = global_means["ndcg"]["delta"]
     if abs(delta) < 0.005:
         return "Équivalent", "Les deux représentations se valent sur ce corpus."

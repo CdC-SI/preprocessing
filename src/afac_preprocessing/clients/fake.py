@@ -1,27 +1,21 @@
-"""Doubles de test async — zéro réseau, réponses fixes.
-
-C'est le seul mécanisme d'hermétisme des tests (pas de cache, pas de rejeu —
-contrainte C1). Les doubles enregistrent les appels reçus pour permettre les
-assertions des tests de contrat.
+"""Fake VLM and embedding clients for tests: no network calls, just fixed
+responses. Each call is recorded so tests can check what was asked of them.
 """
 
 from __future__ import annotations
-
 from typing import TypeVar
-
 from pydantic import BaseModel
-
 from .base import DEFAULT_VISION_MAX_TOKENS
 
 _T = TypeVar("_T", bound=BaseModel)
 
 
 class FakeVlmClient:
-    """AsyncVlmClient factice : réponses fixes, appels enregistrés.
+    """Fake AsyncVlmClient: fixed responses, calls recorded.
 
-    Les méthodes sont ``async def`` sans ``await`` : c'est voulu — le contrat
-    des clients est async-only (contrainte C2) et le double doit rester
-    substituable au vrai client. Il n'y a simplement aucune I/O à attendre.
+    The methods are ``async def`` without ``await``: this is intentional —
+    the client contract is async-only and the double must
+    stay substitutable for the real client. There simply is no I/O to wait on.
     """
 
     def __init__(
@@ -44,8 +38,8 @@ class FakeVlmClient:
         max_tokens: int = DEFAULT_VISION_MAX_TOKENS,
         temperature: float = 0.0,
     ) -> str:
-        # Les kwargs sont enregistrés pour que les tests puissent vérifier
-        # ce que l'étape a réellement demandé au client.
+        # The kwargs are recorded so tests can verify what the step actually
+        # requested from the client.
         self.calls.append(("vision_completion", (prompt, image_b64, max_tokens, temperature)))
         return self.vision_response
 
@@ -56,8 +50,8 @@ class FakeVlmClient:
         response_format: type[_T],
     ) -> _T:
         self.calls.append(("text_completion_structured", (system_prompt, user_content)))
-        # Construit une instance du schéma demandé avec les valeurs fournies
-        # par le test (structured_factory), sinon les défauts du modèle.
+        # Builds an instance of the requested schema with the values
+        # supplied by the test (structured_factory), otherwise model defaults.
         return response_format.model_validate(self.structured_factory)
 
     async def check_connectivity(self) -> bool:
@@ -66,7 +60,7 @@ class FakeVlmClient:
 
 
 class FakeEmbeddingClient:
-    """AsyncEmbeddingClient factice : vecteur fixe, appels enregistrés."""
+    """Fake AsyncEmbeddingClient: fixed vector, calls recorded."""
 
     def __init__(
         self,

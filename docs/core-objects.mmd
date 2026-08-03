@@ -1,0 +1,42 @@
+%% Les objets du noyau et leur assemblage.
+%% Référencé par docs/architecture.md § « Comment ils s'assemblent ».
+%% Source de vérité : src/afac_preprocessing/{settings,context,workspace,aggregate}.py
+%%                    et src/afac_preprocessing/{core,clients}/
+flowchart LR
+    ENV["Environnement<br/>.env · variables"]
+    CLI["cli/main.py<br/>argparse · logging · codes de sortie"]
+    SET["Settings<br/>immuable, validé à la construction"]
+    PIPE["Pipeline<br/>select · run · run_batch"]
+    CB["ClientBundle<br/>1 boucle asyncio, 1 client par cible"]
+    WS["DocumentWorkspace<br/>1 par document"]
+    CTX["PipelineContext<br/>settings + workspace + clients"]
+    RUN["StepRunner<br/>InProcessRunner par défaut"]
+    STEP["PipelineStep<br/>inputs · outputs<br/>validate_inputs · execute"]
+    AGG["aggregate.py<br/>fin de batch, hors pipeline"]
+    VLM(["endpoint VLM"])
+    EMB(["endpoint embedding"])
+    DISK[("data/output_files_preprocessing/")]
+
+    ENV --> SET
+    CLI --> SET
+    CLI --> PIPE
+    SET --> CB
+    SET --> PIPE
+    PIPE -->|"1 par PDF"| WS
+    SET --> CTX
+    WS --> CTX
+    CB --> CTX
+    PIPE --> RUN
+    RUN -->|"execute(ctx)"| STEP
+    CTX --> STEP
+    STEP -->|"ctx.run_async"| CB
+    CB --> VLM
+    CB --> EMB
+    STEP --> DISK
+    PIPE -.->|"après le lot"| AGG
+    DISK --> AGG
+
+    classDef core fill:#e8f0fe,stroke:#3367d6,color:#111
+    classDef ext fill:#fff4e5,stroke:#e07b00,color:#111
+    class SET,PIPE,CB,WS,CTX,RUN,STEP core
+    class VLM,EMB,ENV ext

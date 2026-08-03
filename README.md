@@ -4,6 +4,26 @@ Pipeline de prétraitement de documents PDF : extraction Docling/OCR,
 enrichissement VLM (descriptions d'images, correction d'URLs, contrôle du
 markdown), génération de métadonnées + embeddings pour le retrieval.
 
+## Le pipeline en un coup d'œil
+
+> **Diagramme :** [`docs/pipeline-overview.mmd`](docs/pipeline-overview.mmd)
+> — les quatre phases, du PDF au CSV.
+
+Un PDF entre, une ligne `CONTENT | METADATA | EMBEDDING` en sort. Les 13 étapes
+se répartissent en quatre phases : extraction Docling (doctags + tables +
+images), enrichissement par le VLM (descriptions d'images, correction des URLs),
+conversion et contrôle du markdown, puis métadonnées et embeddings. **🤖 marque
+les cinq étapes qui appellent un modèle** — ce sont elles qui déterminent la
+durée d'un run.
+
+Deux points de lecture : le PDF n'est pas consommé une fois pour toutes, six
+étapes le rouvrent (traits pointillés) pour rendre les pages ou lire les liens
+natifs ; et une 13ᵉ étape ne clôt pas le travail — l'agrégat `corpus.csv` est
+reconstruit **après** le lot, quand tous les documents ont écrit leur CSV.
+L'étape 03 (`opencv-check`, QA visuelle) est omise ici : elle est désactivée par
+défaut. Le graphe détaillé, avec les fichiers échangés et les chemins de repli
+des profils, est dans [docs/architecture.md](docs/architecture.md).
+
 ## Prérequis
 
 - Python ≥ 3.11 et [uv](https://docs.astral.sh/uv/)
@@ -143,7 +163,7 @@ uv run python -m afac_preprocessing.pipeline_baseline.single_docling_baseline \
 uv run python -m afac_preprocessing.pipeline_baseline.single_doc_preview_report --doc-name Mineur
 ```
 
-⚠️ **Les métriques de retrieval classent chaque question contre tout le
+**Les métriques de retrieval classent chaque question contre tout le
 corpus** — elles n'ont de sens qu'à partir d'une dizaine de documents. Sur un
 document isolé il n'y a rien à classer (`ndcg_score` refuse d'ailleurs de
 calculer sur un seul candidat) : c'est précisément pourquoi
@@ -196,6 +216,21 @@ uv sync --all-extras    # tout
 - [docs/architecture.md](docs/architecture.md) — les 13 étapes, le contrat `PipelineStep`, les règles du noyau
 - [docs/cli-options.md](docs/cli-options.md) — **toutes** les options des trois familles d'exécutables, les variables d'environnement, les recettes
 - [CONTRIBUTING.md](CONTRIBUTING.md) — ajouter une étape, lancer les vérifications
+
+Les diagrammes sont des fichiers Mermaid autonomes, dans `docs/` :
+
+| Fichier | Contenu |
+|---|---|
+| [docs/pipeline-overview.mmd](docs/pipeline-overview.mmd) | les quatre phases, vue condensée |
+| [docs/pipeline-steps.mmd](docs/pipeline-steps.mmd) | le DAG des 13 étapes, fichier par fichier |
+| [docs/core-objects.mmd](docs/core-objects.mmd) | les objets du noyau et leur assemblage |
+
+Ils s'ouvrent dans l'aperçu Mermaid de VS Code, sur
+[mermaid.live](https://mermaid.live), ou s'exportent en image :
+
+```bash
+npx -y @mermaid-js/mermaid-cli -i docs/pipeline-steps.mmd -o docs/pipeline-steps.svg
+```
 
 ## Outils hors pipeline
 

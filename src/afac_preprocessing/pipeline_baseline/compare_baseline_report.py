@@ -1,17 +1,17 @@
 """
 Compares baseline_results.csv (raw docling, no preprocessing) against the results of the
 preprocessing pipeline (data/pipeline_evaluation/global_summary.csv, sem_mean_*
-columns — semantic pipeline, no reranker) and generates a markdown report.
+columns, semantic pipeline, no reranker) and generates a markdown report.
 
 Both result sets evaluate the same 20-document corpus with the
-same HyQ questions (see single_docling_baseline.py) — only the
+same HyQ questions (see single_docling_baseline.py), only the
 document representation differs (raw docling markdown vs preprocessed
 markdown). The delta per metric@k therefore directly measures the
 contribution of the preprocessing pipeline.
 
 Inputs:
-  data/baseline_evaluation/baseline_results.csv   — one row per (doc, HyQ question), baseline
-  data/pipeline_evaluation/global_summary.csv      — one row per doc, pipeline averages (sem_mean_*)
+  data/baseline_evaluation/baseline_results.csv, one row per (doc, HyQ question), baseline
+  data/pipeline_evaluation/global_summary.csv, one row per doc, pipeline averages (sem_mean_*)
 
 A VLM call (text, structured output) then analyzes the numeric report and
 produces an explicit verdict (baseline / pipeline / equivalent) + justification,

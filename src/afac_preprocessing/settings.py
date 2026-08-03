@@ -1,11 +1,9 @@
-"""Configuration immuable du pipeline, lue une fois (pydantic-settings).
+"""Immutable pipeline configuration, loaded once (pydantic-settings).
 
-Remplace ``utils/config.py``, les lectures dispersées d'``os.environ`` et la
-mutation d'environnement de l'orchestrateur. Règle du refactor : **aucune
-lecture d'environnement hors de cette classe.**
+Replaces utils/config.py, scattered os.environ reads, and the orchestrator's environment mutation. 
 
-Les noms de variables sont ceux du ``.env`` historique (``VLM_URL``,
-``VLM_CA_PEM``, ``EMBEDDING_URL``, …) — voir ``.env.example``.
+The variable names are those from the historical .env file (VLM_URL, VLM_CA_PEM, EMBEDDING_URL, …) 
+see .env.example for more details
 """
 
 from __future__ import annotations
@@ -21,7 +19,7 @@ from .exceptions import ConfigError
 
 
 def _find_project_root() -> Path:
-    """Remonte jusqu'au dossier contenant pyproject.toml (racine du dépôt)."""
+    """Go up to the directory containing pyproject.toml (the repository root)."""
     here = Path(__file__).resolve()
     for parent in here.parents:
         if (parent / "pyproject.toml").exists():
@@ -30,13 +28,10 @@ def _find_project_root() -> Path:
 
 
 def default_dotenv() -> Path | None:
-    """``.env`` puis ``.env.test``, cherchés dans le répertoire courant **puis**
-    à la racine du dépôt.
-
-    Le répertoire courant d'abord, pour que la CLI reste lançable depuis
-    n'importe où avec un .env local ; la racine ensuite, parce que les scripts
-    autonomes (baseline, évaluation, KG) étaient lancés depuis leur propre
-    dossier et comptaient sur ``project_root() / ".env.test"``.
+    """.env then .env.test are searched for in the current directory first, then in the repository root.
+    The current directory comes first so that the CLI can still be launched from anywhere with a local .env file,
+    the root comes next because standalone scripts (baseline, evaluation, KG) 
+    were launched from their own directory and relied on project_root() / ".env.test".
     """
     for base in (Path.cwd(), _find_project_root()):
         for name in (".env", ".env.test"):
@@ -47,10 +42,8 @@ def default_dotenv() -> Path | None:
 
 
 class Settings(BaseSettings):
-    """Configuration d'un run, validée à la construction.
-
-    Une URL malformée est une erreur immédiate et lisible (``ConfigError``),
-    pas un timeout deux minutes plus tard.
+    """Run configuration, validated at construction time.
+    A malformed URL is an immediate and readable error (ConfigError), not a timeout two minutes later.
     """
 
     model_config = SettingsConfigDict(extra="ignore", populate_by_name=True)
@@ -65,8 +58,8 @@ class Settings(BaseSettings):
     enable_image_description: bool = Field(
         default=True, validation_alias="ENABLE_IMAGE_DESCRIPTION"
     )
-    # Export des PNG d'images par Docling (lu par docling-extract ; défaut
-    # False comme le script historique — le .env du projet le met à true).
+    # PNG image export by Docling (read by `docling-extract`, 
+    # default False, the project's .env sets it to true).
     enable_image_extraction: bool = Field(
         default=False, validation_alias="ENABLE_IMAGE_EXTRACTION"
     )
@@ -74,15 +67,14 @@ class Settings(BaseSettings):
     project_root: Path = Field(
         default_factory=_find_project_root, validation_alias="PROJECT_ROOT"
     )
-    # data/ vit à la racine du dépôt, HORS de src/ (lot 1). Champ explicite,
-    # surchargeable par DATA_ROOT (conteneur / CI) sans rebuild.
+    # data/ lives at the repository root, OUTSIDE src/ (batch 1). Explicit field,
+    # overridable via DATA_ROOT (container / CI) without rebuilding.
     data_root: Path = Field(
         default_factory=lambda: _find_project_root() / "data",
         validation_alias="DATA_ROOT",
     )
-    # Fichier .env d'origine, mémorisé par from_dotenv(). Les ScriptStep (lot 4)
-    # le retransmettent aux scripts legacy via --dotenv ; devient inutile quand
-    # toutes les étapes sont converties (lot 6).
+    # Original .env file, stored by `from_dotenv()`.
+    # forwards it to legacy scripts via `--dotenv`, becomes unnecessary once.
     dotenv_path: Path | None = Field(default=None, exclude=True)
 
     @field_validator(
@@ -90,7 +82,7 @@ class Settings(BaseSettings):
     )
     @classmethod
     def _blank_to_none(cls, value: Any) -> Any:
-        """Le .env historique écrit VAR=\"\" pour « non renseigné »."""
+        """The historical .env file uses VAR=\"\" to mean "not provided"""
         if isinstance(value, str) and not value.strip():
             return None
         return value
@@ -112,14 +104,14 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _derive_data_root(self) -> Settings:
-        """PROJECT_ROOT surchargé sans DATA_ROOT ⇒ data_root suit project_root."""
+        """PROJECT_ROOT overridden without DATA_ROOT -> data_root follows project_root."""
         if "data_root" not in self.model_fields_set and "project_root" in self.model_fields_set:
             self.data_root = self.project_root / "data"
         return self
 
     @property
     def resolved_ca_path(self) -> str:
-        """Chemin du CA à utiliser : ``ca_pem`` s'il existe, sinon certifi."""
+        """CA path to use: ca_pem if it exists, otherwise certifi."""
         if self.ca_pem is not None and self.ca_pem.exists():
             return str(self.ca_pem)
         return str(certifi.where())
@@ -134,10 +126,9 @@ class Settings(BaseSettings):
 
     @classmethod
     def from_dotenv(cls, path: Path | None = None) -> Settings:
-        """Construit les Settings depuis un fichier .env (+ environnement).
-
-        Lève ``ConfigError`` (message lisible, pas un traceback pydantic brut)
-        si une variable obligatoire manque ou est malformée.
+        """Builds the Settings from a .env file (plus the environment).
+        Raises ConfigError (a readable message, not a raw Pydantic traceback) 
+        if a required variable is missing or malformed.
         """
         if path is not None and not Path(path).exists():
             raise ConfigError(f".env file not found — {Path(path).resolve()}")

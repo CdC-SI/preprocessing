@@ -1,10 +1,10 @@
-"""Étape docling-extract — OCR + exports texte + tables en une conversion.
+"""docling-extract step, OCR + text exports + tables in a single conversion.
 
-Conversion du script ``simple_extraction/docling_extract.py`` (vague C).
-Fonctions métier DÉPLACÉES telles quelles (invariant n°1) — seule adaptation :
-les imports docling deviennent PARESSEUX (dans les fonctions), pour que
-``Pipeline.default()`` et ``afac-preprocess steps`` ne paient pas ~10 s
-d'import torch/docling sans exécuter l'étape.
+Conversion of the simple_extraction/docling_extract.py script.
+Business functions are MOVED as-is, the only adaptation:
+docling imports become LAZY (inside functions), so that Pipeline.default()
+and afac-preprocess steps do not pay the ~10 s torch/docling import cost
+without executing the step.
 """
 
 from __future__ import annotations
@@ -39,13 +39,13 @@ def build_converter(
     threads: int,
     device: str,
     extract_images: bool = False,
-    images_scale: float = 2.0,
+    images_scale: float = 2.0, # 2.0 because by default docling images are 72 DPI, and we want ~150 DPI (144 here) for the exported PNGs
 ) -> DocumentConverter:
     """
     Configure the Docling converter with OCR, table, thread and device options.
 
-    (Corps identique au script ; ``device`` passe par son nom — "cuda"/"cpu" —
-    et les imports docling sont locaux, cf. docstring du module.)
+    (The body is identical to the script; device is passed by name, "cuda"/"cpu",
+    and docling imports are local, see the module docstring.)
 
     :param ocr: Whether to enable OCR (EasyOCR).
     :param lang: OCR language code(s) (EasyOCR).
@@ -85,7 +85,7 @@ def build_converter(
 
 def export_docling_images(conv_result: Any, output_dir: Path) -> int:
     """Saves the images extracted by Docling (pil_image) as PNGs, named by their
-    doctags coordinates (x0,y0,x1,y1) via pic.get_location_tokens(doc) — identical to those
+    doctags coordinates (x0,y0,x1,y1) via pic.get_location_tokens(doc),  identical to those
     of the corresponding <picture> tag in the doctags export. Naming by coordinates rather
     than positional index avoids misalignment if reordered_doctags.py later changes
     the relative order of images on a page (which is its very purpose): a match by positional
@@ -100,10 +100,10 @@ def export_docling_images(conv_result: Any, output_dir: Path) -> int:
             _log.warning("[docling] Image %d: pil_image missing (generate_picture_images enabled?)", i)
             continue
         if not pic.prov:
-            _log.warning("[docling] Image %d: provenance missing — export skipped", i)
+            _log.warning("[docling] Image %d: provenance missing, export skipped", i)
             continue
         page = pic.prov[0].page_no
-        # get_location_tokens() concatenates 4 <loc_*> per prov entry — an element that
+        # get_location_tokens() concatenates 4 <loc_*> per prov entry, an element that
         # spans a page break has more than one. We only keep the first 4 (prov[0],
         # consistent with `page` above) to stay robust to multi-provenance images.
         x0, y0, x1, y1 = re.findall(r"<loc_(\d+)>", pic.get_location_tokens(doc))[:4]
@@ -152,7 +152,7 @@ def export_text_formats(conv_result: ConversionResult, output_dir: Path, formats
 def export_tables(conv_result: ConversionResult, output_dir: Path, formats: frozenset[str]) -> None:
     """
     Extracts and exports the tables detected in the Docling document to the requested formats
-    (csv, html). Named <stem>-table-{i:02d}_page{page}_x{x0}_y{y0}_x{x1}_y{y1} — the
+    (csv, html). Named <stem>-table-{i:02d}_page{page}_x{x0}_y{y0}_x{x1}_y{y1}, the
     coordinates (via table.get_location_tokens(doc), identical to those of the corresponding
     <otsl> tag in the doctags) allow load_jsonline_doctags.py to match each JSONL to the
     right <otsl> even if reordered_doctags.py has changed the relative order of the
@@ -163,7 +163,7 @@ def export_tables(conv_result: ConversionResult, output_dir: Path, formats: froz
     :param output_dir: Directory where exported files are written.
     :param formats: Set of table formats to export (subset of TABLE_FORMATS).
     """
-    import pandas as pd  # noqa: F401  (import conservé — export_to_dataframe le requiert)
+    import pandas as pd  # noqa: F401  (import preserved: required by export_to_dataframe.)
 
     stem = conv_result.input.file.stem.strip()
     doc = conv_result.document
@@ -215,9 +215,9 @@ class DoclingExtractStep(PipelineStep):
         tables: bool = True,
         threads: int = 4,
         device: str = "cuda",
-        images_scale: float = 2.08,  # ~150 DPI (base 72)
+        images_scale: float = 2.0,  # 144 DPI (base 72)
     ) -> None:
-        # Défauts identiques au parse_args() du script historique.
+        # Defaults identical to the historical script's `parse_args()`.
         self.ocr = ocr
         self.lang = list(lang)
         self.tables = tables

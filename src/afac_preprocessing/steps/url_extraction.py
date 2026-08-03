@@ -1,7 +1,7 @@
-"""Étape url-extraction — extraction des hyperliens (URL, mailto) du PDF.
+"""url-extraction step, extraction of hyperlinks (URL, mailto) from the PDF.
 
-Conversion du script ``simple_extraction/url_extaction.py`` (vague B).
-Fonctions métier DÉPLACÉES telles quelles (invariant n°1).
+Conversion of the ``simple_extraction/url_extaction.py`` script.
+Business functions MOVED as-is.
 
 Uses PyMuPDF to extract the external links of each page and associates
 the text of the words whose center lies within the link's rectangle.
@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 _log = logging.getLogger(__name__)
 
 
-# Business logic (pure functions) — déplacées telles quelles
+# Business logic (pure functions) — moved as-is
 def is_external_link(uri: str | None) -> bool:
     """
     Return True if the URI is an external link (http, https, mailto).
@@ -124,10 +124,10 @@ def save_links(links: list[dict], output_path: Path) -> None:
 
 
 class UrlExtractionStep(PipelineStep):
-    """Extrait les hyperliens externes du PDF vers hyperlinks_data_<doc>.jsonl."""
+    """Extracts external hyperlinks from the PDF to hyperlinks_data_<doc>.jsonl."""
 
     name = "url-extraction"
-    description = "Extraction des hyperliens du PDF"
+    description = "Extraction of hyperlinks from the PDF"
     requires_vlm = False
 
     def inputs(self, ctx: PipelineContext) -> list[Path]:
@@ -151,9 +151,9 @@ class UrlExtractionStep(PipelineStep):
             raise StepFailed(f"url-extraction failed on {pdf_path.name}: {exc}") from exc
 
         if links:
-            _log.info("Done — %d link(s) extracted → %s", len(links), output_path)
+            _log.info("Done, %d link(s) extracted → %s", len(links), output_path)
         else:
-            _log.info("Done — no external link found in %s", pdf_path.name)
+            _log.info("Done, no external link found in %s", pdf_path.name)
         return StepResult(
             StepStatus.OK, outputs=self.outputs(ctx), message=f"{len(links)} link(s)"
         )

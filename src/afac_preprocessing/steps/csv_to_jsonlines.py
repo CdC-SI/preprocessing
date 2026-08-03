@@ -1,16 +1,14 @@
-"""Étape csv-to-jsonlines — tables CSV (Docling) → fichiers JSONL.
+"""csv-to-jsonlines step, CSV tables (Docling) -> JSONL files.
 
-Conversion du script ``simple_extraction/csv_to_jsonlines.py`` (vague A du
-lot 6 — le PATRON des conversions suivantes). Les fonctions de traitement
-sont DÉPLACÉES telles quelles (invariant n°1) ; seuls disparaissent
-``parse_args``/``main``/``resolve_*`` — remplacés par le contrat
-``PipelineStep`` et ``ctx.workspace``.
+Conversion of the simple_extraction/csv_to_jsonlines.py script 
+Processing functions are MOVED as-is, only parse_args/main/resolve_* are
+removed, replaced by the PipelineStep contract and ctx.workspace.
 
-Sémantique conservée à l'identique :
-- dossier tables/ absent  → StepInputMissing (était SystemExit « directory not found »)
-- aucun CSV               → StepFailed (était SystemExit code 1)
-- table vide              → sautée (compteur skip)
-- erreur sur un CSV       → comptée, l'étape échoue en fin de boucle (était exit 1)
+Semantics preserved identically:
+1) missing tables/ directory -> StepInputMissing (was SystemExit "directory not found")
+2) no CSV files -> StepFailed (was SystemExit code 1)
+3) empty table -> skipped (skip counter)
+4) error on a CSV -> counted, the step fails at the end of the loop (was exit 1)
 """
 
 from __future__ import annotations
@@ -31,7 +29,7 @@ if TYPE_CHECKING:
 _log = logging.getLogger(__name__)
 
 
-# CSV → JSONL utilities — déplacées telles quelles depuis csv_to_jsonlines.py
+# CSV -> JSONL utilities, moved as-is from csv_to_jsonlines.py
 def deduplicate_columns(columns: list[str]) -> list[str]:
     """
     Add a numeric suffix to duplicate column names (col, col_2, col_3...).
@@ -120,10 +118,10 @@ def process_csv(csv_path: Path, output_dir: Path) -> bool:
 
 
 class CsvToJsonlinesStep(PipelineStep):
-    """Convertit chaque tables/*.csv en .jsonl (une ligne JSON par ligne de table)."""
+    """Converts each tables/*.csv file into .jsonl (one JSON line per table row)."""
 
     name = "csv-to-jsonlines"
-    description = "Conversion des tables CSV en JSONL"
+    description = "Conversion of CSV tables to JSONL"
     requires_vlm = False
 
     def inputs(self, ctx: PipelineContext) -> list[Path]:
@@ -151,11 +149,11 @@ class CsvToJsonlinesStep(PipelineStep):
                 else:
                     n_skip += 1
             except Exception as e:
-                _log.exception("%s → error: %s", csv_path.name, e)
+                _log.exception("%s -> error: %s", csv_path.name, e)
                 n_err += 1
 
         _log.info(
-            "Done — %d converted, %d skipped (empty), %d error(s).",
+            "Done, %d converted, %d skipped (empty), %d error(s).",
             n_ok, n_skip, n_err,
         )
         if n_err > 0:

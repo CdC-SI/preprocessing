@@ -1,22 +1,8 @@
-"""Implémentation réelle des clients — déplacement de ``utils/vlm_client.py``.
+"""Real async implementation of the VLM and embedding clients.
 
-Corps des fonctions conservés à l'identique (invariant n°1) ; seules les
-signatures d'entrée changent (``Settings`` au lieu du dict de config).
-
-Écarts par rapport à ``utils/vlm_client.py``, tous prévus par le plan :
-- ➕ ``text_completion_structured_async`` et ``get_embedding_async`` — elles
-  n'existaient pas (piège P6), calquées sur leurs jumelles sync et sur
-  ``vision_completion_async``.
-- ➕ ``text_completion_async`` et ``text_completion_thinking_async`` (lot 9) —
-  les variantes **sync** ``text_completion`` / ``text_completion_thinking`` ne
-  sont pas portées : tous les appels du dépôt sont async (exigence métier).
-  Leurs appelants (``neo4j_graphrag_ontology/``, ``pipeline_baseline/``) ont
-  été convertis en async au lot 9.
-- Le client d'embedding devient ``AsyncOpenAI`` (C2) — même construction que
-  ``build_embedding_client``, variante async.
-
-No disk cache here (deliberate): every call actually hits the VLM/embedding
-endpoint on each run (contrainte C1).
+Talks to the VLM and embedding endpoints over OpenAI-compatible APIs.
+No disk cache here (deliberate): every call actually hits the endpoint
+on each run.
 """
 
 from __future__ import annotations
@@ -54,7 +40,7 @@ def _to_base_url(raw_url: str) -> str:
     return urlunparse((parsed.scheme, parsed.netloc, "/v1", "", "", ""))
 
 
-# Client construction — corps identiques à utils/vlm_client.py, entrée = Settings
+# Client construction
 def build_async_client(
     settings: Settings, *, timeout: float = DEFAULT_TIMEOUT, max_retries: int = DEFAULT_MAX_RETRIES
 ) -> AsyncOpenAI:
@@ -82,7 +68,7 @@ def build_async_embedding_client(
     )
 
 
-# Connectivity — corps identique à check_vlm_connectivity_async
+# Connectivity
 async def check_vlm_connectivity_async(client: AsyncOpenAI, model_name: str) -> bool:
     """Checks that the VLM is reachable AND that the configured model is actually
     served (GET /v1/models) before a long-running job."""
@@ -137,11 +123,7 @@ async def text_completion_structured_async(
     user_content: str,
     response_format: type[_T],
 ) -> _T:
-    """Structured output (Pydantic) — summary/intent/hyq (enhancement_metadata).
-
-    N'existait pas en async (piège P6) : calquée sur text_completion_structured
-    (sync) et sur vision_completion_async.
-    """
+    """Structured output (Pydantic), summary/intent/hyq (enhancement_metadata)."""
     response = await client.beta.chat.completions.parse(
         model=model,
         messages=[
@@ -165,12 +147,7 @@ async def text_completion_async(
     *,
     temperature: float = 0.0,
 ) -> str:
-    """Complétion texte libre, sans contrainte de schéma (few-shot prompting).
-
-    Portée ici au lot 9 : ses appelants (``neo4j_graphrag_ontology/``,
-    ``pipeline_baseline/``) passaient par la variante sync de
-    ``utils/vlm_client.py``, supprimée au lot 8.
-    """
+    """Free-form text completion, no schema constraint (few-shot prompting)."""
     response = await client.chat.completions.create(
         model=model,
         messages=[
@@ -194,13 +171,13 @@ async def text_completion_thinking_async(
     *,
     temperature: float = 0.0,
 ) -> str:
-    """Complétion texte libre avec le mode thinking de Qwen3 activé, pour les
-    prompts qui gagnent à raisonner avant de répondre (extraction de concepts
-    ouverte).
+    """Free-form text completion with Qwen3's thinking mode enabled, for
+    prompts that benefit from reasoning before answering (open-ended
+    concept extraction).
 
-    ⚠ Ne jamais combiner avec une sortie structurée : thinking +
-    ``response_format`` est exactement la combinaison que le reste du module
-    évite via ``_ENABLE_THINKING_FALSE`` (elle produit ``content=null``).
+    Never combine with structured output: thinking + ``response_format``
+    is exactly the combination the rest of the module avoids via
+    ``_ENABLE_THINKING_FALSE`` (it produces ``content=null``).
     """
     response = await client.chat.completions.create(
         model=model,
@@ -218,7 +195,7 @@ async def text_completion_thinking_async(
 
 
 async def get_embedding_async(client: AsyncOpenAI, model: str, text: str) -> list[float]:
-    """N'existait pas en async (piège P6) : calquée sur get_embedding (sync)."""
+    """Fetches the embedding vector for a text via the OpenAI-compatible API."""
     response = await client.embeddings.create(input=text, model=model)
     return response.data[0].embedding
 
@@ -228,9 +205,9 @@ def embedding_to_string(embedding: list[float]) -> str:
     return str(embedding).replace("[", "").replace("]", "")
 
 
-# Adaptateurs vers les Protocols de base.py — délèguent aux fonctions déplacées
+# Adapters to the Protocols in base.py — delegate to the functions above
 class OpenAIVlmClient:
-    """Implémente AsyncVlmClient au-dessus d'un AsyncOpenAI partagé (ClientBundle)."""
+    """Implements AsyncVlmClient on top of a shared AsyncOpenAI (ClientBundle)."""
 
     def __init__(self, client: AsyncOpenAI, model: str, *, temperature: float = 0.0) -> None:
         self._client = client
@@ -265,7 +242,7 @@ class OpenAIVlmClient:
 
 
 class OpenAIEmbeddingClient:
-    """Implémente AsyncEmbeddingClient au-dessus d'un AsyncOpenAI partagé."""
+    """Implements AsyncEmbeddingClient on top of a shared AsyncOpenAI."""
 
     def __init__(self, client: AsyncOpenAI, model: str) -> None:
         self._client = client

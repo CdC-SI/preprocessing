@@ -1,8 +1,7 @@
-"""Configuration du logging — appelée UNE fois, par la CLI seule.
+"""Logging configuration — called ONCE, by the CLI only.
 
-Remplace les ``logging.basicConfig`` dispersés (29 fichiers au départ).
-Aucun module de bibliothèque ne configure le logging : ils font
-``logging.getLogger(__name__)`` et c'est le point d'entrée qui décide.
+Replaces the scattered logging.basicConfig calls (29 files initially).
+No library module configures logging: they use logging.getLogger(__name__) and the entry point makes the decision.
 """
 
 from __future__ import annotations
@@ -11,7 +10,7 @@ import logging
 
 
 def configure_logging(verbosity: int = 0) -> None:
-    """0 = INFO (comportement historique des scripts), 1+ = DEBUG, -1 = WARNING."""
+    """-1 = WARNING., 0 = INFO, 1+ = DEBUG"""
     if verbosity <= -1:
         level = logging.WARNING
     elif verbosity == 0:

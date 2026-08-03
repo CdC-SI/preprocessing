@@ -1,13 +1,13 @@
-"""Étape inject-image-descriptions — injection des descriptions VLM dans le
-Markdown final.
+"""inject-image-descriptions stage, injection of VLM descriptions into the
+final Markdown.
 
-Conversion du script ``simple_extraction/inject_image_descriptions.py``
-(vague B). Fonctions métier DÉPLACÉES telles quelles (invariant n°1).
+Conversion of the script simple_extraction/inject_image_descriptions.py.
+Business functions MOVED as-is.
 
-Replaces the [[[IMAGE_DESC:N]]] markers left by description_image_context.py
+Replaces the [[[IMAGE_DESC]]] markers left by description_image_context.py
 with the VLM descriptions from the _image_descriptions.md file. Descriptions
-are injected AFTER markdown_control_vlm.py (step 10), guaranteeing they cannot
-be dropped by earlier VLM steps.
+are injected AFTER markdown_control_vlm.py (step 10), guaranteeing they
+cannot be dropped by earlier VLM steps.
 """
 
 from __future__ import annotations
@@ -82,7 +82,7 @@ def inject_descriptions(markdown_content: str, descriptions: dict[int, str]) -> 
         desc = descriptions.get(idx)
 
         if not desc:
-            _log.warning("No description for IMAGE_DESC:%d — marker kept as-is", idx)
+            _log.warning("No description for IMAGE_DESC:%d, marker kept as-is", idx)
             result.append(line)
             missing += 1
             continue
@@ -111,7 +111,7 @@ def run_injection(markdown_path: Path, descriptions_path: Path, output_path: Pat
     Inject the descriptions into the Markdown and save the result.
 
     (Corps du ``run()`` historique, renommé pour ne pas masquer
-    ``PipelineStep.run`` — comportement inchangé.)
+    ``PipelineStep.run``, comportement inchangé.)
 
     :param markdown_path: Markdown file to process
     :type markdown_path: Path
@@ -132,7 +132,7 @@ def run_injection(markdown_path: Path, descriptions_path: Path, output_path: Pat
     else:
         # Absent == no images, or descriptions disabled at step 06
         # (description_image_context.py no longer creates this file in that case).
-        _log.info("Descriptions     : %s (absent — no images or disabled)", descriptions_path)
+        _log.info("Descriptions     : %s (absent, no images or disabled)", descriptions_path)
         descriptions = {}
     content = markdown_path.read_text(encoding="utf-8")
 
@@ -142,7 +142,7 @@ def run_injection(markdown_path: Path, descriptions_path: Path, output_path: Pat
 
     if no_placeholders and no_descriptions:
         # Normal case: image description was disabled at step 06.
-        _log.info("No description and no marker — descriptions disabled. File copied as-is.")
+        _log.info("No description and no marker, descriptions disabled. File copied as-is.")
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(content, encoding="utf-8")
         return
@@ -160,7 +160,7 @@ def run_injection(markdown_path: Path, descriptions_path: Path, output_path: Pat
     _log.info("%d marker(s) found: %s", len(found), [int(i) for i in found])
 
     if no_descriptions:
-        _log.warning("Markers present but no description available — file copied without injection.")
+        _log.warning("Markers present but no description available, file copied without injection.")
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(content, encoding="utf-8")
         return
@@ -191,20 +191,20 @@ class InjectImageDescriptionsStep(PipelineStep):
         """Markdown à enrichir : la sortie de markdown-control (10) si l'étape
         a tourné, sinon celle de markdown-convert (09).
 
-        markdown-control est sautée par le profil no-vlm ; l'injection des
+        markdown-control est sautée par le profil no-vlm, l'injection des
         descriptions ne dépend pas du contrôle VLM.
         """
         ws = ctx.workspace
         for candidate in (ws.vlm_check_markdown, ws.url_vlm_markdown):
             if candidate.exists():
                 return candidate
-        # Aucun n'existe : on renvoie le nominal pour que validate_inputs
-        # produise le message d'erreur habituel.
+        # None exists: return the nominal value so that validate_input
+        # produces the usual error message.
         return ws.vlm_check_markdown
 
     def inputs(self, ctx: PipelineContext) -> list[Path]:
-        # _image_descriptions.md est volontairement absent des entrées
-        # déclarées : son absence est un cas nominal (0 image / désactivé).
+        # _image_descriptions.md is intentionally absent from the
+        # declared inputs: its absence is a nominal case (0 images / disabled)
         return [self._source_markdown(ctx)]
 
     def outputs(self, ctx: PipelineContext) -> list[Path]:

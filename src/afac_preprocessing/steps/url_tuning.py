@@ -1,13 +1,13 @@
-"""Étape url-tuning — intégration des hyperliens dans les doctags via VLM.
+"""url-tuning step, integration of hyperlinks into the doctags via VLM.
 
-Conversion du script ``simple_extraction/url_tuning_vlm.py`` (vague C).
-C'était déjà une étape async (``Semaphore`` + ``gather``) : c'est LE patron
-de la vague D. Fonctions métier DÉPLACÉES telles quelles (invariant n°1) ;
-seul le *dispatch* change (piège P7) :
+Conversion of the ``simple_extraction/url_tuning_vlm.py`` script (wave C).
+It was already an async step (``Semaphore`` + ``gather``): it's THE template
+for wave D. Business functions MOVED as-is (invariant #1); only the
+*dispatch* changes (pitfall P7):
 
-- plus de client construit ici ni de ``client.close()`` — le client vient de
-  ``ctx.vlm()`` (Protocol AsyncVlmClient), possédé par le ClientBundle ;
-- plus d'``asyncio.run()`` — ``execute()`` délègue à ``ctx.run_async()``.
+- no more client built here nor ``client.close()``, the client comes from
+  ``ctx.vlm()`` (Protocol AsyncVlmClient), owned by the ClientBundle;
+- no more ``asyncio.run()``, ``execute()`` delegates to ``ctx.run_async()``.
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 _log = logging.getLogger(__name__)
 
 
-# Business logic (pure functions) — déplacées telles quelles
+# Business logic (pure functions) — moved as-is
 def load_jsonl_links(jsonl_path: Path) -> list[dict]:
     """
     Load the links extracted from the JSONL file into a list of dictionaries.
@@ -116,11 +116,11 @@ async def process_page(
     """
     Process a PDF page by calling the VLM to reconstruct its doctags
     content enriched with the URL links. Retries on transient errors are
-    handled by the OpenAI client (max_retries) — no manual retry loop here.
+    handled by the OpenAI client (max_retries), no manual retry loop here.
 
-    (Dispatch adapté au refactor : ``vlm`` est le AsyncVlmClient partagé du
-    run — ``await vlm.vision_completion(...)`` remplace
-    ``vision_completion_async(client, model_name, ...)``. Corps inchangé.)
+    (Dispatch adapted for the refactor: ``vlm`` is the AsyncVlmClient shared
+    by the run — ``await vlm.vision_completion(...)`` replaces
+    ``vision_completion_async(client, model_name, ...)``. Body unchanged.)
 
     :param page_num: Page number being processed.
     :param page_tags: Doctags content for the page.
@@ -156,7 +156,7 @@ def split_doctags_by_page(doctags: str, n_pages: int) -> dict[int, str]:
     Re-indexes sequentially over non-empty segments rather than over the
     raw split index: a superfluous or consecutive <page_break> (e.g. an
     artifact from an upstream fix) produces an empty segment which, if
-    indexed by raw position, shifts all subsequent page numbers — page N
+    indexed by raw position, shifts all subsequent page numbers, page N
     then ends up stored under key N+1, and run() never finds it
     (pages_tags.get(N, "") silently empty -> page content lost with no error).
 
@@ -223,24 +223,24 @@ def assemble_doctags(pages: dict[int, str]) -> str:
 
 
 class UrlTuningStep(PipelineStep):
-    """Reconstruit les doctags page par page via VLM en y intégrant les URLs."""
+    """Reconstructs the doctags page by page via VLM, integrating the URLs into them."""
 
     name = "url-tuning"
-    description = "Correction des URLs dans les doctags via VLM"
+    description = "Correction of URLs in the doctags via VLM"
     requires_vlm = True
 
     def __init__(self, *, max_concurrency: int = 1) -> None:
-        # Même défaut que --workers du script historique.
+        # Same default as --workers in the historical script.
         self.max_concurrency = max_concurrency
-        self.prompt_template = VLM_PROMPT_CORRECTION_STAGE_3_EN  # variante v2 (défaut pipeline)
+        self.prompt_template = VLM_PROMPT_CORRECTION_STAGE_3_EN  # v2 variant (pipeline default)
 
     def _source_doctags(self, ctx: PipelineContext) -> Path:
-        """Doctags à corriger : la variante enrichie par image-description (06)
-        si l'étape a tourné, sinon celle de load-jsonline-doctags (05).
+        """Doctags to correct: the variant enriched by image-description (06)
+        if that step ran, otherwise the one from load-jsonline-doctags (05).
 
-        Le repli rend le profil no-images exécutable : l'étape ne lit ce
-        fichier que pour le découper par page, les descriptions d'images n'y
-        jouent aucun rôle.
+        The fallback makes the no-images profile runnable: the step only
+        reads this file to split it by page, image descriptions play no
+        role here.
         """
         ws = ctx.workspace
         for candidate in (
@@ -249,8 +249,8 @@ class UrlTuningStep(PipelineStep):
         ):
             if candidate.exists():
                 return candidate
-        # Aucun n'existe : on renvoie le nominal pour que validate_inputs
-        # produise le message d'erreur habituel.
+        # None exists: return the nominal path so validate_inputs
+        # produces its usual error message.
         return ws.reordered_with_tables_pictures_doctags
 
     def inputs(self, ctx: PipelineContext) -> list[Path]:
@@ -261,7 +261,7 @@ class UrlTuningStep(PipelineStep):
         return [ctx.workspace.url_vlm_doctags]
 
     def execute(self, ctx: PipelineContext) -> StepResult:
-        return ctx.run_async(self._execute_async(ctx))  # ⚠ PAS asyncio.run() (P7)
+        return ctx.run_async(self._execute_async(ctx))  # NOT asyncio.run()
 
     async def _execute_async(self, ctx: PipelineContext) -> StepResult:
         ws = ctx.workspace
@@ -306,7 +306,7 @@ class UrlTuningStep(PipelineStep):
             if pages_tags.get(p, "").strip()
         ]
 
-        # Pas de client.close() ici : le ClientBundle possède le client (P7).
+        # No client.close() here: the ClientBundle owns the client.
         results = await asyncio.gather(*tasks)
 
         processed_pages = dict(sorted(results))

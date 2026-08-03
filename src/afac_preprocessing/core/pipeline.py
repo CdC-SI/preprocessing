@@ -1,10 +1,11 @@
-"""Pipeline — registre, sélection, exécution.
+"""Pipeline, registry, selection, execution.
 
-La sémantique de ``select()`` est LEVÉE de ``_select_steps`` /
-``_resolve_step_ref`` de ``pipeline_extraction.py`` (réutiliser, pas
-réécrire) : références par nom ou numéro 1-based, ``only`` prime sur
-from/to/skip, exécution toujours dans l'ordre canonique, ``opencv-check``
-exclu par défaut (``enabled_by_default=False``) sauf demande explicite.
+The semantics of ``select()`` are LIFTED from ``_select_steps`` /
+``_resolve_step_ref`` in ``pipeline_extraction.py`` (reuse, not rewrite):
+references by name or 1-based number, ``only`` takes precedence over
+from/to/skip, execution always in canonical order, ``opencv-check``
+excluded by default (``enabled_by_default=False``) unless explicitly
+requested.
 """
 
 from __future__ import annotations
@@ -29,7 +30,7 @@ _log = logging.getLogger(__name__)
 
 @dataclass
 class PipelineReport:
-    """Résultat d'un run : durée et statut par étape — remplace le parsing de stdout."""
+    """Result of a run: duration and status per step — replaces stdout parsing."""
 
     doc_name: str
     results: list[tuple[str, StepResult]] = field(default_factory=list)
@@ -46,7 +47,7 @@ class PipelineReport:
 @dataclass
 class BatchReport:
     reports: list[PipelineReport] = field(default_factory=list)
-    # CSV globaux reconstruits en fin de batch (lot F2)
+    # Global CSVs rebuilt at the end of the batch (batch F2)
     aggregated: list[Path] = field(default_factory=list)
 
     @property
@@ -69,13 +70,13 @@ class Pipeline:
 
     @classmethod
     def default(cls, runner: StepRunner | None = None) -> Pipeline:
-        """Les 13 étapes, dans l'ordre canonique."""
+        """The 13 steps, in canonical order."""
         return cls(build_default_steps(), runner)
 
-    # --- sélection (sémantique levée de _select_steps / _resolve_step_ref) ---
+    # --- selection (semantics lifted from _select_steps / _resolve_step_ref) ---
 
     def _resolve_ref(self, ref: str | int) -> int:
-        """Référence (nom, ou numéro 1-based comme aujourd'hui) → index 0-based."""
+        """Reference (name, or 1-based number as today) -> 0-based index."""
         names = [step.name for step in self.steps]
         text = str(ref).strip()
         if text in names:
@@ -94,10 +95,10 @@ class Pipeline:
         only: Iterable[str | int] = (),
         include_disabled: bool = False,
     ) -> Pipeline:
-        """Sous-pipeline, toujours dans l'ordre canonique (méthode pure).
+        """Sub-pipeline, always in canonical order (pure method).
 
-        ``only`` prime sur from/to/skip et inclut même les étapes désactivées
-        par défaut (les nommer explicitement vaut opt-in, comme aujourd'hui).
+        ``only`` takes precedence over from/to/skip and includes even steps
+        disabled by default (naming them explicitly counts as opt-in, as today).
         """
         only_list = list(only)
         if only_list:
@@ -117,16 +118,16 @@ class Pipeline:
         ]
         return Pipeline(selected, self.runner)
 
-    # --- exécution ---
+    # --- execution ---
 
     def run(self, ctx: PipelineContext) -> PipelineReport:
-        """Exécute les étapes dans l'ordre ; s'arrête à la première en échec
-        (comportement actuel de l'orchestrateur).
+        """Executes the steps in order; stops at the first failure
+        (current behavior of the orchestrator).
 
-        ``ctx.dry_run`` court-circuite l'exécution : les étapes sont rapportées
-        SKIPPED, aucune n'est lancée, aucun fichier n'est écrit. Le drapeau
-        existait depuis le lot 5 mais n'était lu nulle part — un ``--dry-run``
-        déroulait le pipeline complet, appels VLM compris.
+        ``ctx.dry_run`` short-circuits execution: steps are reported as
+        SKIPPED, none is actually run, no file is written. The flag has
+        existed since batch 5 but was never read anywhere — a ``--dry-run``
+        used to run the full pipeline, VLM calls included.
         """
         report = PipelineReport(doc_name=ctx.workspace.doc_name)
         if ctx.dry_run:
@@ -154,11 +155,11 @@ class Pipeline:
     def run_batch(
         self, contexts: Iterable[PipelineContext], *, aggregate: bool = True
     ) -> BatchReport:
-        """Un run par document ; un échec isolé n'arrête pas le batch
-        (comportement actuel, conservé à l'identique).
+        """One run per document; an isolated failure does not stop the batch
+        (current behavior, kept identical).
 
-        En fin de batch, les CSV globaux par racine sont reconstruits
-        (lot F2) — une action d'ensemble, pas une étape par document.
+        At the end of the batch, the global CSVs per root are rebuilt
+        (batch F2), an aggregate action, not a per-document step.
         """
         from ..aggregate import aggregate_all_roots
 
@@ -168,7 +169,7 @@ class Pipeline:
             out_roots.add(ctx.settings.output_files_root)
             try:
                 report = self.run(ctx)
-            except Exception as exc:  # échec isolé ⇒ le batch continue
+            except Exception as exc:  # isolated failure -> the batch continues
                 report = PipelineReport(doc_name=ctx.workspace.doc_name)
                 report.results.append(
                     ("(pipeline)", StepResult(StepStatus.FAILED, message=str(exc)))
@@ -181,8 +182,8 @@ class Pipeline:
                 try:
                     batch.aggregated += aggregate_all_roots(out_root)
                 except OSError:
-                    # L'agrégation ne doit jamais faire échouer un batch dont
-                    # les documents sont traités : elle est rejouable seule
-                    # (afac-preprocess aggregate).
-                    _log.exception("Agrégation des CSV globaux impossible (%s)", out_root)
+                    # Aggregation must never fail a batch whose documents
+                    # were processed successfully: it can be replayed on its
+                    # own (afac-preprocess aggregate).
+                    _log.exception("Global CSV aggregation failed (%s)", out_root)
         return batch

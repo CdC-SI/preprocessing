@@ -1,7 +1,7 @@
-"""Étape reorder-doctags — réordonnancement des blocs d'un .doctags par y0/x0.
+"""reorder-doctags step, reordering the blocks of a .doctags file by y0/x0.
 
-Conversion du script ``simple_extraction/reordered_doctags.py`` (vague B).
-Toutes les fonctions métier sont DÉPLACÉES telles quelles (invariant n°1).
+Conversion of the ``simple_extraction/reordered_doctags.py`` script.
+All business functions are MOVED as-is.
 
 Docling can extract blocks in an incorrect order when y0 coordinates are
 similar or missing. Re-sorts them by vertical position (y0) then horizontal
@@ -39,7 +39,7 @@ class Block:
     is_list_item: bool = False
 
 
-# Business logic (pure functions) — déplacées telles quelles
+# Business logic (pure functions) — moved as-is
 def extract_xy0(s: str) -> tuple[int | None, int | None]:
     """
     Extract (x0, y0) from the first <loc_x0><loc_y0> pair found in s.
@@ -159,14 +159,14 @@ def split_pages(blocks: list[Block]) -> list[list[Block]]:
     actual boundary). Treating it as a split trigger would then produce an extra
     phantom page: the physical page in question would be split into two chunks, and
     downstream url_tuning_vlm.py (which loops over range(1, n_pages+1) where n_pages
-    comes from the actual PDF page count) would never process the extra chunk —
+    comes from the actual PDF page count) would never process the extra chunk,
     page content silently lost, and another page duplicated under two numbers. Hence
     the choice to rely only on <page_footer> when it exists.
 
     But some Docling documents emit no <page_footer> at all (no page has one), in
     which case <page_break> is the only available boundary: simply ignoring it would
     merge the entire document into a single page (observed on "Liste des
-    représentations suisses à l'étranger" — 7 PDF pages, 6 <page_break>, 0
+    représentations suisses à l'étranger", 7 PDF pages, 6 <page_break>, 0
     <page_footer>; without this fallback, split_pages() returned a single page
     containing the entire doctags). Hence the fallback to <page_break> as a trigger
     only if the document contains no <page_footer> at all.
@@ -176,7 +176,7 @@ def split_pages(blocks: list[Block]) -> list[list[Block]]:
     on a scanned/rotated page, for example) is still mishandled: has_footer=True
     would then merge the page without a footer into the next one. No general fix
     here due to the lack of reliable ground truth at this stage (the actual PDF page
-    count is not passed to this function) — we simply log a warning when standalone
+    count is not passed to this function), we simply log a warning when standalone
     <page_break> tags are discarded while a <page_footer> exists elsewhere in the
     document, a signal that a page may have lost its footer. The downstream check
     (comparing the number of reassembled pages to the PDF page count, cf.
@@ -215,7 +215,7 @@ def split_pages(blocks: list[Block]) -> list[list[Block]]:
     if has_footer and discarded_breaks:
         _log.warning(
             "%d standalone <page_break>(s) discarded while the document contains "
-            "<page_footer> tags — check that no page lost its footer (see known "
+            "<page_footer> tags, check that no page lost its footer (see known "
             "limitation of split_pages()).",
             discarded_breaks,
         )
@@ -288,7 +288,7 @@ def reorder_doctags(input_path: Path, output_path: Path) -> None:
     result_pages = [render_blocks(sort_page(page)) for page in pages]
 
     # split_pages() already drops every standalone <page_break> marker (see its docstring),
-    # so no rendered page should ever start with one — this strip is a defensive no-op kept
+    # so no rendered page should ever start with one, this strip is a defensive no-op kept
     # in case a future Docling doctags variant reintroduces a leading marker some other way.
     cleaned = [re.sub(r"^\s*<page_break\s*/?>\s*\n?", "", p) for p in result_pages]
     body = "\n<page_break>\n".join(cleaned)
@@ -299,10 +299,10 @@ def reorder_doctags(input_path: Path, output_path: Path) -> None:
 
 
 class ReorderDoctagsStep(PipelineStep):
-    """Réordonne les blocs du .doctags par position (y0 puis x0), page par page."""
+    """Reorders the blocks of the .doctags file by position (y0 then x0), page by page."""
 
     name = "reorder-doctags"
-    description = "Réordonnancement des balises doctags"
+    description = "Reordering of doctags tags"
     requires_vlm = False
 
     def inputs(self, ctx: PipelineContext) -> list[Path]:

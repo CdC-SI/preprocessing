@@ -1,5 +1,5 @@
 """
-markdown_utils.py — Shared Markdown post-processing.
+markdown_utils.py, Shared Markdown post-processing.
 """
 
 

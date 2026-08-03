@@ -1,10 +1,9 @@
-"""Contrat commun des 13 étapes : PipelineStep, StepResult, StepStatus.
+"""Common contract for the 13 steps: PipelineStep, StepResult, StepStatus.
 
-``execute()`` reste synchrone — c'est le contrat commun, les 7 étapes pures
-n'ont pas à savoir que l'async existe. Les 6 étapes VLM implémenteront
-``async def _execute_async(ctx)`` et délégueront par
-``return ctx.run_async(self._execute_async(ctx))`` (lot 6, contrainte C2 —
-jamais ``asyncio.run()``, piège P7).
+``execute()`` stays synchronous — it's the common contract, the 7 pure
+steps don't need to know async exists. The 6 VLM steps will implement
+``async def _execute_async(ctx)`` and delegate via
+``return ctx.run_async(self._execute_async(ctx))``.
 """
 
 from __future__ import annotations
@@ -42,12 +41,12 @@ class StepResult:
 
 
 class PipelineStep(ABC):
-    """Classe de base des étapes du pipeline.
+    """Base class for the pipeline steps.
 
-    ``inputs()``/``outputs()`` sont déclaratifs : ils alimentent le test de
-    câblage (le mauvais chaînage des 13 étapes devient impossible à introduire
-    silencieusement) et ``steps --graph`` (lot 5). Les déclarations sont
-    affinées à la conversion de chaque étape (lot 6).
+    ``inputs()``/``outputs()`` are declarative: they feed the wiring test
+    (bad chaining across the 13 steps becomes impossible to introduce
+    silently) and ``steps --graph`` (batch 5). The declarations are
+    refined as each step is converted (batch 6).
     """
 
     name: ClassVar[str]
@@ -56,19 +55,19 @@ class PipelineStep(ABC):
     enabled_by_default: ClassVar[bool] = True  # opencv-check → False
 
     def inputs(self, ctx: PipelineContext) -> list[Path]:
-        """Ce que l'étape lit (déclaratif)."""
+        """What the step reads (declarative)."""
         return []
 
     def outputs(self, ctx: PipelineContext) -> list[Path]:
-        """Ce que l'étape écrit (déclaratif)."""
+        """What the step writes (declarative)."""
         return []
 
     def is_applicable(self, ctx: PipelineContext) -> bool:
-        """False ⇒ l'étape est un passthrough pour ce document."""
+        """False ⇒ the step is a passthrough for this document."""
         return True
 
     def validate_inputs(self, ctx: PipelineContext) -> None:
-        """Lève StepInputMissing (PAS sys.exit) si une entrée déclarée manque."""
+        """Raises StepInputMissing (NOT sys.exit) if a declared input is missing."""
         missing = [p for p in self.inputs(ctx) if not p.exists()]
         if missing:
             raise StepInputMissing(
@@ -78,11 +77,11 @@ class PipelineStep(ABC):
 
     @abstractmethod
     def execute(self, ctx: PipelineContext) -> StepResult:
-        """Le travail de l'étape. Ni os.environ, ni argv, ni sys.exit, ni
-        logging.basicConfig, ni asyncio.run (invariant n°3)."""
+        """The step's work. No os.environ, no argv, no sys.exit, no
+        logging.basicConfig, no asyncio.run (invariant #3)."""
 
     def run(self, ctx: PipelineContext) -> StepResult:
-        """Template : applicable ? → valider les entrées → exécuter (chronométré)."""
+        """Template: applicable? → validate inputs -> execute (timed)."""
         start = time.perf_counter()
         if not self.is_applicable(ctx):
             return StepResult(

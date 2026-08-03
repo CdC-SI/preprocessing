@@ -1,11 +1,12 @@
-"""Étape markdown-convert — conversion des doctags enrichis en Markdown.
+"""markdown-convert stage, conversion of enriched doctags into Markdown.
 
-Conversion du script ``simple_extraction/docling_markdown_converter.py``
-(vague B). Fonctions métier DÉPLACÉES telles quelles (invariant n°1).
+Conversion of the script simple_extraction/docling_markdown_converter.py
+(wave B). Business functions MOVED as-is (invariant no. 1).
 
-Dans le pipeline, l'étape lit ``<doc>_url_vlm.doctags`` (sortie d'url-tuning,
-suffixe par défaut historique ``_url_vlm``) et produit ``<doc>_url_vlm.md`` —
-le ``<doc>.md`` de base est produit par docling-extract, pas ici.
+In the pipeline, the stage reads <doc>_url_vlm.doctags (output of
+url-tuning, historical default suffix _url_vlm) and produces
+<doc>_url_vlm.md, the base <doc>.md is produced by docling-extract,
+not here.
 """
 
 from __future__ import annotations
@@ -31,7 +32,7 @@ def _split_pages(content: str) -> str:
     """
     If the content is a single <doctag> block, split it into one block per page using
     </page_footer> (native Docling doctags) or <page_break> (produced by url_tuning_vlm.py)
-    as the delimiter — the format from_multipage_doctags_and_images expects.
+    as the delimiter, the format from_multipage_doctags_and_images expects.
     Without this split, Docling stops after the first page and ignores the rest.
 
     :param content: raw doctags content
@@ -98,7 +99,7 @@ def _hoist_misplaced_tags(content: str) -> str:
 def preprocess_doctags(content: str) -> str:
     """
     Preprocess the doctags content: page splitting and misplaced tag correction.
-    Public entry point for external modules — avoids coupling on the private helpers.
+    Public entry point for external modules, avoids coupling on the private helpers.
 
     :param content: raw doctags content
     :return: preprocessed content, ready for DocTagsDocument
@@ -143,18 +144,17 @@ def convert_doctags_to_markdown(doctags_path: Path) -> str:
 
 
 class MarkdownConvertStep(PipelineStep):
-    """Convertit <doc>_url_vlm.doctags en <doc>_url_vlm.md via Docling."""
+    """Converts <doc>_url_vlm.doctags into <doc>_url_vlm.md via Docling."""
 
     name = "markdown-convert"
-    description = "Conversion doctags → markdown"
+    description = "Doctags -> markdown conversion"
     requires_vlm = False
 
     def _source_doctags(self, ctx: PipelineContext) -> Path:
-        """Doctags à convertir : le dernier maillon effectivement produit.
-
-        url-tuning (08) puis image-description (06) sont tous deux sautables
-        (profils no-vlm, no-images) ; on remonte la chaîne jusqu'au doctags
-        disponible plutôt que d'exiger le plus enrichi.
+        """Doctags to convert: the last actually produced link.
+        url-tuning (08) and image-description (06) are both skippable
+        (no-vlm, no-images profiles); go back up the chain to the available
+        doctags rather than requiring the most enriched version.
         """
         ws = ctx.workspace
         for candidate in (
@@ -164,8 +164,8 @@ class MarkdownConvertStep(PipelineStep):
         ):
             if candidate.exists():
                 return candidate
-        # Aucun n'existe : on renvoie le nominal pour que validate_inputs
-        # produise le message d'erreur habituel.
+        # None exists: return the nominal value so that validate_input
+        # produces the usual error message.
         return ws.url_vlm_doctags
 
     def inputs(self, ctx: PipelineContext) -> list[Path]:

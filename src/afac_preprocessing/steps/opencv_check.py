@@ -1,11 +1,11 @@
-"""Étape opencv-check — validation visuelle des doctags sur le PDF source.
+"""opencv-check stage, visual validation of doctags on the source PDF.
 
-Conversion du script ``simple_extraction/opencv_checker.py`` (vague B).
-Fonctions métier DÉPLACÉES telles quelles (invariant n°1).
+Conversion of the simple_extraction/opencv_checker.py script.
+Business functions MOVED as-is.
 
-Superpose les bounding boxes colorées des doctags sur chaque page du PDF
-rendue en PNG. Outil de validation uniquement — aucune sortie consommée par
-les étapes suivantes ; désactivée par défaut (``enabled_by_default=False``).
+Overlays colored doctags bounding boxes on each rendered PDF page as PNG.
+Validation tool only, no output is consumed by subsequent stages; disabled by
+default (enabled_by_default=False).
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import cv2
-import fitz  # PyMuPDF
+import fitz
 import numpy as np
 
 from ..core.step import PipelineStep, StepResult, StepStatus
@@ -27,10 +27,9 @@ if TYPE_CHECKING:
 
 _log = logging.getLogger(__name__)
 
-# DPI 300 : résolution courante pour PDF scan
 DPI_DEFAULT = 300
 
-# Docling normalise toutes les coordonnées dans une grille 500×500
+# Docling normalizes all coordinates on a 500×500 grid
 # https://github.com/docling-project/docling/discussions/354
 NORM_MAX = 500
 
@@ -66,12 +65,12 @@ COLOR_MAP: dict[str, tuple[int, int, int]] = {
 }
 
 
-# Parsing doctags — déplacé tel quel
+# Doctags parsing, moved as-is
 def parse_doctags_boxes(doctags_path: Path) -> dict[int, list[tuple[int, int, int, int, str]]]:
-    """Lit un .doctags et retourne les bounding boxes par page.
-
-    Retourne : { page_num: [(x0, y0, x1, y1, tag), ...] }
-    Coordonnées dans la grille normalisée 0–500 de Docling.
+    """Reads a .doctags file and returns the bounding boxes per page.
+    
+    Returns: { page_num: [(x0, y0, x1, y1, tag), ...] }
+    Coordinates are in Docling's normalized 0–500 grid.
     """
     boxes_by_page: dict[int, list[tuple[int, int, int, int, str]]] = {}
     current_page = 0
@@ -98,13 +97,13 @@ def parse_doctags_boxes(doctags_path: Path) -> dict[int, list[tuple[int, int, in
     return boxes_by_page
 
 
-# Rendu d'une page — déplacé tel quel
+# Page rendering, moved as-is
 def render_page(
     page: fitz.Page,
     boxes: list[tuple[int, int, int, int, str]],
     dpi: int,
 ) -> np.ndarray:
-    """Rend une page PDF et y superpose les bounding boxes colorées."""
+    """Renders a PDF page and overlays the colored bounding boxes on it."""
     pix = page.get_pixmap(dpi=dpi)
     img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
     if img.shape[2] == 4:
@@ -125,10 +124,10 @@ def render_page(
 
 
 class OpencvCheckStep(PipelineStep):
-    """QA visuelle : PNG par page avec les bounding boxes des doctags."""
+    """Visual QA: PNG per page with doctags bounding boxes"""
 
     name = "opencv-check"
-    description = "QA visuelle OpenCV (aucune sortie consommée en aval)"
+    description = "OpenCV visual QA (no output consumed downstream)"
     requires_vlm = False
     enabled_by_default = False
 
@@ -148,7 +147,7 @@ class OpencvCheckStep(PipelineStep):
 
         _log.info("PDF       : %s", pdf_path)
         _log.info("DocTags   : %s", doctags_path)
-        _log.info("Sortie    : %s", output_dir)
+        _log.info("Output    : %s", output_dir)
         _log.info("DPI       : %d", dpi)
 
         try:
@@ -166,22 +165,22 @@ class OpencvCheckStep(PipelineStep):
                         img = render_page(doc[page_num], boxes, dpi)
                         out_path = output_dir / f"page_{page_num + 1}_doctags_boxes.png"
                         if not cv2.imwrite(str(out_path), img):
-                            raise RuntimeError(f"cv2.imwrite a échoué : {out_path}")
-                        _log.info("Page %d/%d sauvegardée : %s", page_num + 1, n_pages, out_path)
+                            raise RuntimeError(f"cv2.imwrite failed : {out_path}")
+                        _log.info("Page %d/%d saved: %s", page_num + 1, n_pages, out_path)
                         n_ok += 1
                     except Exception:
-                        _log.exception("Erreur page %d/%d — ignorée.", page_num + 1, n_pages)
+                        _log.exception("Error on page %d/%d,  skipped.", page_num + 1, n_pages)
                         n_err += 1
         except Exception as exc:
             raise StepFailed(f"opencv-check failed on {pdf_path.name}: {exc}") from exc
 
-        _log.info("Validation terminée — %d/%d page(s) dans : %s", n_ok, n_pages, output_dir)
+        _log.info("Validation completed, %d/%d page(s) in: %s", n_ok, n_pages, output_dir)
         if n_err:
             _log.warning(
-                "%d page(s) en erreur — outil de validation uniquement, pipeline non interrompu.",
+                "%d page(s) with errors, validation tool only, pipeline not interrupted.",
                 n_err,
             )
-        # Comportement historique : toujours exit 0, même avec des pages en erreur.
+        # Historical behavior: always exit 0, even with pages containing errors.
         return StepResult(
             StepStatus.OK, outputs=self.outputs(ctx), message=f"{n_ok}/{n_pages} page(s)"
         )

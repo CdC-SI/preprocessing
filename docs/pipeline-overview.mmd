@@ -1,0 +1,61 @@
+%% Vue condensée du pipeline en quatre phases.
+%% Référencé par README.md § « Le pipeline en un coup d'œil ».
+%% Version détaillée, fichier par fichier : docs/pipeline-steps.mmd
+%% L'étape 03 (opencv-check, QA visuelle) est omise : désactivée par défaut.
+flowchart LR
+    PDF(["doc.pdf"])
+
+    subgraph P1["1 · Extraction"]
+        direction TB
+        E1["docling-extract"]
+        E2["reorder-doctags"]
+        E3["csv-to-jsonlines"]
+        E4["load-jsonline-doctags"]
+        E1 --> E2 --> E4
+        E1 --> E3 --> E4
+    end
+
+    subgraph P2["2 · Enrichissement"]
+        direction TB
+        F1["image-description"]
+        F2["url-extraction"]
+        F3["url-tuning"]
+        F1 --> F3
+        F2 --> F3
+    end
+
+    subgraph P3["3 · Markdown"]
+        direction TB
+        G1["markdown-convert"]
+        G2["markdown-control"]
+        G3["inject-image-descriptions"]
+        G1 --> G2 --> G3
+    end
+
+    subgraph P4["4 · Métadonnées"]
+        direction TB
+        H1["metadata-generation"]
+        H2["hyq-embedding"]
+        H1 --> H2
+    end
+
+    CSV[/"metadata/doc_final.csv<br/>CONTENT · METADATA · EMBEDDING"/]
+    GLOB[/"corpus.csv"/]
+
+    PDF --> P1
+    PDF -.->|"images, liens, pages"| P2
+    PDF -.-> P3
+    P1 -->|"doctags"| P2
+    P2 -->|"doctags corrigés"| P3
+    P3 -->|"_final.md"| P4
+    P1 -.->|"doc.json"| P4
+    P4 --> CSV
+    CSV -->|"fin de lot"| GLOB
+
+    classDef vlm fill:#fde7e9,stroke:#c5221f,color:#111
+    classDef plain fill:#e8f0fe,stroke:#3367d6,color:#111
+    class F1,F3,G2,H1,H2 vlm
+    class E1,E2,E3,E4,F2,G1,G3 plain
+    style PDF fill:#e6f4ea,stroke:#137333,color:#111
+    style CSV fill:#fef7e0,stroke:#b06000,color:#111
+    style GLOB fill:#fef7e0,stroke:#b06000,color:#111
