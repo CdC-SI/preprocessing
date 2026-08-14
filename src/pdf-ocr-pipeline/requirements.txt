@@ -3,3 +3,8 @@ PyMuPDF==1.26.0
 pillow==12.1.1
 openai==2.26.0
 kserve==0.16.0
+# Local tokenizer for the embedding model; replaces the per-page HTTP
+# round-trip to the vLLM /tokenize endpoint.
+tokenizers==0.23.1
+# Multipart form parsing for POST /jobs.
+python-multipart==0.0.20

@@ -6,6 +6,8 @@ For images, screenshots, charts, or figures, do not attempt pixel-level OCR; ins
 
 You may ignore non-informative elements such as logos, decorative graphics, headers, footers, navigation menus, and branding.
 
+For legal and regulatory documents, ignore footnotes containing only statutory citations, article cross-references, or amendment histories; keep any footnote that carries substantive content.
+
 Output only the extracted content, without commentary or explanations.
 
 Format the output in Markdown."""

@@ -12,6 +12,10 @@ spec:
     - name: python
       autoSelect: true
   multiModel: false
+  # Give in-flight pages time to finish before the pod is killed. Job state is
+  # in-memory, so anything unfinished at exit is lost and the client is told to
+  # resubmit; a generous grace period makes that rare for planned rollouts.
+  terminationGracePeriodSeconds: 300
   containers:
     - name: kserve-container
       image: quay.io/modh/odh-workbench-jupyter-minimal-cpu-py311-ubi9@sha256:0ea737f6c626d5d01b44fc8c6537a193ad45c378aed9ff98b209968dff418075
@@ -30,9 +34,11 @@ spec:
           # Install dependencies (prefer offline wheels)
 
           if [ -d /mnt/models/wheels ]; then
-            python -m pip install --no-index --find-links=/mnt/models/wheels kserve pyMuPDF openai pillow python-dotenv
+            python -m pip install --no-index --find-links=/mnt/models/wheels \
+              kserve pymupdf openai pillow python-dotenv tokenizers python-multipart
           else
-            python -m pip install kserve pyMuPDF openai pillow python-dotenv
+            python -m pip install \
+              kserve pymupdf openai pillow python-dotenv tokenizers python-multipart
           fi
 
 
@@ -40,12 +46,32 @@ spec:
       envFrom:
         - secretRef:
             name: pdf-ocr-pipeline-env
+      env:
+        # Tokenizer for the embedding model, bundled in the model archive.
+        - name: TOKENIZER_DIR
+          value: /mnt/models/tokenizer
+        - name: GRACEFUL_SHUTDOWN
+          value: "240"
       ports:
         - containerPort: 8080
+      readinessProbe:
+        httpGet:
+          path: /healthz/ready
+          port: 8080
+        initialDelaySeconds: 30
+        periodSeconds: 10
+        failureThreshold: 6
+      livenessProbe:
+        httpGet:
+          path: /v2/health/live
+          port: 8080
+        initialDelaySeconds: 60
+        periodSeconds: 30
+        failureThreshold: 5
       resources:
         requests:
-          cpu: "1"
-          memory: 4Gi
-        limits:
           cpu: "2"
-          memory: 8Gi
+          memory: 6Gi
+        limits:
+          cpu: "4"
+          memory: 12Gi

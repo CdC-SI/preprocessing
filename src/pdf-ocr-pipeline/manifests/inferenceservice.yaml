@@ -3,6 +3,9 @@ kind: InferenceService
 metadata:
   name: pdf-ocr-pipeline
   annotations:
+    # Only the legacy synchronous :predict path needs a long router timeout;
+    # it is capped at LEGACY_MAX_PAGES pages. The async /jobs endpoints all
+    # return immediately.
     haproxy.router.openshift.io/timeout: 600s
     openshift.io/display-name: pdf-ocr-pipeline
     serving.kserve.io/deploymentMode: RawDeployment
@@ -14,8 +17,23 @@ spec:
   predictor:
     automountServiceAccountToken: false
     serviceAccountName: model-serving-sa
-    maxReplicas: 1
+    # ---------------------------------------------------------------------
+    # MUST remain exactly 1.
+    #
+    # The job store, the work queue and the VLM concurrency budget are all
+    # held in process. A second replica would:
+    #   * double the OCR pressure on the shared VLM (breaking the guarantee
+    #     that translation always keeps >= 13 of the 17 sequence slots), and
+    #   * route status/result polls to a pod that does not know the job.
+    #
+    # Scaling out requires an external job store and queue (see Phase 2 notes
+    # in README.md).
+    # ---------------------------------------------------------------------
     minReplicas: 1
+    maxReplicas: 1
+    # Never run two pods concurrently, not even briefly during a rollout.
+    deploymentStrategy:
+      type: Recreate
     model:
       modelFormat:
         name: python
