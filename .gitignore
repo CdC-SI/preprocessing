@@ -51,6 +51,8 @@ NOTES_NOTEBOOKS_JUPYTER.md
 PLAN_REFACTOR_OOP.md
 tests/reference/
 tests/reference_F*/
+src/afac_preprocessing/tests
+tests/
 ETAT_REFACTOR.md
 csv_panda
 other_test
