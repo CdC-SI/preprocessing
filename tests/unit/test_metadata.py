@@ -1,7 +1,12 @@
-"""Tests du lot F3 — `title` sans extension, `doctype` = extension seule.
+"""Tests du lot F3 — `title` avec extension, `doctype` = extension seule.
 
-Le champ garde son nom (`doctype`) ; seule sa source change : l'extension du
-chemin au lieu du mimetype Docling (décision n°9).
+Le champ `doctype` garde son nom ; seule sa source change : l'extension du
+chemin au lieu du mimetype Docling (décision n°9). `title` inclut désormais
+l'extension (dérivée de `doctype`) pour rester cohérent avec la convention du
+backend Java côté upload personnel. outgoing_links, incoming_links,
+media_type, parent_label, children_label et sibling sont désormais des
+chaînes JSON (et non des listes natives), pour rester compatibles avec le
+typage `Map<String,String>` du backend.
 """
 
 import json
@@ -46,26 +51,34 @@ def _build(tmp_path: Path, relative_doc_path: str, doc_json: dict | None = None)
     )
 
 
-# --- title : nom complet du fichier, sans extension ---
+# --- title : nom complet du fichier, AVEC extension ---
 
 
 @pytest.mark.parametrize(
     ("relative_doc_path", "expected_title"),
     [
-        ("afac/Adhésion/adhésion traitement.pdf", "adhésion traitement"),
-        ("afac/Adhésion/notice_v2.docx", "notice_v2"),
-        # Nom contenant des points : seule la dernière extension tombe.
-        ("afac/Adhésion/notice.v2.final.pdf", "notice.v2.final"),
+        ("afac/Adhésion/adhésion traitement.pdf", "adhésion traitement.pdf"),
+        ("afac/Adhésion/notice_v2.docx", "notice_v2.docx"),
+        # Nom contenant des points : seule la dernière extension tombe du stem,
+        # puis est rajoutée telle quelle.
+        ("afac/Adhésion/notice.v2.final.pdf", "notice.v2.final.pdf"),
         # Accents, espaces et apostrophe typographique préservés.
         ("afac/Cas de sortie/Cas de sortie - Prolongation d’adhésion.pdf",
-         "Cas de sortie - Prolongation d’adhésion"),
-        ("MonDoc.pdf", "MonDoc"),
+         "Cas de sortie - Prolongation d’adhésion.pdf"),
+        ("MonDoc.pdf", "MonDoc.pdf"),
     ],
 )
-def test_title_has_no_extension(
+def test_title_has_extension(
     tmp_path: Path, relative_doc_path: str, expected_title: str
 ) -> None:
     assert _build(tmp_path, relative_doc_path)["title"] == expected_title
+
+
+def test_title_has_no_trailing_dot_when_extensionless(tmp_path: Path) -> None:
+    """Pas d'extension -> pas de point final ajouté au title."""
+    meta = _build(tmp_path, "afac/Adhésion/sans_extension")
+    assert meta["title"] == "sans_extension"
+    assert meta["doctype"] == ""
 
 
 # --- doctype : extension seule, normalisée ---
@@ -114,9 +127,10 @@ def test_other_keys_are_unchanged(tmp_path: Path) -> None:
                   "pages": {"1": {}, "2": {}}, "tables": []},
     )
     assert set(meta) == EXPECTED_KEYS
-    # Le contenu des clés non touchées par F3 reste ce qu'il était.
+    # Le contenu des clés non touchées par F3 reste ce qu'il était (hormis le
+    # ré-encodage JSON des champs listes, requis par le typage backend).
     assert meta["source"] == "afac"
-    assert meta["parent_label"] == ["Adhésion"]
+    assert meta["parent_label"] == json.dumps(["Adhésion"], ensure_ascii=False)
     assert meta["language"] == "fr"
     assert meta["visibility"] == "internal"
     assert meta["page_count"] == 2
@@ -124,8 +138,8 @@ def test_other_keys_are_unchanged(tmp_path: Path) -> None:
     assert meta["embedding_model"] == "bge-m3"
     assert meta["content"] == "MonDoc_final.md"
     assert meta["chunk_count"] == 0
-    assert meta["outgoing_links"] == []
-    assert meta["incoming_links"] == []
+    assert meta["outgoing_links"] == "[]"
+    assert meta["incoming_links"] == "[]"
 
 
 def test_uuid_is_stable_across_runs(tmp_path: Path) -> None:

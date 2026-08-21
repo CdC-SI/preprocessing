@@ -1,8 +1,8 @@
 """Tests de contrat de l'étape csv-to-jsonlines (vague A — le patron).
 
 Le contrat vérifié pour chaque étape convertie (recette du lot 6) :
-sorties déclarées créées et non vides ; entrée manquante ⇒ StepInputMissing
-(pas SystemExit) ; idempotence.
+sorties déclarées créées et non vides ; tables/ manquant ⇒ passthrough
+(un document sans tableau n'est pas une erreur) ; idempotence.
 """
 
 import json
@@ -11,7 +11,8 @@ from pathlib import Path
 import pytest
 
 from afac_preprocessing import Pipeline, PipelineContext, Settings
-from afac_preprocessing.exceptions import StepFailed, StepInputMissing
+from afac_preprocessing.core.step import StepStatus
+from afac_preprocessing.exceptions import StepFailed
 from afac_preprocessing.steps.csv_to_jsonlines import CsvToJsonlinesStep
 
 
@@ -46,11 +47,12 @@ def test_outputs_created_and_non_empty(ctx: PipelineContext) -> None:
     assert rows == [{"Pays": "Suisse", "Code": "CH"}, {"Pays": "France", "Code": "FR"}]
 
 
-def test_missing_input_raises_step_input_missing_not_system_exit(
+def test_missing_tables_dir_is_passthrough_not_an_error(
     ctx: PipelineContext,
 ) -> None:
-    with pytest.raises(StepInputMissing, match="tables"):
-        CsvToJsonlinesStep().run(ctx)  # tables/ n'existe pas
+    result = CsvToJsonlinesStep().run(ctx)  # tables/ n'existe pas
+    assert result.ok
+    assert result.status is StepStatus.PASSTHROUGH
 
 
 def test_empty_tables_dir_fails_like_legacy_exit_1(ctx: PipelineContext) -> None:

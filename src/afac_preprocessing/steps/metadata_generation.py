@@ -11,9 +11,15 @@ build_metadata; resume / intent / hyq are then added by
 MetadataGenerationStep._execute_async from the MetadataEnhancer (24 fields
 in total).
 
-title contains the filename WITHOUT extension and doctype
+title contains the filename WITH its extension (e.g. "MonDoc.pdf") and doctype
 contains the extension only, in lowercase, the key name does not change, only
 its source changes (the path extension instead of the Docling mimetype).
+
+outgoing_links, incoming_links, media_type, parent_label, children_label and
+sibling are JSON-encoded strings (not native lists), so that the backend's
+`Map<String,String>` metadata contract (Jackson deserialization of
+vector_store.metadata) can parse every field as a string. Callers needing the
+structured data must json.loads() these fields.
 """
 
 from __future__ import annotations
@@ -348,7 +354,8 @@ def build_metadata(
     user_uuid: empty string by default
     source: first path segment (e.g. "afac"), "afac" by default if the path is
     flat or absolute (see get_hierarchy)
-    title: filename WITHOUT extension (e.g. "Annulation d'une dispense") — batch F3
+    title: filename WITH extension (e.g. "Annulation d'une dispense.pdf") — extension
+    appended from doctype (empty title has no trailing dot when doctype is empty)
     doctype: path extension only, lowercase (pdf, docx, html…) — batch F3,
     no longer the Docling mimetype
     version: last value of the "Version" column from the first Docling JSON table
@@ -356,16 +363,20 @@ def build_metadata(
     visibility: "internal" by default (VISIBILITY_DEFAULT; "internal" / "public" / "sensitive")
     language: "fr" (all AF documents)
     outgoing_links: outgoing hyperlinks extracted from the document
-    (hyperlinks_data_*.jsonl), as {text, url, page}
+    (hyperlinks_data_*.jsonl), as a JSON string of a list of {text, url, page}
     incoming_links: references to the document found in other documents'
-    hyperlinks, recursively scanned from out_root, as {from_doc, text, url}
+    hyperlinks, recursively scanned from out_root, as a JSON string of a list of
+    {from_doc, text, url}
     created_at: PDF creation date read via fitz (ISO 8601 YYYY-MM-DDTHH:MM),
     otherwise empty string
     updated_at: current UTC timestamp (ISO 8601)
-    media_type: names of images extracted from the document (used_images/, .png/.jpg/.jpeg sorted)
-    parent_label: document parent folder (e.g. ["DISPENSE"]), [] for flat paths
-    children_label: subfolders present in the document folder
-    sibling: other files present in the same folder (excluding the document itself)
+    media_type: JSON string of the list of image names extracted from the document
+    (used_images/, .png/.jpg/.jpeg sorted)
+    parent_label: JSON string of the document parent folder (e.g. '["DISPENSE"]'),
+    '[]' for flat paths
+    children_label: JSON string of the subfolders present in the document folder
+    sibling: JSON string of other files present in the same folder (excluding the
+    document itself)
     content: name of the markdown file used as CONTENT — <doc>_final_embed.md if
     it exists, otherwise <doc>_final.md (see _resolve_markdown_file)
     page_count: number of document pages (Docling JSON "pages" key)
@@ -388,6 +399,7 @@ def build_metadata(
     :return: Dictionnaire de metadata
     """
     doc_name = Path(relative_doc_path).stem
+    doctype = Path(relative_doc_path).suffix.lstrip(".").lower()
     hierarchy = get_hierarchy(folder_source, relative_doc_path)
     doc_json = load_input_json(workspace)
     content_file, chunk_count = get_markdown_info(workspace)
@@ -399,19 +411,19 @@ def build_metadata(
         "uuid": str(uuid.uuid5(uuid.NAMESPACE_DNS, str(relative_doc_path))),
         "user_uuid": "",
         "source": hierarchy["source"],
-        "title": doc_name,
-        "doctype": Path(relative_doc_path).suffix.lstrip(".").lower(),
+        "title": f"{doc_name}.{doctype}" if doctype else doc_name,
+        "doctype": doctype,
         "version": get_version(doc_json),
         "visibility": VISIBILITY_DEFAULT,
         "language": "fr",
-        "outgoing_links": get_outgoing_links(workspace),
-        "incoming_links": get_incoming_links(out_root, doc_name),
+        "outgoing_links": json.dumps(get_outgoing_links(workspace), ensure_ascii=False),
+        "incoming_links": json.dumps(get_incoming_links(out_root, doc_name), ensure_ascii=False),
         "created_at": created_at,
         "updated_at": updated_at,
-        "media_type": get_images(workspace),
-        "parent_label": hierarchy["parent_label"],
-        "children_label": hierarchy["children_label"],
-        "sibling": hierarchy["sibling"],
+        "media_type": json.dumps(get_images(workspace), ensure_ascii=False),
+        "parent_label": json.dumps(hierarchy["parent_label"], ensure_ascii=False),
+        "children_label": json.dumps(hierarchy["children_label"], ensure_ascii=False),
+        "sibling": json.dumps(hierarchy["sibling"], ensure_ascii=False),
         "content": content_file,
         "page_count": page_count,
         "page_num": get_page_num(page_count),

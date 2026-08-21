@@ -20,6 +20,7 @@ from docling_core.types.doc.document import DoclingDocument, DocTagsDocument
 
 from ..core.step import PipelineStep, StepResult, StepStatus
 from ..exceptions import StepFailed
+from ..utils.pdf_utils import pdf_page_count
 
 if TYPE_CHECKING:
     from ..context import PipelineContext
@@ -28,15 +29,29 @@ _log = logging.getLogger(__name__)
 
 
 # Business logic (pure functions) — déplacées telles quelles
-def _split_pages(content: str) -> str:
+def _split_pages(content: str, expected_pages: int | None = None) -> str:
     """
     If the content is a single <doctag> block, split it into one block per page using
     </page_footer> (native Docling doctags) or <page_break> (produced by url_tuning_vlm.py)
     as the delimiter, the format from_multipage_doctags_and_images expects.
     Without this split, Docling stops after the first page and ignores the rest.
 
+    </page_footer> is tried first, and <page_break> only used to be a fallback when
+    the footer split yielded nothing — which silently under-counted any document
+    where only SOME pages carry a footer: the footer split returns ≥2 parts, so the
+    fallback never fired and a page was merged into its neighbour. Observed on
+    "TN - Allègement dès 01.2025" (3 PDF pages, page 1 without footer → 2 markdown
+    pages, rejected downstream by markdown-control). Same root cause as in
+    reorder_doctags.split_pages().
+
+    When the caller knows the real page count it is passed here and used to pick the
+    strategy reproducing it. If the primary split already matches (or expected_pages
+    is None), the result is unchanged — only mis-split documents are affected.
+
     :param content: raw doctags content
     :type content: str
+    :param expected_pages: real PDF page count used to arbitrate, None to disable
+    :type expected_pages: int | None
     :return: content split into per-page <doctag> blocks
     :rtype: str
     """
@@ -46,13 +61,23 @@ def _split_pages(content: str) -> str:
     inner = re.sub(r"^\s*</?doctag>\s*", "", content.strip(), flags=re.DOTALL)
     inner = re.sub(r"\s*</doctag>\s*$", "", inner, flags=re.DOTALL)
 
-    # Try </page_footer> first (native Docling doctags),
-    # then <page_break> (separator produced by url_tuning_vlm.py and assemble_doctags).
-    parts = re.split(r"(?<=</page_footer>)", inner)
-    if len(parts) <= 1:
-        parts = re.split(r"<page_break\s*/?>", inner)
+    def _parts(pattern: str) -> list[str]:
+        return [p.strip() for p in re.split(pattern, inner) if p.strip()]
 
-    parts = [p.strip() for p in parts if p.strip()]
+    by_footer = _parts(r"(?<=</page_footer>)")
+    by_break = _parts(r"<page_break\s*/?>")
+
+    parts = by_footer if len(by_footer) > 1 else by_break
+    if expected_pages is not None and len(parts) != expected_pages:
+        for candidate in (by_footer, by_break):
+            if len(candidate) == expected_pages:
+                _log.warning(
+                    "Page split produced %d page(s) for %d PDF page(s); using the "
+                    "delimiter that matches. A page is likely missing its <page_footer>.",
+                    len(parts), expected_pages,
+                )
+                parts = candidate
+                break
 
     if len(parts) <= 1:
         return content  # single-page document, nothing to do
@@ -96,33 +121,38 @@ def _hoist_misplaced_tags(content: str) -> str:
     return OL.sub(_fix_ol, content)
 
 
-def preprocess_doctags(content: str) -> str:
+def preprocess_doctags(content: str, expected_pages: int | None = None) -> str:
     """
     Preprocess the doctags content: page splitting and misplaced tag correction.
     Public entry point for external modules, avoids coupling on the private helpers.
 
     :param content: raw doctags content
+    :param expected_pages: real PDF page count used to arbitrate the page split
     :return: preprocessed content, ready for DocTagsDocument
     """
-    return _hoist_misplaced_tags(_split_pages(content))
+    return _hoist_misplaced_tags(_split_pages(content, expected_pages))
 
 PAGE_BREAK = "<!-- page-break -->"
 
 
-def convert_doctags_to_markdown(doctags_path: Path) -> str:
+def convert_doctags_to_markdown(
+    doctags_path: Path, expected_pages: int | None = None
+) -> str:
     """
     Read the .doctags file, apply preprocessing, convert to Markdown via Docling
     page by page, then join the pages with a <!-- page-break --> separator.
 
     :param doctags_path: path to the .doctags file to convert
     :type doctags_path: Path
+    :param expected_pages: real PDF page count used to arbitrate the page split
+    :type expected_pages: int | None
     :return: final Markdown content with page separators
     :rtype: str
     """
     from ..utils.markdown_utils import apply_markdown_transforms
 
     content = doctags_path.read_text(encoding="utf-8")
-    content = _split_pages(content)
+    content = _split_pages(content, expected_pages)
     content = _hoist_misplaced_tags(content)
 
     page_blocks = re.findall(r"<doctag>(.*?)</doctag>", content, re.DOTALL)
@@ -181,7 +211,9 @@ class MarkdownConvertStep(PipelineStep):
         _log.info("Input   : %s", input_path)
         _log.info("Output  : %s", output_path)
         try:
-            markdown = convert_doctags_to_markdown(input_path)
+            markdown = convert_doctags_to_markdown(
+                input_path, pdf_page_count(ctx.workspace.source_pdf)
+            )
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_text(markdown, encoding="utf-8")
         except Exception as exc:

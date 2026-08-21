@@ -25,7 +25,12 @@ import numpy as np
 import pandas as pd
 
 from .config import CANONICAL_K, DEFAULT_OUTPUT_DIR, DEFAULT_STAGE5, TOP_KS
-from .loaders import load_all_doc_embeddings, load_doc_resumes, load_hyq_questions
+from .loaders import (
+    discover_doc_names,
+    load_all_doc_embeddings,
+    load_doc_resumes,
+    load_hyq_questions,
+)
 from .metrics import evaluate_all_metrics
 from .report import plot_all_charts, plot_global_barcharts, save_results_csv
 from .reranker import rerank
@@ -34,19 +39,7 @@ from .similarity import compute_similarity_matrix, rank_docs
 _log = logging.getLogger(__name__)
 
 
-
 # Helpers
-def discover_doc_names(stage5_dir: Path) -> list[str]:
-    """All doc names that have both a document embedding and at least one HyQ question."""
-    names = []
-    for csv_path in sorted(stage5_dir.rglob("metadata/*_final.csv")):
-        doc_name = csv_path.stem.removesuffix("_final")
-        hyq_dir = csv_path.parent / f"hyq_{doc_name}"
-        if hyq_dir.exists() and any(hyq_dir.glob("question_*.csv")):
-            names.append(doc_name)
-    return names
-
-
 def _build_row(
     doc_name: str,
     question,

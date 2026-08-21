@@ -15,7 +15,11 @@ from afac_preprocessing.exceptions import StepInputMissing
 from afac_preprocessing.steps.inject_image_descriptions import InjectImageDescriptionsStep
 from afac_preprocessing.steps.load_jsonline_doctags import LoadJsonlineDoctagsStep
 from afac_preprocessing.steps.markdown_convert import MarkdownConvertStep
-from afac_preprocessing.steps.reorder_doctags import ReorderDoctagsStep
+from afac_preprocessing.steps.reorder_doctags import (
+    ReorderDoctagsStep,
+    parse_blocks,
+    split_pages,
+)
 from afac_preprocessing.steps.url_extraction import UrlExtractionStep
 
 DOCTAGS = (
@@ -56,6 +60,46 @@ def test_reorder_sorts_blocks_by_y0(ctx: PipelineContext) -> None:
 def test_reorder_missing_input(ctx: PipelineContext) -> None:
     with pytest.raises(StepInputMissing, match="doctags"):
         ReorderDoctagsStep().run(ctx)
+
+
+# --- split_pages : arbitrage par le nombre réel de pages ---
+
+# Forme observée sur "TN - Allègement dès 01.2025" : la page 1 n'a PAS de
+# <page_footer>, les pages 2 et 3 en ont un. Le découpage par footer fusionne
+# donc la page 1 dans la page 2 → 2 pages au lieu de 3.
+MIXED_FOOTERS = (
+    "<text><loc_10><loc_20><loc_200><loc_40>Page un</text>\n"
+    "<page_break>\n"
+    "<text><loc_10><loc_20><loc_200><loc_40>Page deux</text>\n"
+    "<page_footer><loc_10><loc_480><loc_200><loc_490>2</page_footer>\n"
+    "<page_break>\n"
+    "<text><loc_10><loc_20><loc_200><loc_40>Page trois</text>\n"
+    "<page_footer><loc_10><loc_480><loc_200><loc_490>3</page_footer>\n"
+)
+
+
+def test_split_pages_merges_page_without_footer_when_unarbitrated() -> None:
+    """Comportement historique conservé quand le nombre de pages est inconnu."""
+    assert len(split_pages(parse_blocks(MIXED_FOOTERS))) == 2
+
+
+def test_split_pages_recovers_the_lost_page_with_expected_count() -> None:
+    pages = split_pages(parse_blocks(MIXED_FOOTERS), 3)
+    assert len(pages) == 3
+    assert "Page un" in pages[0][0].raw
+
+
+def test_split_pages_leaves_a_correct_split_untouched() -> None:
+    """L'arbitrage ne doit rien changer quand le découpage par footer est déjà
+    bon — sinon la correction toucherait des documents qui fonctionnent."""
+    blocks = parse_blocks(DOCTAGS.replace("<doctag>\n", "").replace("</doctag>\n", ""))
+    assert split_pages(blocks, 1) == split_pages(blocks)
+
+
+def test_split_pages_keeps_primary_split_when_neither_strategy_matches() -> None:
+    """Aucune stratégie ne donne 9 pages : on garde le découpage principal et on
+    laisse markdown-control jouer son rôle de filet."""
+    assert len(split_pages(parse_blocks(MIXED_FOOTERS), 9)) == 2
 
 
 # --- url-extraction ---

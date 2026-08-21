@@ -241,18 +241,55 @@ def load_preextracted_b64(images_dir: Path, pic: PictureTag) -> str | None:
     index). Fall back to this naming only if a single image exists for this page in
     the folder, beyond that, the positional index cannot be reliably recovered here
     (this is precisely the ambiguity that coordinate-based naming eliminates); it's better to
-    fall back to the fitz crop (see caller) than risk matching the wrong image."""
+    fall back to the fitz crop (see caller) than risk matching the wrong image.
+
+    Page desync: ``pic["page"]`` comes from counting ``<page_footer>`` tags in the
+    doctags (parse_picture_tags), which can overcount relative to Docling's own
+    page numbering when Docling emits a spurious extra footer (known limitation of
+    split_pages(), see docling_extract.py's discarded-page_break warning). The PNG
+    exported by docling_extract.export_docling_images() uses Docling's authoritative
+    page number instead, so it can sit under a different page than expected while
+    its coordinates stay exact — search by coordinates alone before giving up."""
     page = pic["page"] + 1
     path = images_dir / f"pic_page{page}_x{pic['x0']}_y{pic['y0']}_x{pic['x1']}_y{pic['y1']}.png"
     if not path.exists():
-        legacy_matches = sorted(images_dir.glob(f"pic*_page{page}.png"))
-        if len(legacy_matches) == 1:
-            _log.info("Pre-extracted image found via legacy naming (index): %s", legacy_matches[0].name)
-            path = legacy_matches[0]
+        coord_matches = sorted(images_dir.glob(
+            f"pic_page*_x{pic['x0']}_y{pic['y0']}_x{pic['x1']}_y{pic['y1']}.png"
+        ))
+        if len(coord_matches) == 1:
+            _log.info(
+                "Pre-extracted image found by coordinates on a different page than "
+                "expected (page-footer count desync): %s", coord_matches[0].name,
+            )
+            path = coord_matches[0]
         else:
-            _log.warning("Pre-extracted image not found: %s", path)
-            return None
+            legacy_matches = sorted(images_dir.glob(f"pic*_page{page}.png"))
+            if len(legacy_matches) == 1:
+                _log.info("Pre-extracted image found via legacy naming (index): %s", legacy_matches[0].name)
+                path = legacy_matches[0]
+            else:
+                _log.warning("Pre-extracted image not found: %s", path)
+                return None
     return base64.b64encode(path.read_bytes()).decode("utf-8")
+
+
+def _safe_page_index(pdf_doc: fitz.Document, pic: PictureTag) -> int:
+    """Clamps pic["page"] to the document's real last page.
+
+    pic["page"] comes from counting <page_footer> tags in the doctags
+    (parse_picture_tags), which can overcount when Docling emits a spurious
+    extra footer (known limitation of split_pages(), see docling_extract.py's
+    discarded-page_break warning) — indexing fitz with the raw value can then
+    raise IndexError even though the picture belongs to a real page."""
+    page = pic["page"]
+    if page >= pdf_doc.page_count:
+        _log.warning(
+            "Picture page index %d exceeds document page count %d "
+            "(doctags page-footer miscount) — clamped to the last page.",
+            page, pdf_doc.page_count,
+        )
+        page = pdf_doc.page_count - 1
+    return page
 
 
 def crop_to_b64(pdf_doc: fitz.Document, pic: PictureTag, norm: int = NORM, dpi: int = DPI_DEFAULT) -> str:
@@ -265,7 +302,7 @@ def crop_to_b64(pdf_doc: fitz.Document, pic: PictureTag, norm: int = NORM, dpi: 
     :param dpi: DPI resolution used to render the crop.
     :return: The cropped image, PNG-encoded and base64-encoded.
     """
-    page = pdf_doc[pic["page"]]
+    page = pdf_doc[_safe_page_index(pdf_doc, pic)]
     pix = page.get_pixmap(dpi=dpi, clip=_clip_rect(page, pic, norm))
     return base64.b64encode(pix.tobytes("png")).decode("utf-8")
 
@@ -300,7 +337,7 @@ def export_picture_images(
     _log.info("Exporting PNGs to: %s", output_dir)
     with fitz.open(str(pdf_path)) as doc:
         for i, pic in enumerate(pictures, start=1):
-            page = doc[pic["page"]]
+            page = doc[_safe_page_index(doc, pic)]
             pix = page.get_pixmap(dpi=dpi, clip=_clip_rect(page, pic, norm))
             img_path = output_dir / (
                 f"{doc_name}_page{pic['page'] + 1}_"

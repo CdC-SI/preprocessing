@@ -1,12 +1,16 @@
 """csv-to-jsonlines step, CSV tables (Docling) -> JSONL files.
 
-Conversion of the simple_extraction/csv_to_jsonlines.py script 
+Conversion of the simple_extraction/csv_to_jsonlines.py script
 Processing functions are MOVED as-is, only parse_args/main/resolve_* are
 removed, replaced by the PipelineStep contract and ctx.workspace.
 
-Semantics preserved identically:
-1) missing tables/ directory -> StepInputMissing (was SystemExit "directory not found")
-2) no CSV files -> StepFailed (was SystemExit code 1)
+Semantics:
+1) missing tables/ directory -> passthrough (not every document has tables;
+   docling_extract.export_tables() only creates tables/ when it finds at
+   least one, so a missing directory is the normal "no table" case, not
+   an error)
+2) tables/ exists but has no CSV files -> StepFailed (unexpected: docling
+   only creates the directory alongside at least one exported CSV)
 3) empty table -> skipped (skip counter)
 4) error on a CSV -> counted, the step fails at the end of the loop (was exit 1)
 """
@@ -123,6 +127,11 @@ class CsvToJsonlinesStep(PipelineStep):
     name = "csv-to-jsonlines"
     description = "Conversion of CSV tables to JSONL"
     requires_vlm = False
+
+    def is_applicable(self, ctx: PipelineContext) -> bool:
+        """No tables/ directory ⇒ Docling found no table in this document,
+        a legitimate case (e.g. training slide decks), not an error."""
+        return ctx.workspace.tables_dir.exists()
 
     def inputs(self, ctx: PipelineContext) -> list[Path]:
         return [ctx.workspace.tables_dir]

@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 
 from ..core.step import PipelineStep, StepResult, StepStatus
 from ..exceptions import StepFailed
+from ..utils.pdf_utils import pdf_page_count
 
 if TYPE_CHECKING:
     from ..context import PipelineContext
@@ -148,7 +149,7 @@ def parse_blocks(content: str) -> list[Block]:
     return blocks
 
 
-def split_pages(blocks: list[Block]) -> list[list[Block]]:
+def split_pages(blocks: list[Block], expected_pages: int | None = None) -> list[list[Block]]:
     """
     Splits a list of blocks into pages. <page_footer> is authoritative when present (at
     least once in the document): it is the only reliable boundary, and <page_break> is
@@ -171,46 +172,48 @@ def split_pages(blocks: list[Block]) -> list[list[Block]]:
     containing the entire doctags). Hence the fallback to <page_break> as a trigger
     only if the document contains no <page_footer> at all.
 
-    Known limitation: the decision (footer vs break) is made once for the entire
-    document. A document where ONLY SOME pages have a <page_footer> (footer missing
-    on a scanned/rotated page, for example) is still mishandled: has_footer=True
-    would then merge the page without a footer into the next one. No general fix
-    here due to the lack of reliable ground truth at this stage (the actual PDF page
-    count is not passed to this function), we simply log a warning when standalone
-    <page_break> tags are discarded while a <page_footer> exists elsewhere in the
-    document, a signal that a page may have lost its footer. The downstream check
-    (comparing the number of reassembled pages to the PDF page count, cf.
-    markdown_control_vlm.py) remains the safety net that catches an actual
-    mismatch.
+    Formerly a known limitation, now arbitrated by *expected_pages*: the decision
+    (footer vs break) used to be made once for the entire document, so a document
+    where ONLY SOME pages carry a <page_footer> was mishandled — has_footer=True
+    merged the page without a footer into the next one. Observed on "TN -
+    Allègement dès 01.2025" (3 PDF pages, page 1 without footer): reordering
+    produced 2 pages and markdown-control rejected the document.
+
+    Neither signal is reliable on its own — a footer can be missing, a
+    <page_break> can be misplaced — so when the caller knows the real PDF page
+    count, it is passed here and used to pick the strategy that reproduces it.
+    Whenever the primary strategy already yields *expected_pages* (or the caller
+    passes None), the result is exactly what it was before: only documents that
+    are currently mis-split can change.
+
+    The downstream check (comparing the number of reassembled pages to the PDF
+    page count, cf. markdown_control.py) remains the safety net when neither
+    strategy matches.
 
     :param blocks: The list of parsed Blocks (in document order, spanning potentially multiple pages).
     :type blocks: list[Block]
+    :param expected_pages: Real PDF page count, used to arbitrate between the two
+        splitting strategies. None disables arbitration (historical behavior).
+    :type expected_pages: int | None
     :return: The list of pages, each page being a list of Blocks.
     :rtype: list[list[Block]]
     """
     has_footer = any(TAG_PAGE_FOOTER in b.raw for b in blocks)
 
-    pages: list[list[Block]] = []
-    current: list[Block] = []
-    discarded_breaks = 0
+    pages, discarded_breaks = _split(blocks, by_footer=has_footer)
 
-    for block in blocks:
-        is_standalone_break = TAG_PAGE_BREAK in block.raw and TAG_PAGE_FOOTER not in block.raw
-        if is_standalone_break:
-            if not has_footer and current:
-                pages.append(current)
-                current = []
-            elif has_footer:
-                discarded_breaks += 1
-            continue  # never kept: pure marker, never re-added to a page
-
-        current.append(block)
-        if has_footer and TAG_PAGE_FOOTER in block.raw:
-            pages.append(current)
-            current = []
-
-    if current:
-        pages.append(current)
+    if expected_pages is not None and len(pages) != expected_pages:
+        fallback, _ = _split(blocks, by_footer=not has_footer)
+        if len(fallback) == expected_pages:
+            _log.warning(
+                "Splitting by %s produced %d page(s) for %d PDF page(s); falling "
+                "back to %s, which matches. A page is likely missing its "
+                "<page_footer>.",
+                TAG_PAGE_FOOTER if has_footer else TAG_PAGE_BREAK, len(pages),
+                expected_pages,
+                TAG_PAGE_BREAK if has_footer else TAG_PAGE_FOOTER,
+            )
+            return fallback
 
     if has_footer and discarded_breaks:
         _log.warning(
@@ -221,6 +224,37 @@ def split_pages(blocks: list[Block]) -> list[list[Block]]:
         )
 
     return pages
+
+
+def _split(blocks: list[Block], *, by_footer: bool) -> tuple[list[list[Block]], int]:
+    """One splitting pass. Returns (pages, number of discarded standalone breaks).
+
+    ``by_footer`` selects the boundary: <page_footer> closes a page, or a
+    standalone <page_break> opens the next one.
+    """
+    pages: list[list[Block]] = []
+    current: list[Block] = []
+    discarded_breaks = 0
+
+    for block in blocks:
+        is_standalone_break = TAG_PAGE_BREAK in block.raw and TAG_PAGE_FOOTER not in block.raw
+        if is_standalone_break:
+            if not by_footer and current:
+                pages.append(current)
+                current = []
+            elif by_footer:
+                discarded_breaks += 1
+            continue  # never kept: pure marker, never re-added to a page
+
+        current.append(block)
+        if by_footer and TAG_PAGE_FOOTER in block.raw:
+            pages.append(current)
+            current = []
+
+    if current:
+        pages.append(current)
+
+    return pages, discarded_breaks
 
 
 def sort_page(blocks: list[Block]) -> list[Block]:
@@ -271,7 +305,9 @@ def render_blocks(blocks: list[Block]) -> str:
     return "\n".join(out)
 
 
-def reorder_doctags(input_path: Path, output_path: Path) -> None:
+def reorder_doctags(
+    input_path: Path, output_path: Path, expected_pages: int | None = None
+) -> None:
     """
     Reads input_path, re-sorts the blocks by y0/x0 page by page, writes the result to output_path.
 
@@ -279,12 +315,15 @@ def reorder_doctags(input_path: Path, output_path: Path) -> None:
     :type input_path: Path
     :param output_path: Path where the reordered .doctags file will be written.
     :type output_path: Path
+    :param expected_pages: Real PDF page count, forwarded to split_pages() to
+        arbitrate between the two splitting strategies. None disables arbitration.
+    :type expected_pages: int | None
     """
 
     content = input_path.read_text(encoding="utf-8")
     content = re.sub(r"</?doctag>\s*", "", content).strip()
 
-    pages = split_pages(parse_blocks(content))
+    pages = split_pages(parse_blocks(content), expected_pages)
     result_pages = [render_blocks(sort_page(page)) for page in pages]
 
     # split_pages() already drops every standalone <page_break> marker (see its docstring),
@@ -319,7 +358,7 @@ class ReorderDoctagsStep(PipelineStep):
         _log.info("Input : %s", input_path)
         _log.info("Output: %s", output_path)
         try:
-            reorder_doctags(input_path, output_path)
+            reorder_doctags(input_path, output_path, pdf_page_count(ctx.workspace.source_pdf))
         except Exception as exc:
             _log.exception("Error while reordering %s", input_path.name)
             raise StepFailed(f"reorder-doctags failed on {input_path.name}: {exc}") from exc

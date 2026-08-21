@@ -204,15 +204,15 @@ def test_metadata_generation_writes_csv_and_enrichment(ctx) -> None:
     assert rows[0] == ["CONTENT", "METADATA", "EMBEDDING"]
     assert len(rows) == 2
     metadata = json.loads(rows[1][1])
-    assert metadata["title"] == "Doc"  # sans extension depuis le lot F3
+    assert metadata["title"] == "Doc.pdf"  # avec extension depuis le lot F3
     assert metadata["doctype"] == "pdf"
     assert metadata["source"] == "afac"
-    assert metadata["parent_label"] == ["Adhésion"]
+    assert metadata["parent_label"] == json.dumps(["Adhésion"], ensure_ascii=False)
     assert metadata["page_count"] == 2
     assert metadata["page_num"] == "1,2"
     assert metadata["resume"] == "Un résumé."
     assert metadata["intent"] == "comprendre, agir"
-    assert metadata["outgoing_links"][0]["url"] == "https://exemple.ch"
+    assert json.loads(metadata["outgoing_links"])[0]["url"] == "https://exemple.ch"
     assert rows[1][2] == "0.5, -0.25, 1.0"
     # 4 appels structurés (1 resume + 3 intents + 1 hyq = 5) — vérifie le compte
     structured = [c for c in vlm.calls if c[0] == "text_completion_structured"]
@@ -256,9 +256,8 @@ def test_hyq_embedding_writes_one_csv_per_question(ctx) -> None:
         rows = list(csv.reader(f))
     assert rows[0] == ["CONTENT", "METADATA", "EMBEDDING"]
     assert rows[1][0] == "Question A ?"
-    # ⚠ Le title des CSV hyq garde l'extension : le lot F3 ne touche que
-    # build_metadata (périmètre explicite du plan). À trancher si le retrieval
-    # doit un jour joindre hyq → document par ce champ.
+    # Le title des CSV hyq garde l'extension, désormais cohérent avec
+    # build_metadata (qui inclut aussi l'extension depuis le lot F3).
     assert json.loads(rows[1][1]) == {"title": "Doc.pdf"}
     assert emb.calls == ["Question A ?", "Question B ?", "Question C ?"]
 
