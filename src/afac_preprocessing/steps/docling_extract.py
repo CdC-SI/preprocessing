@@ -224,6 +224,40 @@ class DoclingExtractStep(PipelineStep):
         self.threads = threads
         self.device = device
         self.images_scale = images_scale
+        # Single-slot converter cache. Docling only loads the model weights on
+        # the first convert() and keeps them in converter.initialized_pipelines,
+        # an INSTANCE cache: rebuilding the converter per document empties it and
+        # forces a full GPU reload plus two HuggingFace round-trips every time.
+        # run_batch reuses this very step instance across the batch, so caching
+        # here turns 136 pipeline initializations into 1.
+        self._converter: DocumentConverter | None = None
+        self._converter_key: tuple[object, ...] | None = None
+
+    def _get_converter(self, *, extract_images: bool) -> DocumentConverter:
+        """The run's converter: built on the first document, reused afterwards.
+
+        The key covers every argument of ``build_converter()``. ``extract_images``
+        comes from the context (``settings.enable_image_extraction``) rather than
+        from the instance, so it is the one value that could differ between two
+        documents — it must be part of the key. A key change rebuilds, dropping
+        the previous converter: never two GPU pipelines alive at once.
+        """
+        key = (self.ocr, tuple(self.lang), self.tables, self.threads,
+               self.device, extract_images, self.images_scale)
+        if self._converter is None or self._converter_key != key:
+            if self._converter is not None:
+                _log.info("Docling options changed — rebuilding the converter")
+            self._converter = build_converter(
+                ocr=self.ocr,
+                lang=self.lang,
+                tables=self.tables,
+                threads=self.threads,
+                device=self.device,
+                extract_images=extract_images,
+                images_scale=self.images_scale,
+            )
+            self._converter_key = key
+        return self._converter
 
     def inputs(self, ctx: PipelineContext) -> list[Path]:
         return [ctx.workspace.source_pdf]
@@ -241,15 +275,7 @@ class DoclingExtractStep(PipelineStep):
         extract_images = ctx.settings.enable_image_extraction
 
         try:
-            converter = build_converter(
-                ocr=self.ocr,
-                lang=self.lang,
-                tables=self.tables,
-                threads=self.threads,
-                device=self.device,
-                extract_images=extract_images,
-                images_scale=self.images_scale,
-            )
+            converter = self._get_converter(extract_images=extract_images)
 
             _log.info("Converting: %s", input_path)
             t0 = time.time()
