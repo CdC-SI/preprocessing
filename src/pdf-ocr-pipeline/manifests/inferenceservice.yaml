@@ -48,4 +48,4 @@ spec:
       runtime: pdf-ocr-pipeline
       storage:
         key: s3-connection
-        path: models/pdf-ocr-pipeline-v2
+        path: pdf-ocr-pipeline-v2
