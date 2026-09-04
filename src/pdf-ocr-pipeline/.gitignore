@@ -1,2 +1,4 @@
 .env
 wheels/
+benchmark_results/
+*.log

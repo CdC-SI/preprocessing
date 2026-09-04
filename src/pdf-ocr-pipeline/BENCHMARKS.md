@@ -4,6 +4,26 @@ Tracks the acceptance test for this service's core constraint: **OCR must
 never starve the shared translation VLM**. Each entry below is one full
 idle/load run pair, captured with `tests/benchmark_contention.py`.
 
+**Is this test script already what's needed to answer "does a long OCR job
+starve translation, and is translation actually prioritized"? Yes.**
+`tests/benchmark_contention.py --phase load` submits one long-running OCR
+document to `/jobs` (or legacy `:predict` with `--legacy`) and, concurrently,
+drives a steady rate of real end-to-end translation jobs against the
+zia-translation REF microservice for the full duration of the OCR run. It
+reports translation latency percentiles for that concurrent window, which is
+directly compared against an `idle` (OCR-off) baseline below. **Result from
+round 1** (45-page document, the realistic "long OCR task" case): translation
+requests are **not starved** — every single one still completed successfully
+(0 errors across both phases) — but they are **not fully isolated from OCR
+either**: p95 latency rose from 31.65s (idle) to 41.47s (load), a **+31%**
+slowdown, moderately over the ~20% target. This is consistent with the
+design: OCR is sent to the shared VLM with lower vLLM request priority and a
+hard concurrency cap (`VLM_MAX_CONCURRENCY=4` of `--max-num-seqs=17`), so
+translation is protected from being blocked or timed out, but a long OCR job
+still measurably competes for the same GPU/scheduler resources. See
+round 1's full entry below for the numbers and caveats, and `README.md` →
+"How it protects translation" for the four mechanisms behind this behaviour.
+
 Pass criterion: translation **p95 in the `load` phase within ~20% of the
 `idle` phase**, measured back-to-back with matching `--duration`/`--rate` so
 sample counts are comparable (translation latency has high natural variance;
@@ -12,11 +32,13 @@ below for why).
 
 ---
 
+
 ## How to run a measurement round
 
 ```bash
 source venv_preprocessing/bin/activate   # or your equivalent
 cd src/pdf-ocr-pipeline
+mkdir -p benchmark_results   # gitignored; keeps result JSON out of the repo
 
 export NO_PROXY=$NO_PROXY,.zas.admin.ch,.mgnt.zas.admin.ch
 export ZIA_TRANSLATION_URL="https://gateway-r.zas.admin.ch/zia-trad/api/translation"
@@ -28,13 +50,14 @@ export AUTH_TOKEN=$(grep '^AUTH_TOKEN=' .env | cut -d= -f2-)
 #    fair idle comparison (OCR finishes when it finishes; translation keeps
 #    sampling for --duration regardless).
 python tests/benchmark_contention.py --phase load --rate 0.3 \
-  --pdf tests/fixtures/10-long-pdf/DR-1-45.pdf --duration 900 --out load.json
+  --pdf tests/fixtures/10-long-pdf/DR-1-45.pdf --duration 900 \
+  --out benchmark_results/load.json
 
 # 2. Idle phase SECOND, with --duration/--rate matched to how long the load
 #    run's translation sampling actually took (see "count" in load.json —
 #    at rate 0.3 that's roughly count / 0.3 seconds).
 python tests/benchmark_contention.py --phase idle --rate 0.3 \
-  --duration <matched_seconds> --out idle.json
+  --duration <matched_seconds> --out benchmark_results/idle.json
 ```
 
 > Run **load before idle**. The OCR job's duration is unpredictable (depends
@@ -92,4 +115,55 @@ To tune, adjust `VLM_MAX_CONCURRENCY` in the `pdf-ocr-pipeline-env` secret
   Next tuning/rollback round should capture both sides in the same sitting
   for a true before/after comparison.
 
-Raw output: `load.json`, `idle.json` (gitignored; re-run to reproduce).
+Raw output: `benchmark_results/load.json`, `benchmark_results/idle.json`
+(directory gitignored; re-run to reproduce).
+
+---
+
+### 2026-09-04 (round 2) — legacy `:predict` vs async `/jobs`, same deployment, small doc
+
+**Goal:** isolate the endpoint's own contention cost from OCR document size,
+by hitting **both** the legacy synchronous `:predict` route and the new async
+`/jobs` route on the *same* running deployment with the *same* document.
+This is **not** a before/after comparison of the old pre-async pipeline vs
+the new one (that requires a `main` checkout redeploy — still outstanding,
+see round 1 above); it isolates whether the async/job-queue machinery itself
+adds material overhead versus the legacy code path, for a document small
+enough that both can process it (legacy rejects anything over
+`LEGACY_MAX_PAGES=10` with `413 use_async_api`).
+
+**Document:** `tests/fixtures/4-mixed-digital-scanned/fixture04.pdf`, 7 pages
+(mixed digital/scanned, exercises real VLM OCR — the largest fixture that
+still fits under the legacy 10-page cap).
+
+| Run | Duration | Rate | n | OCR wall time | min | p50 | p95 | p99 | max | mean |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| idle (matched) | 27 s | 0.3/s | 9 | — | 13.75 | 16.86 | **17.88** | 17.88 | 17.88 | 16.65 |
+| load, legacy `:predict` | ~25 s (OCR-bound) | 0.3/s | 8 | 24.9 s | 13.52 | 15.02 | **19.34** | 19.34 | 19.34 | 15.47 |
+| load, async `/jobs` | ~25 s (OCR-bound) | 0.3/s | 8 | 25.0 s | 15.57 | 18.14 | **19.87** | 19.87 | 19.87 | 17.53 |
+
+- **OCR wall time is essentially identical** (24.9s legacy vs 25.0s async) for
+  the same 7-page document — the async job-queue/worker-pool machinery adds
+  no measurable processing overhead by itself.
+- **Translation contention, both within the ~20% acceptance threshold** for a
+  document this small:
+  - Legacy: p95 17.88s → 19.34s = **+8.2%**
+  - Async: p95 17.88s → 19.87s = **+11.1%**
+  - The ~3pp gap between them is within noise at n=8 and not a meaningful
+    regression — both endpoints behave equivalently at this scale.
+- **Caveat — this does not contradict round 1's +31% finding.** A 7-page
+  document is exactly the kind of small/interactive job the priority queue
+  and page-level work-unit design are meant to make cheap; the whole point of
+  the async redesign is to protect translation on *large* documents (round
+  1's 45-page case), which the legacy endpoint cannot even accept. The two
+  rounds measure different things: round 1 = async's cost under a large,
+  legacy-incompatible document; round 2 = async vs legacy cost parity on a
+  small, legacy-compatible document. Both are needed for the full picture.
+- **Still outstanding:** a true old-pipeline-vs-new-pipeline round using the
+  *same* 45-page document, requiring a `git checkout main` redeploy per
+  `RUNBOOK.md` §9i, since the legacy endpoint on the current deployment
+  cannot process documents that large at all (`413 use_async_api`).
+
+Raw output: `benchmark_results/load_legacy_7p.json`,
+`benchmark_results/load_async_7p.json`, `benchmark_results/idle_7p_matched.json`
+(directory gitignored; re-run to reproduce).

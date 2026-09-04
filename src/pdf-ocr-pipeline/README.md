@@ -200,7 +200,8 @@ Four mechanisms, all necessary:
    (default 4) OCR requests are in flight against the VLM (`--max-num-seqs=17`),
    and OCR requests are sent with lower priority than translation.
 
-Measured results and acceptance-test methodology: see **[`BENCHMARKS.md`](BENCHMARKS.md)**.
+Measured results and acceptance-test methodology: see **[`BENCHMARKS.md`](BENCHMARKS.md)**
+(non-technical summary: **[`MANAGEMENT_SUMMARY.md`](MANAGEMENT_SUMMARY.md)**).
 
 ---
 
@@ -316,6 +317,9 @@ pdf-ocr-pipeline/
 │   └── routes.py             # HTTP handlers
 ├── tokenizer/                # bundled tokenizer.json (pod has no internet)
 ├── manifests/
+├── BENCHMARKS.md             # contention test methodology + results log
+├── MANAGEMENT_SUMMARY.md     # non-technical summary of the async rebuild
+├── benchmark_results/        # gitignored — raw JSON from benchmark runs
 └── tests/
     ├── mock_models.py           # fake VLM/LLM/embedding servers
     ├── test_client.py           # reference client (mirrors the Java app)
