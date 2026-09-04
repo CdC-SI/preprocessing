@@ -21,14 +21,35 @@ translation.
 | `GET` | `/stats` | Queue depth, VLM pressure, retention counters. |
 | `POST` | `/v1/models/{name}:predict` | **Legacy v1 contract**, unchanged shapes. |
 
-### Submitting
+### Quickstart (curl)
+
+Common setup — run once per shell session:
 
 ```bash
-curl -X POST https://$HOST/jobs \
+cd src/pdf-ocr-pipeline
+export NO_PROXY=$NO_PROXY,.mgnt.zas.admin.ch
+HOST=pdf-ocr-pipeline-model-serving.apps.openshift-ai.mgnt.zas.admin.ch
+TOKEN=$(grep '^AUTH_TOKEN=' .env | cut -d= -f2-)
+PDF=data/test.pdf
+USER=abc-123
+
+# -k skips TLS verification of the cluster's internal CA; drop it if your
+# workstation already trusts that CA.
+CURL="curl -sk"
+```
+
+#### `POST /jobs` — submit a document
+
+```bash
+RESP=$($CURL -X POST https://$HOST/jobs \
   -H "Authorization: Bearer $TOKEN" \
-  -F "file=@document.pdf" \
-  -F "user_uuid=abc-123" \
-  -F "doc_title=My Document"
+  -F "file=@$PDF" \
+  -F "user_uuid=$USER" \
+  -F "doc_title=Test Document")
+echo "$RESP" | python3 -m json.tool
+
+JOB_ID=$(echo "$RESP" | python3 -c 'import sys,json; print(json.load(sys.stdin)["job_id"])')
+echo "JOB_ID=$JOB_ID"
 ```
 
 ```json
@@ -40,6 +61,99 @@ curl -X POST https://$HOST/jobs \
   "poll_url": "/jobs/1a342a54-.../?user_uuid=abc-123",
   "result_url": "/jobs/1a342a54-.../result?user_uuid=abc-123"
 }
+```
+
+#### `GET /jobs/{id}` — poll status
+
+```bash
+$CURL "https://$HOST/jobs/$JOB_ID?user_uuid=$USER" \
+  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+
+# or watch it advance:
+watch -n 2 "$CURL 'https://$HOST/jobs/$JOB_ID?user_uuid=$USER' -H 'Authorization: Bearer $TOKEN' | python3 -m json.tool"
+```
+
+#### `GET /jobs/{id}/result` — fetch the result
+
+Only valid once status is terminal; returns `409` if called too early.
+
+```bash
+$CURL -w "\nHTTP %{http_code}\n" \
+  "https://$HOST/jobs/$JOB_ID/result?user_uuid=$USER" \
+  -H "Authorization: Bearer $TOKEN" -o result.json
+python3 -m json.tool result.json | head -50
+```
+
+#### `DELETE /jobs/{id}` — cancel a job
+
+```bash
+$CURL -X DELETE "https://$HOST/jobs/$JOB_ID?user_uuid=$USER" \
+  -H "Authorization: Bearer $TOKEN" -w "\nHTTP %{http_code}\n"
+
+# confirm status flips to cancelled
+$CURL "https://$HOST/jobs/$JOB_ID?user_uuid=$USER" \
+  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+```
+
+#### `GET /stats` — queue depth / VLM pressure
+
+```bash
+$CURL "https://$HOST/stats" -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+```
+
+```json
+{
+  "queue": {"high": 0, "low": 0, "total": 0},
+  "queue_oldest_wait_seconds": 0.0,
+  "vlm_inflight": 0,
+  "vlm_max_concurrency": 4,
+  "large_doc_concurrency": 2,
+  "worker_pool": {"workers": 6, "workers_alive": 6, "healthy": true, "active_workers": 0, "pages_processed": 194, "draining": false, "uptime_seconds": 71143.0},
+  "store": {"jobs_tracked": 12, "jobs_by_status": {"completed": 10, "cancelled": 2}, "result_bytes": 251986, "result_bytes_limit": 2147483648, "instance_id": "cbf41d9b"}
+}
+```
+
+#### Legacy `POST /v1/models/{name}:predict`
+
+Still supported, but rejects documents over `LEGACY_MAX_PAGES` (default 10)
+with `413 use_async_api`. Use a small PDF.
+
+```bash
+B64=$(base64 -w 0 tests/fixtures/1-born-digital-plain-prose/31530_schlichtungskommission_formular.pdf)
+
+cat <<EOF > payload.json
+{
+  "instances": [{
+    "data_url": "${B64}",
+    "user_uuid": "$USER",
+    "doc_title": "Legacy Test Document"
+  }]
+}
+EOF
+
+$CURL -w "\nHTTP %{http_code}\n" -X POST \
+  https://$HOST/v1/models/user-pdf-preprocessing:predict \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d @payload.json
+```
+
+Expect `200` with inline chunked/embedded documents for a small PDF, or
+`413`/`use_async_api` if the PDF exceeds `LEGACY_MAX_PAGES`.
+
+#### Error-path smoke checks
+
+```bash
+# 409: result requested before completion
+$CURL -w "\nHTTP %{http_code}\n" "https://$HOST/jobs/$JOB_ID/result?user_uuid=$USER" \
+  -H "Authorization: Bearer $TOKEN"
+
+# 401: missing/invalid token
+$CURL -w "\nHTTP %{http_code}\n" "https://$HOST/stats" -H "Authorization: Bearer invalid"
+
+# 404/410: unknown or expired job id
+$CURL -w "\nHTTP %{http_code}\n" "https://$HOST/jobs/00000000-does-not-exist?user_uuid=$USER" \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ### Status values
@@ -85,6 +199,8 @@ Four mechanisms, all necessary:
 4. **Concurrency budget + vLLM priority.** At most `VLM_MAX_CONCURRENCY`
    (default 4) OCR requests are in flight against the VLM (`--max-num-seqs=17`),
    and OCR requests are sent with lower priority than translation.
+
+Measured results and acceptance-test methodology: see **[`BENCHMARKS.md`](BENCHMARKS.md)**.
 
 ---
 

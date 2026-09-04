@@ -6,11 +6,19 @@ again while a large PDF is being processed. This is the acceptance test for
 the whole change: translation p95 under load should stay within ~20% of the
 idle baseline.
 
+The zia-translation service (see ../../zia-translation/src/main/java/.../
+TranslationController.java) is itself asynchronous: submitting a document
+returns `202 Accepted` with a `jobId` immediately, and completion is observed
+by polling `GET /jobs/{jobId}/status` until the job reaches a terminal
+`JobStatus` (PENDING/PROCESSING -> COMPLETED/FAILED). "Translation latency"
+here is therefore the submit-to-completion time for a small reference
+document, not a single synchronous HTTP round-trip.
+
 Run the baseline BEFORE deploying the new pipeline so the improvement is
 demonstrable.
 
     export ZIA_TRANSLATION_URL="https://gateway-r.zas.admin.ch/zia-trad/api/translation"
-    export ZIA_TRANSLATION_TOKEN="..."
+    export ZIA_TRANSLATION_TOKEN="..."   # sent as: Blue: Bearer $TOKEN
     export PDF_OCR_URL="https://pdf-ocr-pipeline-model-serving.apps.openshift-ai.mgnt.zas.admin.ch"
     export AUTH_TOKEN="..."
 
@@ -40,17 +48,19 @@ from typing import List, Optional
 
 import httpx
 
-TRANSLATION_URL = os.environ.get("ZIA_TRANSLATION_URL", "")
+TRANSLATION_URL = os.environ.get("ZIA_TRANSLATION_URL", "").rstrip("/")
 TRANSLATION_TOKEN = os.environ.get("ZIA_TRANSLATION_TOKEN", "")
 PDF_OCR_URL = os.environ.get("PDF_OCR_URL", "http://127.0.0.1:8080")
 AUTH_TOKEN = os.environ.get("AUTH_TOKEN", "")
 
-SAMPLE_TEXTS = [
-    "Le présent document décrit les prestations de l'assurance-vieillesse.",
-    "Die Anmeldung muss innerhalb von dreissig Tagen eingereicht werden.",
-    "Il richiedente deve presentare la documentazione completa.",
-    "The applicant must provide supporting evidence with the claim form.",
-]
+# Small reference document repeatedly resubmitted for the translation-latency
+# samples. Any small PDF works; this one ships with the repo's test fixtures.
+TRANSLATION_SAMPLE_PDF = Path(__file__).parent / "fixtures" / "1-born-digital-plain-prose" / "31530_schlichtungskommission_formular.pdf"
+TRANSLATION_TARGET_LANGUAGE = os.environ.get("ZIA_TRANSLATION_TARGET_LANGUAGE", "de")
+TRANSLATION_STRATEGY = os.environ.get("ZIA_TRANSLATION_STRATEGY")  # optional; None -> service default
+
+# Terminal JobStatus values, per zia-translation's job.JobStatus enum.
+TRANSLATION_TERMINAL_STATUSES = {"COMPLETED", "FAILED"}
 
 
 @dataclass
@@ -82,30 +92,68 @@ class Latencies:
         }
 
 
-async def translate_once(client: httpx.AsyncClient, text: str, latencies: Latencies):
+async def translate_once(
+    client: httpx.AsyncClient, pdf_bytes: bytes, filename: str, latencies: Latencies
+):
     """
-    One translation request.
+    One end-to-end translation job: submit, poll to a terminal status, time it.
 
-    The ZIA translation gateway authenticates with a custom `Blue` header
-    rather than `Authorization`.
+    zia-translation is asynchronous (mirrors this OCR pipeline's own /jobs
+    API): `POST /api/translation/pdf` takes multipart `file` + `targetLanguage`
+    (+ optional `strategy`) and returns `202` with `{jobId, status}`
+    immediately; completion is observed via `GET /jobs/{jobId}/status`.
+    Auth is a custom `Blue` header carrying a bearer JWT, not `Authorization`.
     """
+    headers = {"Blue": f"Bearer {TRANSLATION_TOKEN}"} if TRANSLATION_TOKEN else {}
     started = time.time()
     try:
         response = await client.post(
-            TRANSLATION_URL,
-            json={"text": text, "target_language": "de"},
-            headers={
-                "Blue": f"Bearer {TRANSLATION_TOKEN}",
-                "Content-Type": "application/json",
+            f"{TRANSLATION_URL}/pdf",
+            files={"file": (filename, pdf_bytes, "application/pdf")},
+            data={
+                "targetLanguage": TRANSLATION_TARGET_LANGUAGE,
+                **({"strategy": TRANSLATION_STRATEGY} if TRANSLATION_STRATEGY else {}),
             },
-            timeout=120.0,
+            headers=headers,
+            timeout=30.0,
         )
+        if response.status_code != 202:
+            latencies.errors += 1
+            print(
+                f"    translation submit HTTP {response.status_code}: {response.text[:300]}",
+                file=sys.stderr,
+            )
+            return
+
+        job_id = response.json()["jobId"]
+        # NOTE: the current `GET /jobs/{jobId}/status` route returns a bare
+        # 500 through gateway-r.zas.admin.ch even though the identical
+        # business logic works fine through the deprecated alias below —
+        # this is a gateway/routing-layer issue on the `/jobs/` prefix, not
+        # an auth or payload problem. Use the deprecated alias until that's
+        # fixed upstream in zia-translation / the gateway config.
+        status_url = f"{TRANSLATION_URL}/pdf/{job_id}/status"
+
+        while True:
+            poll = await client.get(status_url, headers=headers, timeout=30.0)
+            if poll.status_code != 200:
+                latencies.errors += 1
+                print(
+                    f"    translation poll HTTP {poll.status_code}: {poll.text[:300]}",
+                    file=sys.stderr,
+                )
+                return
+            status = poll.json()["status"]
+            if status in TRANSLATION_TERMINAL_STATUSES:
+                break
+            await asyncio.sleep(0.5)
+
         elapsed = time.time() - started
-        if response.status_code == 200:
+        if status == "COMPLETED":
             latencies.add(elapsed)
         else:
             latencies.errors += 1
-            print(f"    translation HTTP {response.status_code}", file=sys.stderr)
+            print(f"    translation job {job_id} ended {status}", file=sys.stderr)
     except Exception as exc:
         latencies.errors += 1
         print(f"    translation error: {type(exc).__name__}: {exc}", file=sys.stderr)
@@ -117,16 +165,17 @@ async def translation_load(
     """Drive translation requests at a steady rate until told to stop."""
     latencies = Latencies()
     interval = 1.0 / rate
-    index = 0
+    pdf_bytes = TRANSLATION_SAMPLE_PDF.read_bytes()
+    filename = TRANSLATION_SAMPLE_PDF.name
 
     async with httpx.AsyncClient(verify=False) as client:
         pending: List[asyncio.Task] = []
         deadline = time.time() + duration
 
         while time.time() < deadline and not stop_event.is_set():
-            text = SAMPLE_TEXTS[index % len(SAMPLE_TEXTS)]
-            index += 1
-            pending.append(asyncio.create_task(translate_once(client, text, latencies)))
+            pending.append(
+                asyncio.create_task(translate_once(client, pdf_bytes, filename, latencies))
+            )
             pending = [task for task in pending if not task.done()]
             await asyncio.sleep(interval)
 
