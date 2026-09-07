@@ -1,7 +1,7 @@
 # Architecture
 
 Le pipeline transforme un PDF en une ligne `CONTENT | METADATA | EMBEDDING`
-prête pour le retrieval, en 13 étapes chaînées.
+prête pour le retrieval, en 14 étapes chaînées.
 
 ## Vue d'ensemble
 
@@ -37,7 +37,7 @@ l'agrégat dépend de tous les autres.
 | `DocumentWorkspace` | `workspace.py` | **Unique propriétaire des conventions de chemins.** Toute sortie du pipeline est une propriété de cette classe — ne jamais reconstruire un nom de fichier ailleurs. |
 | `PipelineContext` | `context.py` | État d'un run (settings + workspace + clients), immuable. Remplace la circulation d'état par `os.environ`. |
 | `ClientBundle` | `clients/bundle.py` | Possède **une** boucle d'événements et **un** client par cible (VLM, embedding) pour tout le run. |
-| `PipelineStep` | `core/step.py` | Contrat des 13 étapes : `inputs()`/`outputs()` déclaratifs, `validate_inputs()`, `execute()`. |
+| `PipelineStep` | `core/step.py` | Contrat des 14 étapes : `inputs()`/`outputs()` déclaratifs, `validate_inputs()`, `execute()`. |
 | `Pipeline` | `core/pipeline.py` | Registre, sélection (`select()`), exécution (`run`, `run_batch`), rapports. |
 | `StepRunner` | `core/runner.py` | Seam in-process / subprocess. `InProcessRunner` par défaut. |
 
@@ -53,7 +53,7 @@ toujours à travers `DocumentWorkspace` (personne ne reconstruit un chemin).
 `aggregate` est branché en pointillés parce qu'il n'est pas une étape : il se
 déclenche après le lot, quand tous les documents ont écrit leur CSV.
 
-## Les 13 étapes
+## Les 14 étapes
 
 `afac-preprocess steps --graph` imprime le chaînage réel, déduit des
 déclarations `inputs()`/`outputs()`.
@@ -71,17 +71,26 @@ déclarations `inputs()`/`outputs()`.
 | 09 | `markdown-convert` | — | `_url_vlm.md` |
 | 10 | `markdown-control` | ✅ | `_vlm_check.md` |
 | 11 | `inject-image-descriptions` | — | `_final.md` |
-| 12 | `metadata-generation` | ✅ | `metadata/<doc>_final.csv`, `resume.md`, `intent.json`, `hyq.json`, `embedding.json` |
-| 13 | `hyq-embedding` | ✅ | `metadata/hyq_<doc>/question_N.csv` |
+| 12 | `table-jsonl-normalize` | — | `_final_embed.md`, `tables_markdown/*.jsonl` |
+| 13 | `metadata-generation` | ✅ | `metadata/<doc>_final.csv`, `resume.md`, `intent.json`, `hyq.json`, `embedding.json` |
+| 14 | `hyq-embedding` | ✅ | `metadata/hyq_<doc>/question_N.csv` |
 
-Deux collaborateurs portent les appels modèle de l'étape 12 sans être des
+L'étape 12 est un filet de sécurité déterministe (aucun appel VLM) : la règle
+TABLES du prompt de l'étape 10 interdit de convertir un tableau JSON en
+tableau Markdown, mais le VLM ne la respecte pas toujours (converti pour
+certaines tables/pages, respecté pour d'autres dans le même document).
+`_final.md` reste inchangé (lisible par un humain) ; `_final_embed.md` est la
+variante 100 % JSONL, lue en priorité par `metadata-generation` quand elle
+existe.
+
+Deux collaborateurs portent les appels modèle de l'étape 13 sans être des
 étapes du registre : `MetadataEnhancer` (resume / intent / hyq) et
 `DocumentEmbedder` (embedding du markdown).
 
 ### Le chaînage réel
 
 > **Diagramme :** [`pipeline-steps.mmd`](pipeline-steps.mmd) — le DAG des
-> 13 étapes, étiqueté par le fichier qui circule sur chaque arête.
+> 14 étapes, étiqueté par le fichier qui circule sur chaque arête.
 
 Il transcrit ce qu'imprime `afac-preprocess steps --graph`, lui-même déduit des
 `inputs()`/`outputs()` déclarés (à une nuance près, signalée en fin de

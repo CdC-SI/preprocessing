@@ -13,7 +13,7 @@ ALL_NAMES = [
     "docling-extract", "reorder-doctags", "opencv-check", "csv-to-jsonlines",
     "load-jsonline-doctags", "image-description", "url-extraction", "url-tuning",
     "markdown-convert", "markdown-control", "inject-image-descriptions",
-    "metadata-generation", "hyq-embedding",
+    "table-jsonl-normalize", "metadata-generation", "hyq-embedding",
 ]
 
 
@@ -21,14 +21,14 @@ def _names(pipeline: Pipeline) -> list[str]:
     return [step.name for step in pipeline.steps]
 
 
-def test_default_has_the_13_steps_in_order() -> None:
+def test_default_has_the_14_steps_in_order() -> None:
     assert _names(Pipeline.default()) == ALL_NAMES
 
 
 def test_select_excludes_opencv_check_by_default() -> None:
     selected = Pipeline.default().select()
     assert "opencv-check" not in _names(selected)
-    assert len(selected.steps) == 12
+    assert len(selected.steps) == 13
 
 
 def test_select_include_disabled_keeps_opencv_check() -> None:
@@ -70,7 +70,7 @@ def test_select_skip_by_name() -> None:
     names = _names(selected)
     assert "image-description" not in names
     assert "hyq-embedding" not in names
-    assert len(names) == 10
+    assert len(names) == 11
 
 
 def test_select_unknown_name_lists_valid_steps() -> None:
@@ -79,13 +79,13 @@ def test_select_unknown_name_lists_valid_steps() -> None:
     message = str(excinfo.value)
     assert "pas-une-etape" in message
     assert "1=docling-extract" in message
-    assert "13=hyq-embedding" in message
+    assert "14=hyq-embedding" in message
 
 
 def test_select_is_pure_and_chainable() -> None:
     base = Pipeline.default()
     base.select(skip=["url-tuning"])
-    assert len(base.steps) == 13  # l'original n'est pas modifié
+    assert len(base.steps) == 14  # l'original n'est pas modifié
     chained = base.select(to="markdown-convert").select(skip=["reorder-doctags"])
     assert "reorder-doctags" not in _names(chained)
 
@@ -107,7 +107,7 @@ def test_dry_run_executes_nothing_and_writes_nothing(tmp_path: Path) -> None:
     report = Pipeline.default().run(ctx)
 
     assert report.ok
-    assert len(report.results) == 13
+    assert len(report.results) == 14
     assert {result.status for _, result in report.results} == {StepStatus.SKIPPED}
     # Le PDF n'existe même pas : sans le court-circuit, docling-extract aurait échoué.
     assert not (tmp_path / "data" / "output_files_preprocessing").exists()

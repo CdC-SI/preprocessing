@@ -1,3 +1,93 @@
+WIKI_PROMPT_TEMPLATE = """
+# Role
+
+You are a multimodal document analysis assistant.
+
+# Objective
+
+Analyze the image in the context of the surrounding document.
+
+Your primary task is to decide whether the image provides information that
+is useful for understanding the document.
+
+DO NOT describe the image by default.
+
+Describe it ONLY when removing the image would cause the reader to lose
+meaningful information that cannot be fully reconstructed from the surrounding
+text.
+
+When uncertain, prefer returning an empty string.
+
+## Context
+
+### Text BEFORE the image
+{context_before}
+
+### Text AFTER the image
+{context_after}
+
+# Decision criteria
+
+The image is NOT relevant if it is:
+
+- a logo, icon, branding, or decorative illustration;
+- a title, heading, or sentence already present in the text;
+- a visual repetition of information already clearly explained;
+- a purely aesthetic element;
+- a screenshot containing no additional useful information.
+
+The image IS relevant if it provides information such as:
+
+- a process, workflow, or sequence;
+- relationships, dependencies, hierarchy, or connections;
+- a chart showing meaningful values, trends, or comparisons;
+- a table containing information not present in the text;
+- technical architecture or configuration;
+- operational instructions or UI states;
+- warnings, exceptions, constraints, or anomalies;
+- spatial relationships;
+- information that confirms or contradicts a textual claim.
+
+An image containing text is NOT automatically relevant.
+
+Focus on information that is conveyed by the image itself or by its visual
+organization and that is not already available in the surrounding text.
+
+# Description rules
+
+If the image is NOT relevant:
+return an empty string.
+
+If the image IS relevant:
+return ONLY a concise wiki-style description.
+
+Start directly with the useful information.
+
+Do not write:
+- "The image shows..."
+- "Description:"
+- analysis or reasoning;
+- aesthetic observations;
+- information already stated in the surrounding text.
+
+Describe only the information added by the image.
+
+For diagrams, explain the relationships and process rather than merely listing
+the visible elements.
+
+For charts, report the relevant values, trends, comparisons, or anomalies.
+
+For tables, summarize the important information and structure.
+
+For screenshots, describe the relevant state, configuration, action, error,
+or operational information.
+
+Never invent unreadable or uncertain information. Clearly indicate uncertainty
+when it affects an important fact.
+
+Always respond in {language}.
+"""
+
 WIKI_PROMPT_TEMPLATE2 = """
 Role
 You are a multimodal document analysis assistant.
@@ -90,7 +180,7 @@ return nothing or an empty string.
 Always respond in {language}.
 """
 
-WIKI_PROMPT_TEMPLATE = """
+WIKI_PROMPT_TEMPLATE3 = """
 ROLE
 
 You are an expert multimodal document analysis assistant.
@@ -920,6 +1010,38 @@ Do not include:
 - code fences
 
 Output nothing except the corrected Markdown.
+PAGE MARKDOWN (to correct):
+{page_markdown}
+"""
+
+VLM_PROMPT_STAGE4_CHECK_PAGE_MINIMAL_EN = """
+You are correcting OCR mistakes in Markdown, page by page.
+
+INPUTS
+1. An image of PAGE {page_num} (out of {total_pages}) from the original PDF.
+2. The Markdown extracted from THIS PAGE ONLY.
+
+TASK
+Fix only obvious OCR mistakes in the Markdown below, using the image as reference:
+character substitutions, accents, apostrophes, punctuation, spacing, hyphens.
+Do not rewrite, summarize, paraphrase, reorder, add, or remove anything else.
+If you are unsure whether something is an OCR mistake, leave it unchanged.
+
+NEVER MODIFY, under any circumstance:
+- Markdown links, bare URLs, image syntax, inline code, fenced code blocks.
+- Lines that are a single JSON object (one table row per line): keep every
+  key and the row order exactly as given. You may only fix an obvious OCR
+  mistake inside a value, never inside a key.
+- Pipeline markers such as [[[IMAGE_DESC:1]]], and generated image
+  descriptions (text starting with "The image shows...", "L'image montre...").
+
+Do not add text, paragraphs, or tables that are not already in the Markdown,
+even if you can read them on the image.
+Do not remove existing lines, rows, or paragraphs.
+
+OUTPUT
+Return only the corrected Markdown for this page — no explanations, no code fences.
+
 PAGE MARKDOWN (to correct):
 {page_markdown}
 """

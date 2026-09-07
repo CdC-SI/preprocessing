@@ -69,9 +69,27 @@ class Pipeline:
         self.runner: StepRunner = runner if runner is not None else InProcessRunner()
 
     @classmethod
-    def default(cls, runner: StepRunner | None = None) -> Pipeline:
-        """The 13 steps, in canonical order."""
-        return cls(build_default_steps(), runner)
+    def default(
+        cls,
+        runner: StepRunner | None = None,
+        *,
+        fixed_tables: bool = False,
+        reorder_v3: bool = False,
+        deterministic_urls: bool = False,
+    ) -> Pipeline:
+        """The 14 steps, in canonical order.
+
+        Each flag opts into an independent step variant, see
+        ``registry.build_default_steps``.
+        """
+        return cls(
+            build_default_steps(
+                fixed_tables=fixed_tables,
+                reorder_v3=reorder_v3,
+                deterministic_urls=deterministic_urls,
+            ),
+            runner,
+        )
 
     # --- selection (semantics lifted from _select_steps / _resolve_step_ref) ---
 

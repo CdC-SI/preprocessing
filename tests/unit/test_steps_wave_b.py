@@ -201,6 +201,39 @@ def test_inject_missing_markdown(ctx: PipelineContext) -> None:
         InjectImageDescriptionsStep().run(ctx)
 
 
+# --- <!-- image --> résiduel : bruit pour la vectorisation (image skippée par
+# le VLM de description, ou description qui n'a pas pu être injectée) ---
+
+
+def test_inject_strips_leftover_image_placeholder(ctx: PipelineContext) -> None:
+    ctx.workspace.vlm_check_markdown.write_text(
+        "# Titre\n\nUn paragraphe.\n\n<!-- image -->\n\nLa suite.\n", encoding="utf-8"
+    )
+    result = InjectImageDescriptionsStep().run(ctx)
+    assert result.ok
+    final = ctx.workspace.final_markdown.read_text(encoding="utf-8")
+    assert "<!-- image -->" not in final
+    assert "Un paragraphe." in final
+    assert "La suite." in final
+
+
+def test_inject_strips_placeholder_alongside_injected_description(ctx: PipelineContext) -> None:
+    # Cas réel "CI - Tableau des dispenses" : une image décrite (marqueur
+    # injecté) et une image skippée (<!-- image --> résiduel) sur la même page.
+    ctx.workspace.vlm_check_markdown.write_text(
+        "Intro.\n\n[[[IMAGE_DESC:2]]]\n\n<!-- image -->\n\nSuite.\n", encoding="utf-8"
+    )
+    ctx.workspace.image_descriptions.write_text(
+        "## OK - Image 2/2 (page 1)\n\nDescription de l'image 2.\n", encoding="utf-8"
+    )
+    result = InjectImageDescriptionsStep().run(ctx)
+    assert result.ok
+    final = ctx.workspace.final_markdown.read_text(encoding="utf-8")
+    assert "Description de l'image 2." in final
+    assert "<!-- image -->" not in final
+    assert "[[[IMAGE_DESC:2]]]" not in final
+
+
 # --- registre : les 7 converties sont servies par leurs classes ---
 
 

@@ -1,4 +1,4 @@
-"""Common contract for the 13 steps: PipelineStep, StepResult, StepStatus.
+"""Common contract for the 14 steps: PipelineStep, StepResult, StepStatus.
 
 ``execute()`` stays synchronous — it's the common contract, the 7 pure
 steps don't need to know async exists. The 6 VLM steps will implement
@@ -44,7 +44,7 @@ class PipelineStep(ABC):
     """Base class for the pipeline steps.
 
     ``inputs()``/``outputs()`` are declarative: they feed the wiring test
-    (bad chaining across the 13 steps becomes impossible to introduce
+    (bad chaining across the 14 steps becomes impossible to introduce
     silently) and ``steps --graph`` (batch 5). The declarations are
     refined as each step is converted (batch 6).
     """

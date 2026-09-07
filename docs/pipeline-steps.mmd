@@ -1,4 +1,4 @@
-%% Le chaînage réel des 13 étapes, fichier par fichier.
+%% Le chaînage réel des 14 étapes, fichier par fichier.
 %% Référencé par docs/architecture.md § « Le chaînage réel ».
 %% Source de vérité : `afac-preprocess steps --graph`, lui-même déduit des
 %% inputs()/outputs() de src/afac_preprocessing/steps/*.py.
@@ -34,8 +34,9 @@ flowchart TD
 
     subgraph P4["Métadonnées & embeddings"]
         direction TB
-        S12["12 · metadata-generation"]
-        S13["13 · hyq-embedding"]
+        S12["12 · table-jsonl-normalize"]
+        S13["13 · metadata-generation"]
+        S14["14 · hyq-embedding"]
     end
 
     OUT[/"metadata/doc_final.csv<br/>CONTENT · METADATA · EMBEDDING"/]
@@ -51,7 +52,7 @@ flowchart TD
     S01 -->|"doc.doctags"| S02
     S01 -.->|"doc.doctags"| S03
     S01 -->|"tables/*.csv"| S04
-    S01 -->|"doc.json"| S12
+    S01 -->|"doc.json"| S13
     S02 -->|"_reordered.doctags"| S05
     S04 -->|"tables/*.jsonl"| S05
     S05 -->|"_reordered_with_tables.doctags"| S06
@@ -65,15 +66,16 @@ flowchart TD
     S09 -.->|"repli no-vlm"| S11
     S06 -.->|"_image_descriptions.md<br/>absence = cas nominal"| S11
     S11 -->|"_final.md"| S12
-    S12 -->|"hyq.json"| S13
-    S12 --> OUT
+    S12 -->|"_final_embed.md"| S13
+    S13 -->|"hyq.json"| S14
+    S13 --> OUT
     OUT --> AGG
 
     classDef vlm fill:#fde7e9,stroke:#c5221f,color:#111
     classDef plain fill:#e8f0fe,stroke:#3367d6,color:#111
     classDef off fill:#f1f3f4,stroke:#9aa0a6,color:#5f6368
-    class S06,S08,S10,S12,S13 vlm
-    class S01,S02,S04,S05,S07,S09,S11 plain
+    class S06,S08,S10,S13,S14 vlm
+    class S01,S02,S04,S05,S07,S09,S11,S12 plain
     class S03 off
     style PDF fill:#e6f4ea,stroke:#137333,color:#111
     style OUT fill:#fef7e0,stroke:#b06000,color:#111

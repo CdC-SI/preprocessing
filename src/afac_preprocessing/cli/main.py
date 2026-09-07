@@ -70,19 +70,27 @@ def _build_pipeline(
     skip: str,
     only: str,
     with_opencv_check: bool,
+    fixed_tables: bool = False,
+    reorder_v3: bool = False,
+    deterministic_urls: bool = False,
 ) -> Pipeline:
     if profile not in PROFILES:
         raise UnknownStep(
             f"Unknown profile {profile!r}. Valid profiles: {', '.join(sorted(PROFILES))}"
         )
     params = dict(PROFILES[profile])
+    variant_kwargs = {
+        "fixed_tables": fixed_tables,
+        "reorder_v3": reorder_v3,
+        "deterministic_urls": deterministic_urls,
+    }
 
     only_refs = _csv(only)
     if only_refs:
-        return Pipeline.default().select(only=only_refs)
+        return Pipeline.default(**variant_kwargs).select(only=only_refs)
 
     skip_refs = list(params.get("skip", [])) + _csv(skip)  # type: ignore[arg-type]
-    return Pipeline.default().select(
+    return Pipeline.default(**variant_kwargs).select(
         from_=from_step if from_step is not None else None,
         to=to_step if to_step is not None else params.get("to"),  # type: ignore[arg-type]
         skip=skip_refs,
@@ -114,10 +122,25 @@ def run(
     only: str = typer.Option("", "--only", help="Run only these steps (takes precedence over from/to/skip)."),
     no_ocr: bool = typer.Option(False, "--no-ocr", help="Passed to docling-extract only."),
     with_opencv_check: bool = typer.Option(False, "--with-opencv-check", help="Include the opencv-check step."),
+    fixed_tables: bool = typer.Option(
+        False,
+        "--fixed-tables",
+        help="Use the fixed variants of steps 04/05 (no silent table substitution).",
+    ),
+    reorder_v3: bool = typer.Option(
+        False,
+        "--reorder-v3",
+        help="Use the JSON-based variant of step 02 (page boundaries from Docling's prov[].page_no).",
+    ),
+    deterministic_urls: bool = typer.Option(
+        False,
+        "--deterministic-urls",
+        help="Use the deterministic variant of step 08 (no VLM call, anchor-text injection).",
+    ),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show the steps without running them."),
     verbose: int = typer.Option(0, "--verbose", "-v", count=True, help="-v = DEBUG."),
 ) -> None:
-    """Processes a PDF or all the PDFs in a directory through the pipeline's 13 steps."""
+    """Processes a PDF or all the PDFs in a directory through the pipeline's 14 steps."""
     configure_logging(verbose)
     try:
         settings = Settings.from_dotenv(_resolve_dotenv(dotenv))
@@ -125,6 +148,8 @@ def run(
         pipeline = _build_pipeline(
             profile=profile, from_step=from_step, to_step=to_step,
             skip=skip, only=only, with_opencv_check=with_opencv_check,
+            fixed_tables=fixed_tables, reorder_v3=reorder_v3,
+            deterministic_urls=deterministic_urls,
         )
         if not pipeline.steps:
             raise ConfigError("No steps selected, check --from-step/--to-step/--skip/--only.")
@@ -134,6 +159,21 @@ def run(
                     step.ocr = False
 
         typer.echo(f"{len(pdfs)} PDF(s) — steps: {', '.join(s.name for s in pipeline.steps)}")
+        active_variants = [
+            flag_name
+            for flag_name, active in (
+                ("fixed-tables", fixed_tables),
+                ("reorder-v3", reorder_v3),
+                ("deterministic-urls", deterministic_urls),
+            )
+            if active
+        ]
+        # Every variant step keeps the canonical step's `name` (required so it
+        # slots into the pipeline transparently) and writes to the same output
+        # path — by design, so downstream steps need no special-casing. That
+        # also means neither the file names nor the step list above can ever
+        # reveal which variant ran: this line is the only place that does.
+        typer.echo(f"Variants: {', '.join(active_variants) if active_variants else 'none (canonical pipeline)'}")
         if dry_run:
             # No VLM client, no aggregation: a dry-run must touch NEITHER the
             # network NOR the disk. Without this short-circuit, ClientBundle
@@ -206,7 +246,7 @@ def aggregate(
 def steps(
     graph: bool = typer.Option(False, "--graph", help="Show the inputs ← outputs chaining."),
 ) -> None:
-    """Lists the 13 steps (works without .env)."""
+    """Lists the 14 steps (works without .env)."""
     pipeline = Pipeline.default()
     if not graph:
         typer.echo(f"{'#':>2}  {'Name':<26} {'VLM':<4} {'Default':<7} Description")

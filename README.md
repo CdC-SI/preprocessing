@@ -9,7 +9,7 @@ markdown), génération de métadonnées + embeddings pour le retrieval.
 > **Diagramme :** [`docs/pipeline-overview.mmd`](docs/pipeline-overview.mmd)
 > — les quatre phases, du PDF au CSV.
 
-Un PDF entre, une ligne `CONTENT | METADATA | EMBEDDING` en sort. Les 13 étapes
+Un PDF entre, une ligne `CONTENT | METADATA | EMBEDDING` en sort. Les 14 étapes
 se répartissent en quatre phases : extraction Docling (doctags + tables +
 images), enrichissement par le VLM (descriptions d'images, correction des URLs),
 conversion et contrôle du markdown, puis métadonnées et embeddings. **🤖 marque
@@ -72,7 +72,7 @@ uv run afac-preprocess run --input data/input_files/afac
 uv run afac-preprocess run --input data/input_files
 ```
 
-Les 13 étapes s'enchaînent par document ; un échec isolé n'arrête pas le lot.
+Les 14 étapes s'enchaînent par document ; un échec isolé n'arrête pas le lot.
 Prévoyez du temps : chaque document coûte plusieurs appels VLM (une description
 par image, un contrôle par page), donc la durée suit le **volume** des documents,
 pas leur nombre. Comptez plusieurs heures pour un corpus de 100+ PDF.
@@ -193,7 +193,7 @@ déjà rencontrés, est dans
 ## Commandes utiles
 
 ```bash
-uv run afac-preprocess steps            # liste des 13 étapes
+uv run afac-preprocess steps            # liste des 14 étapes
 uv run afac-preprocess steps --graph    # qui dépend de quoi
 uv run afac-preprocess doctor           # diagnostique l'installation et dit quoi corriger
 uv run afac-preprocess aggregate        # reconstruit les CSV globaux (fait aussi en fin de batch)
@@ -213,7 +213,7 @@ uv sync --all-extras    # tout
 
 ## Documentation
 
-- [docs/architecture.md](docs/architecture.md) — les 13 étapes, le contrat `PipelineStep`, les règles du noyau
+- [docs/architecture.md](docs/architecture.md) — les 14 étapes, le contrat `PipelineStep`, les règles du noyau
 - [docs/cli-options.md](docs/cli-options.md) — **toutes** les options des trois familles d'exécutables, les variables d'environnement, les recettes
 - [CONTRIBUTING.md](CONTRIBUTING.md) — ajouter une étape, lancer les vérifications
 
@@ -222,7 +222,7 @@ Les diagrammes sont des fichiers Mermaid autonomes, dans `docs/` :
 | Fichier | Contenu |
 |---|---|
 | [docs/pipeline-overview.mmd](docs/pipeline-overview.mmd) | les quatre phases, vue condensée |
-| [docs/pipeline-steps.mmd](docs/pipeline-steps.mmd) | le DAG des 13 étapes, fichier par fichier |
+| [docs/pipeline-steps.mmd](docs/pipeline-steps.mmd) | le DAG des 14 étapes, fichier par fichier |
 | [docs/core-objects.mmd](docs/core-objects.mmd) | les objets du noyau et leur assemblage |
 
 Ils s'ouvrent dans l'aperçu Mermaid de VS Code, sur

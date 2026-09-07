@@ -26,6 +26,45 @@ if TYPE_CHECKING:
 _log = logging.getLogger(__name__)
 
 PLACEHOLDER_RE = re.compile(r"\[\[\[IMAGE(?:\\)?_DESC:(\d+)\]\]\]")
+IMAGE_TAG_RE = re.compile(r"<!--\s*image\s*-->", re.IGNORECASE)
+
+
+def strip_image_placeholders(markdown: str) -> tuple[str, int]:
+    """
+    Removes leftover ``<!-- image -->`` placeholders from the final Markdown.
+
+    By the time this runs, every image with a real description has already
+    had its ``[[[IMAGE_DESC:N]]]`` marker replaced with that description.
+    Anything still showing ``<!-- image -->`` is an image the VLM judged not
+    relevant (logo, icon, decorative element) or one whose description
+    failed to inject — pure noise with no informational content, and noise
+    that ends up inside the embedding otherwise.
+
+    A placeholder standing alone as its own paragraph is dropped along with
+    the paragraph, collapsing the surrounding blank lines so no gap is left
+    behind. One embedded inline (e.g. inside a list item) has just the tag
+    itself removed, keeping the rest of the line intact.
+
+    :param markdown: Markdown content to clean
+    :type markdown: str
+    :return: (cleaned markdown, number of placeholders removed)
+    :rtype: tuple[str, int]
+    """
+    paragraphs = markdown.split("\n\n")
+    kept: list[str] = []
+    removed = 0
+
+    for para in paragraphs:
+        if IMAGE_TAG_RE.fullmatch(para.strip()):
+            removed += 1
+            continue
+        cleaned, n = IMAGE_TAG_RE.subn("", para)
+        if n:
+            removed += n
+            cleaned = re.sub(r"[ \t]{2,}", " ", cleaned).strip()
+        kept.append(cleaned)
+
+    return "\n\n".join(kept), removed
 
 
 # Fonctions métier — déplacées telles quelles
@@ -143,41 +182,40 @@ def run_injection(markdown_path: Path, descriptions_path: Path, output_path: Pat
     if no_placeholders and no_descriptions:
         # Normal case: image description was disabled at step 06.
         _log.info("No description and no marker, descriptions disabled. File copied as-is.")
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(content, encoding="utf-8")
-        return
-
-    if no_placeholders:
+        updated = content
+    elif no_placeholders:
         _log.warning(
             "Descriptions available but no [[[IMAGE_DESC:N]]] marker found in %s. "
             "Check that description_image_context.py is emitting the placeholders.",
             markdown_path.name,
         )
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(content, encoding="utf-8")
-        return
+        updated = content
+    else:
+        _log.info("%d marker(s) found: %s", len(found), [int(i) for i in found])
 
-    _log.info("%d marker(s) found: %s", len(found), [int(i) for i in found])
+        if no_descriptions:
+            _log.warning("Markers present but no description available, file copied without injection.")
+            updated = content
+        else:
+            updated, injected, missing = inject_descriptions(content, descriptions)
+            _log.info("Injection done: %d injected, %d missing", injected, missing)
+            if missing:
+                _log.warning(
+                    "%d description(s) missing. "
+                    "Check _image_descriptions.md or rerun description_image_context.py.",
+                    missing,
+                )
 
-    if no_descriptions:
-        _log.warning("Markers present but no description available, file copied without injection.")
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(content, encoding="utf-8")
-        return
-
-    updated, injected, missing = inject_descriptions(content, descriptions)
+    updated, stripped = strip_image_placeholders(updated)
+    if stripped:
+        _log.info(
+            "%d leftover <!-- image --> placeholder(s) removed (skipped/undescribed images).",
+            stripped,
+        )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(updated, encoding="utf-8")
-    _log.info("Injection done: %d injected, %d missing", injected, missing)
     _log.info("Final markdown saved: %s", output_path)
-
-    if missing:
-        _log.warning(
-            "%d description(s) missing. "
-            "Check _image_descriptions.md or rerun description_image_context.py.",
-            missing,
-        )
 
 
 class InjectImageDescriptionsStep(PipelineStep):

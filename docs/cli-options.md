@@ -31,7 +31,7 @@ uv run afac-preprocess --help
 |---|---|
 | `run` | Traite un PDF ou tous les PDF d'un dossier |
 | `aggregate` | Reconstruit le CSV global de chaque corpus (`<racine>/<racine>.csv`) |
-| `steps` | Liste les 13 étapes — fonctionne sans `.env` |
+| `steps` | Liste les 14 étapes — fonctionne sans `.env` |
 | `doctor` | Diagnostique l'installation et dit quoi corriger |
 | `version` | Version installée |
 
@@ -140,7 +140,7 @@ sans relancer le pipeline.
 ### `steps` et `doctor`
 
 ```bash
-uv run afac-preprocess steps            # les 13 étapes
+uv run afac-preprocess steps            # les 14 étapes
 uv run afac-preprocess steps --graph    # le chaînage entrées ← sorties
 uv run afac-preprocess doctor           # diagnostic, avec la correction à appliquer
 uv run afac-preprocess doctor --dotenv .env.test
@@ -303,7 +303,7 @@ représentation du document : ils se génèrent une fois et se copient d'un arbr
 
 ## Voir aussi
 
-- [architecture.md](architecture.md) — les 13 étapes, le contrat `PipelineStep`
+- [architecture.md](architecture.md) — les 14 étapes, le contrat `PipelineStep`
 - [../README.md](../README.md) — le chemin nominal
 - [../CONTRIBUTING.md](../CONTRIBUTING.md) — ajouter une étape
 - [../src/afac_preprocessing/pipeline_baseline/protocole.md](../src/afac_preprocessing/pipeline_baseline/protocole.md) — le protocole de comparaison en détail

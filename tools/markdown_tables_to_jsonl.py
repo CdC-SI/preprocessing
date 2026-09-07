@@ -2,7 +2,13 @@
 markdown_tables_to_jsonl.py — Exporte les tables Markdown (natives, pipe |col|col|)
 d'un document corrigé (_final.md) en JSONL.
 
-Deux sorties possibles, à partir du même parsing (cf. iter_blocks) :
+Depuis l'intégration au pipeline (step 12, ``table-jsonl-normalize``), la
+logique de parsing/conversion vit dans
+``afac_preprocessing.steps.table_jsonl_normalize`` — ce script en est
+maintenant le point d'entrée CLI (usage manuel/ad-hoc, hors pipeline), il
+importe ces fonctions plutôt que de les dupliquer.
+
+Deux sorties possibles, à partir du même parsing :
   1. Traçabilité (toujours) : un fichier .jsonl par table détectée, dans un dossier séparé
      (par défaut : tables_markdown/ à côté du markdown source) — n'affecte jamais le
      markdown utilisé pour l'embedding.
@@ -26,15 +32,17 @@ Usage :
     uv run python tools/markdown_tables_to_jsonl.py --markdown MonDoc_final.md --embed-output MonDoc_final_embed.md
 """
 import argparse
-import json
 import logging
-import re
+import os
 import sys
 from pathlib import Path
 
-import jsonlines
-
 from afac_preprocessing.settings import _find_project_root
+from afac_preprocessing.steps.table_jsonl_normalize import (
+    parse_markdown_tables,
+    render_markdown_with_jsonl_tables,
+    write_tables_jsonl,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -46,8 +54,6 @@ def project_root() -> Path:
     supprimée et ce script reste un outil hors pipeline (décision n°14) —
     il migre au lot 9.
     """
-    import os
-
     if "PROJECT_ROOT" in os.environ:
         return Path(os.environ["PROJECT_ROOT"]).resolve()
     return _find_project_root()
@@ -58,8 +64,6 @@ def resolve_doc_name(args: argparse.Namespace, *, primary_flag: str = "--doc-nam
 
     Helper local (voir project_root ci-dessus) — même message d'erreur qu'avant.
     """
-    import os
-
     from dotenv import load_dotenv
 
     doc_name = (getattr(args, "doc_name", None) or "").strip()
@@ -80,186 +84,13 @@ def resolve_doc_name(args: argparse.Namespace, *, primary_flag: str = "--doc-nam
     )
 
 
-DEFAULT_STAGE5 = project_root() / "data" / "output_files_preprocessing"
-
-
-# Parsing markdown → tables
-def deduplicate_columns(columns: list[str]) -> list[str]:
-    """Ajoute un suffixe numérique aux colonnes dupliquées (col, col_2, col_3…)."""
-    counts: dict[str, int] = {}
-    result = []
-    for col in columns:
-        if col not in counts:
-            counts[col] = 1
-            result.append(col)
-        else:
-            counts[col] += 1
-            result.append(f"{col}_{counts[col]}")
-    return result
-
-
-def _is_table_line(line: str) -> bool:
-    s = line.strip()
-    return len(s) > 1 and s.startswith("|") and s.endswith("|")
-
-
-def _split_cells(line: str) -> list[str]:
-    return [c.strip() for c in line.strip().strip("|").split("|")]
-
-
-def _is_separator_line(line: str) -> bool:
-    cells = _split_cells(line)
-    return bool(cells) and all(re.fullmatch(r":?-+:?", c) for c in cells)
-
-
-def _is_table_start(lines: list[str], i: int) -> bool:
-    """True si lines[i] est un en-tête immédiatement suivi de son séparateur |---|---|."""
-    n = len(lines)
-    return _is_table_line(lines[i]) and i + 1 < n and _is_table_line(lines[i + 1]) and _is_separator_line(lines[i + 1])
-
-
-def _build_row(cells: list[str], header_keys: list[str], prev_row: dict | None) -> dict:
-    """
-    Construit le dict {colonne: valeur} d'une ligne de données. Forward-fill générique :
-    une cellule vide est remplie avec la valeur de la même colonne à la ligne précédente
-    (règle purement positionnelle, valable pour n'importe quelle table/colonne — pas de
-    nom de colonne en dur). Reproduit le comportement standard d'"unmerge" des cellules
-    fusionnées (rowspan) d'un tableau PDF, que la correction VLM en amont ne restitue pas
-    de façon fiable.
-
-    prev_row=None désactive le forward-fill pour cette ligne (cf. _extract_table_at :
-    jamais appliqué à la dernière ligne d'un bloc — position où atterrissent les
-    artefacts de coupure de page, où la ligne du dessus n'a aucun rapport réel).
-    """
-    row: dict = {}
-    for idx, key in enumerate(header_keys):
-        value = cells[idx] if idx < len(cells) else ""
-        if not value and prev_row and prev_row.get(key):
-            value = prev_row[key]
-        row[key] = value
-    return row
-
-
-def _collect_raw_rows(lines: list[str], start: int, header_labels: list[str]) -> tuple[list[list[str]], int]:
-    """Consomme les lignes de données brutes (cellules non fusionnées) à partir de start,
-    jusqu'à une ligne non-tableau ou un nouveau couple (en-tête, séparateur). Ignore les
-    lignes identiques à l'en-tête (doublon de frontière de page)."""
-    n = len(lines)
-    raw_rows: list[list[str]] = []
-    j = start
-    while j < n and _is_table_line(lines[j]) and not _is_table_start(lines, j):
-        cells = _split_cells(lines[j])
-        if cells != header_labels:
-            raw_rows.append(cells)
-        j += 1
-    return raw_rows, j
-
-
-def _extract_table_at(lines: list[str], i: int) -> tuple[list[dict], int] | None:
-    """
-    Si lines[i] démarre une table (en-tête + séparateur en i+1), consomme les lignes de
-    données qui suivent — jusqu'à une ligne non-tableau ou un nouveau couple (en-tête,
-    séparateur), qui marque le début d'une table adjacente sans ligne de séparation entre
-    les deux.
-
-    Forward-fill (cf. _build_row) appliqué à toutes les lignes SAUF la dernière du bloc :
-    une coupure de page en plein milieu d'un groupe de lignes fusionnées peut laisser un
-    "orphelin" en toute fin de bloc, juste avant qu'un nouvel en-tête ne redémarre pour un
-    groupe totalement différent — dans ce cas, la ligne précédente n'a aucun rapport réel
-    et un forward-fill y insérerait une donnée fausse plutôt qu'une cellule vide honnête.
-
-    :return: (rows, prochain_index) si lines[i] démarre une table, sinon None
-    """
-    if not _is_table_start(lines, i):
-        return None
-
-    header_labels = _split_cells(lines[i])
-    header_keys = deduplicate_columns(header_labels)
-    raw_rows, next_i = _collect_raw_rows(lines, i + 2, header_labels)
-
-    rows: list[dict] = []
-    prev_row: dict | None = None
-    last_idx = len(raw_rows) - 1
-    for idx, cells in enumerate(raw_rows):
-        row = _build_row(cells, header_keys, None if idx == last_idx else prev_row)
-        rows.append(row)
-        prev_row = row
-    return rows, next_i
-
-
-def iter_blocks(text: str):
-    """
-    Parcourt le texte une seule fois et produit une séquence de blocs :
-    ("text", line) pour chaque ligne hors-table, ("table", rows) une fois par table
-    Markdown native détectée (| col | col |), rows étant la liste de dict {colonne: valeur}
-    de cette table.
-
-    Point d'entrée unique partagé par parse_markdown_tables() (fichiers .jsonl séparés,
-    traçabilité) et render_markdown_with_jsonl_tables() (document réécrit pour l'embedding) —
-    pour éviter que les deux dérivent en cas de modification future du format des tables.
-
-    :param text: contenu markdown à parser
-    :return: générateur de tuples ("text", str) | ("table", list[dict])
-    """
-    lines = text.split("\n")
-    i, n = 0, len(lines)
-    while i < n:
-        extracted = _extract_table_at(lines, i)
-        if extracted is not None:
-            rows, next_i = extracted
-            if rows:
-                yield "table", rows
-            i = next_i
-            continue
-        yield "text", lines[i]
-        i += 1
-
-
-def parse_markdown_tables(text: str) -> list[list[dict]]:
-    """Extrait les tables Markdown natives d'un texte. cf. iter_blocks()."""
-    return [rows for kind, rows in iter_blocks(text) if kind == "table"]
-
-
-def render_markdown_with_jsonl_tables(text: str) -> str:
-    """
-    Reconstruit le document en remplaçant chaque table Markdown native (| col | col |)
-    par ses lignes JSONL équivalentes (une par ligne), en préservant tout le texte
-    hors-table à l'identique. Réutilise iter_blocks() — donc, par construction, produit
-    exactement les mêmes lignes que celles écrites dans <doc>-table-N.jsonl par
-    write_tables_jsonl().
-
-    Utilisé pour produire le contenu réellement embeddé (_final_embed.md) quand on veut
-    que l'embedding porte sur des tables structurées plutôt que sur du Markdown pipe —
-    au prix du surcoût de tokens déjà mesuré (répétition des clés de colonne à chaque ligne).
-
-    :param text: contenu markdown source
-    :return: contenu markdown avec les tables remplacées par du JSONL
-    """
-    out: list[str] = []
-    for kind, value in iter_blocks(text):
-        if kind == "table":
-            out.extend(json.dumps(row, ensure_ascii=False) for row in value)
-        else:
-            out.append(value)
-    return "\n".join(out)
-
-
-def write_tables_jsonl(tables: list[list[dict]], output_dir: Path, doc_name: str) -> list[Path]:
-    """Écrit une table par fichier : <doc_name>-table-1.jsonl, -table-2.jsonl, …"""
-    output_dir.mkdir(parents=True, exist_ok=True)
-    written: list[Path] = []
-    for idx, rows in enumerate(tables, start=1):
-        path = output_dir / f"{doc_name}-table-{idx}.jsonl"
-        with jsonlines.open(path, mode="w") as writer:
-            for row in rows:
-                writer.write(row)
-        _log.info("Table %d : %d ligne(s) → %s", idx, len(rows), path.name)
-        written.append(path)
-    return written
-
-
 # CLI
 def parse_args() -> argparse.Namespace:
+    # Résolu ici, pas au chargement du module : importer ce fichier (ex. pour
+    # réutiliser resolve_doc_name dans un test) ne doit pas déclencher une
+    # recherche de racine de projet sur le disque en effet de bord.
+    default_stage5 = project_root() / "data" / "output_files_preprocessing"
+
     parser = argparse.ArgumentParser(
         description=(
             "Exporte les tables Markdown natives d'un document corrigé (_final.md) en JSONL, "
@@ -282,8 +113,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--stage5",
         type=Path,
-        default=DEFAULT_STAGE5,
-        help=f"Racine de sortie du pipeline (contient <doc_name>/<doc_name>_final.md). Défaut : {DEFAULT_STAGE5}.",
+        default=default_stage5,
+        help=f"Racine de sortie du pipeline (contient <doc_name>/<doc_name>_final.md). Défaut : {default_stage5}.",
     )
     parser.add_argument(
         "--markdown", "-m",

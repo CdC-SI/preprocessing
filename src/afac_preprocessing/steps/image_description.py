@@ -30,7 +30,7 @@ import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING, Literal, TypedDict
 
 import fitz  # PyMuPDF
 
@@ -78,6 +78,9 @@ class DocElement(TypedDict):
     text: str
 
 
+VLMDescriptionStatus = Literal["described", "skipped_not_relevant", "error"]
+
+
 class VLMResult(TypedDict):
     page: int
     x0: int
@@ -85,6 +88,7 @@ class VLMResult(TypedDict):
     x1: int
     y1: int
     description: str
+    status: VLMDescriptionStatus
     raw_tag: str
 
 
@@ -307,13 +311,35 @@ def crop_to_b64(pdf_doc: fitz.Document, pic: PictureTag, norm: int = NORM, dpi: 
     return base64.b64encode(pix.tobytes("png")).decode("utf-8")
 
 
-async def describe_image_b64(image_b64: str, prompt: str, vlm: AsyncVlmClient) -> str:
-    """Send the image (base64) + prompt to the VLM and return the description."""
+EMPTY_DESCRIPTION_LITERALS = {'""', "''"}
+
+
+async def describe_image_b64(
+    image_b64: str, prompt: str, vlm: AsyncVlmClient
+) -> tuple[str, VLMDescriptionStatus]:
+    """Send the image (base64) + prompt to the VLM and return (description, status).
+
+    The prompt asks the VLM to "return an empty string" when the image adds
+    nothing (logo, decorative element, information already in the text, ...);
+    some models comply literally by answering with the two characters ``""``
+    instead of an actually empty response. That literal is normalized to a
+    real empty string here so it never gets treated as a genuine description
+    downstream (truthy checks, injection into the Markdown, etc.).
+
+    A VLM API failure is reported as a distinct ``"error"`` status so callers
+    can tell "the VLM chose not to describe this on purpose" apart from
+    "the call actually broke" instead of collapsing both into an empty string.
+    """
     try:
-        return await vlm.vision_completion(prompt, image_b64, max_tokens=3000)
+        description = await vlm.vision_completion(prompt, image_b64, max_tokens=3000)
     except Exception:
         _log.exception("VLM API error")
-        return ""
+        return "", "error"
+
+    if description.strip() in EMPTY_DESCRIPTION_LITERALS:
+        description = ""
+
+    return (description, "described") if description else ("", "skipped_not_relevant")
 
 
 def export_picture_images(
@@ -364,18 +390,24 @@ async def _describe_task(
             task.index, task.total, task.page + 1,
             task.x0, task.y0, task.x1, task.y1,
         )
-        description = await describe_image_b64(task.image_b64, task.prompt, vlm)
+        description, status = await describe_image_b64(task.image_b64, task.prompt, vlm)
 
-        if description:
+        if status == "described":
             _log.info("[%d/%d] Description received (%d chars)", task.index, task.total, len(description))
+        elif status == "skipped_not_relevant":
+            _log.info(
+                "[%d/%d] Image judged not relevant by the VLM (logo/decorative/redundant) — skipped",
+                task.index, task.total,
+            )
         else:
-            _log.warning("[%d/%d] No description returned by the VLM", task.index, task.total)
+            _log.warning("[%d/%d] No description returned by the VLM (error)", task.index, task.total)
 
         return task.index, VLMResult(
             page=task.page,
             x0=task.x0, y0=task.y0,
             x1=task.x1, y1=task.y1,
             description=description,
+            status=status,
             raw_tag=task.raw_tag,
         )
 
@@ -441,7 +473,7 @@ async def describe_all_pictures(
     )
     results: dict[int, VLMResult] = dict(results_list)
 
-    described = sum(1 for r in results.values() if r["description"])
+    described = sum(1 for r in results.values() if r["status"] == "described")
     _log.info("%d/%d image(s) described with context", described, total)
     return results
 
@@ -461,7 +493,10 @@ def replace_picture_tags(content: str, results: dict[int, VLMResult]) -> str:
     for idx in sorted(results.keys()):
         r = results[idx]
         if not r["description"]:
-            _log.warning("No description for <picture> idx=%d — tag kept as-is", idx)
+            if r["status"] == "skipped_not_relevant":
+                _log.info("Image idx=%d judged not relevant (logo/decorative) — tag kept as-is", idx)
+            else:
+                _log.warning("No description for <picture> idx=%d — tag kept as-is", idx)
             continue
         if r["raw_tag"] not in content:
             _log.error("raw_tag not found: %s", r["raw_tag"])
@@ -502,17 +537,24 @@ def export_descriptions_to_markdown(
     :param vlm_model_name: Name of the VLM model used, shown in the report header.
     """
     total = len(results)
-    nb_described = sum(1 for r in results.values() if r["description"])
-    nb_missing = total - nb_described
+    nb_described = sum(1 for r in results.values() if r["status"] == "described")
+    nb_skipped = sum(1 for r in results.values() if r["status"] == "skipped_not_relevant")
+    nb_error = sum(1 for r in results.values() if r["status"] == "error")
     sections = []
 
     for i in sorted(results.keys()):
         r = results[i]
         loc_str = f"loc({r['x0']}, {r['y0']}, {r['x1']}, {r['y1']})"
         page_str = f"Page {r['page'] + 1}"
-        if r["description"]:
+        if r["status"] == "described":
             sections.append(
                 f"## OK - Image {i}/{total} — {page_str} | `{loc_str}`\n\n{r['description']}\n"
+            )
+        elif r["status"] == "skipped_not_relevant":
+            sections.append(
+                f"## SKIPPED - Image {i}/{total} — {page_str} | `{loc_str}`\n\n"
+                f"> *Judged not relevant by the VLM (logo, icon, decorative element, or "
+                f"information already present in the surrounding text) — skipped by design.*\n"
             )
         else:
             sections.append(
@@ -530,9 +572,10 @@ def export_descriptions_to_markdown(
     )
     summary = (
         f"## Summary\n\n"
-        f"- Images detected  : **{total}**\n"
-        f"- Images described : **{nb_described}**\n"
-        f"- Images missing   : **{nb_missing}**\n"
+        f"- Images detected           : **{total}**\n"
+        f"- Images described          : **{nb_described}**\n"
+        f"- Images skipped (not relevant) : **{nb_skipped}**\n"
+        f"- Images missing (error)    : **{nb_error}**\n"
     )
     output_path.write_text(
         header + "\n\n---\n\n".join(sections) + "\n\n---\n\n" + summary,
