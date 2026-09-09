@@ -82,25 +82,134 @@ python tests/benchmark_contention.py --phase idle --rate 0.3 \
 ```
 
 To compare against the **old (pre-async) pipeline**, re-run with `--legacy`
-against a checkout of `main` (see `RUNBOOK.md` §9i for the rollback
-procedure) — see the placeholder section below, not yet run.
+against a deployment of `main` (see `README.md`'s "Deploying the legacy
+(pre-async) baseline" section and `RUNBOOK.md` §9i) — see the results
+below.
 
 To tune, adjust `VLM_MAX_CONCURRENCY` / `OCR_LARGE_DOC_CONCURRENCY` in the
 `pdf-ocr-pipeline-env` secret and redeploy between rounds.
 
 ---
 
+## Summary and recommendation
+
+All results below are for the same 45-page document
+(`tests/fixtures/10-long-pdf/DR-1-45.pdf`), 4 replicates each, corrected
+methodology (cache-busting + deterministic fixture rotation):
+
+| Config | Mean OCR wall time | Mean p95 delta (load vs idle) |
+|---|---|---|
+| Legacy (pre-async), synchronous `:predict` | 87.2s | +6.9% |
+| **`VLM_MAX_CONCURRENCY=4`, `OCR_LARGE_DOC_CONCURRENCY=2` (default)** | 133.0s | **+7.2%** |
+| `VLM_MAX_CONCURRENCY=2`, `OCR_LARGE_DOC_CONCURRENCY=2` | 137.8s | +3.1% |
+| `VLM_MAX_CONCURRENCY=2`, `OCR_LARGE_DOC_CONCURRENCY=1` | 248.6s | +2.5% |
+
+**All four configurations comfortably pass the ~20% acceptance
+threshold** for translation-contention on this document size. Lowering
+`VLM_MAX_CONCURRENCY` and/or `OCR_LARGE_DOC_CONCURRENCY` buys a marginally
+lower (and noisier-to-noiseless) contention delta, but at a direct,
+substantial cost to OCR throughput (up to ~1.9x slower OCR wall time at
+`OCR_LARGE_DOC_CONCURRENCY=1`), with no corresponding safety benefit large
+enough to justify it at this document size.
+
+**Recommendation: deploy with the defaults —
+`VLM_MAX_CONCURRENCY=4`, `OCR_LARGE_DOC_CONCURRENCY=2`.** This gives the
+best OCR throughput of the three async configurations tested while still
+clearing the contention threshold with margin. Revisit only if production
+traffic shows sustained higher concurrent OCR volume than tested here, or
+a larger/more adversarial document size surfaces a clearer contention
+signal.
+
+The legacy pipeline's own contention number (+6.9%) is not itself
+disqualifying, but it is not a like-for-like alternative: it has no
+priority queue, no per-page chunking, and no concurrency cap, so its
+result does not generalise past small documents, and required raising
+both a readiness-probe tolerance and an auth-sidecar upstream timeout
+just to complete a single 45-page request without a client-visible `502`
+(see the legacy section below) — this operational fragility under
+long-running synchronous requests is itself one of the core reasons for
+the async rewrite, independent of the throughput/contention numbers.
+
+---
+
 ## Results log
 
-### Legacy (pre-async) pipeline baseline — PLACEHOLDER, not yet run
+### Legacy (pre-async) pipeline baseline — 2026-09-09, 4 replicates
 
-**Status: pending.** Requires a `git checkout main` redeploy of the
-`pdf-ocr-pipeline` namespace (see `RUNBOOK.md` §9i), then the same
-load/idle replicate procedure against `tests/fixtures/10-long-pdf/DR-1-45.pdf`
-via `--legacy` (or the old pipeline's equivalent synchronous endpoint). This
-is the true "before" number for the initial async-pipeline rollout — no
-comparable data currently exists because the old pipeline was already
-replaced in this namespace before this benchmark suite was fixed.
+**Deployment:** `main` branch checked out and applied to the
+`pdf-ocr-pipeline` InferenceService/ServingRuntime in `model-serving`
+(same S3 model path, `models/pdf-ocr-pipeline`, already holding
+legacy-only artifacts — see `RUNBOOK.md` §9i). Verified genuinely running
+legacy code: no `jobs`/`tokenizer` present under `/mnt/models`, and
+`predictor.py`'s `predict()` calls `run_pipeline` directly with no job
+queue.
+
+**Two infrastructure fixes were required before this baseline could be
+captured at all** — without them every run failed with a client-visible
+`502 Bad Gateway` at ~30-34s regardless of translation load, which would
+have otherwise been mistaken for a severe contention regression:
+
+1. **`kserve-container` readiness probe.** The legacy synchronous
+   `:predict` handler blocks the single asyncio event loop for the full
+   OCR duration of one request (no worker pool, unlike the async branch).
+   The default `tcpSocket` probe's `failureThreshold(3) *
+   periodSeconds(10) = 30s` window was too short for a 45-page document;
+   once it flipped `NotReady` the Router evicted the pod mid-request.
+   Fixed by widening `failureThreshold` to `30` in
+   `manifests/serving-runtime.yaml` (committed on `main`).
+2. **`kube-rbac-proxy` upstream timeout (the actual root cause of the
+   502s).** The sidecar auto-injected by
+   `security.opendatahub.io/enable-auth: "true"` defaults to
+   `--upstream-timeout=30s` and kills the client connection at that mark
+   even though `kserve-container` is healthy and still working (confirmed
+   via its own trace logs completing successfully well after the client
+   already saw a 502). This sidecar cannot be configured via
+   `ServingRuntime`/`InferenceService` YAML (overrides are silently
+   ignored) and must be patched imperatively after every fresh deploy —
+   see `README.md` §5 and `RUNBOOK.md` §9i for the exact `oc patch`
+   command. Only after this patch did requests return `200`.
+
+**Document:** `tests/fixtures/10-long-pdf/DR-1-45.pdf`, 45 pages, driven
+via `--legacy` (`drive_ocr_legacy`, hits `POST /v1/models/...:predict`
+directly — no job store/queue/priority mechanics apply here at all, unlike
+the async branch's `LEGACY_MAX_PAGES` shim). OCR wall time across the 4
+replicates: 85.5s, 84.8s, 91.0s, 87.4s (mean 87.2s) — notably faster than
+any async-branch configuration's OCR wall time (~133-249s), because the
+legacy path has no per-page queueing/priority overhead and no VLM
+concurrency cap — but note it also has zero interactive prioritisation,
+zero resilience to pod restarts (job state isn't just in-memory, the
+entire request is lost), and the client HTTP connection must stay open
+for the full duration.
+
+**Methodology:** identical to the async rounds below (cache-busting via
+`_stamp_unique` + deterministic round-robin over
+`TRANSLATION_FIXTURE_POOL`), 4 independent replicates, load first then a
+30s cooldown then matched-duration idle.
+
+| Replicate | OCR wall time | n (load/idle) | load p95 | idle p95 | Delta (load vs idle) |
+|---|---|---|---|---|---|
+| 1 | 85.5s | 26 / 26 | 221.44 | 216.68 | +2.2% |
+| 2 | 84.8s | 26 / 26 | 220.99 | 209.52 | +5.5% |
+| 3 | 91.0s | 28 / 28 | 237.60 | 235.85 | +0.7% |
+| 4 | 87.4s | 27 / 26 | 245.30 | 205.76 | +19.3% |
+| Mean | | | | | +6.9% |
+
+**Reading these numbers:** all 4 replicates pass the ~20% acceptance
+threshold, though replicate 4 sits right at the edge — consistent with the
+"single pairs show ±5-8% swing" background-variance caveat noted above,
+here amplified because this document's small page count (45) yields a
+short OCR window (~87s) and correspondingly few translation samples per
+replicate (26-28), which is more sensitive to noise than the async
+rounds' larger samples. **This does not mean the legacy pipeline is safe
+for production-scale documents** — it was only tested at the same 45-page
+size as the async rounds for a fair comparison. The legacy path has no
+page-level chunking, no priority queue, and no concurrency cap, so a much
+larger document (hundreds of pages, previously routed through the async
+`/jobs` API) would very plausibly show materially worse contention *and*
+would exceed the extended 600s/30-page-probe tolerances that had to be
+added just to make this 45-page test complete without a 502 — this
+fragility under long synchronous requests is itself one of the core
+motivations for the async rewrite, independent of the contention numbers.
 
 ---
 
@@ -206,11 +315,9 @@ background variance on the shared gateway/vLLM.
   at `VLM_MAX_CONCURRENCY=2` for this 45-page document. Treat +3.1% (+/-~7pp
   spread) as the current best estimate of background noise on this shared
   environment, not a real degradation.
-- **Caveat:** cannot yet say whether `VLM_MAX_CONCURRENCY=2` is better or
-  worse than the default `4`, since the `4` baseline hasn't been re-run
-  under this corrected methodology (see placeholder above). A same-replicate
-  comparison against `VLM_MAX_CONCURRENCY=4` is needed before recommending
-  either value.
+- See the direct 3-way comparison table in the `VLM_MAX_CONCURRENCY=4`
+  section above (run the same day, after this one) for how this setting
+  compares against the default.
 
 Raw output: `benchmark_results/load_vlm2*.json`,
 `benchmark_results/idle_vlm2*.json` (4 replicates each; directory

@@ -45,43 +45,72 @@ the background.**
 
 We built a repeatable test that submits a large document for OCR and, at the
 same time, continuously sends real translation requests, then measures how
-much slower translation gets while OCR is running versus when it's idle.
+much slower translation gets while OCR is running versus when it's idle. To
+get a reliable answer (single test runs on this shared environment show
+natural swings of ±5–8% with no OCR running at all), we ran every
+configuration **4 times** and looked at the average.
 
-**Headline result (large, realistic document — 45 pages):**
+**Headline result (large, realistic document — 45 pages), final tuning
+round:**
 
-- **Translation requests were never dropped or blocked.** Every request
-  completed successfully throughout the entire OCR run.
-- Translation did get **measurably slower** while OCR was running — roughly
-  **30% slower** at the high end (the slowest 5% of requests), compared to
-  when OCR was idle.
-- This is **more slowdown than our internal target** (~20%), so there is
-  follow-up work identified: primarily, further reducing how many OCR
-  requests are allowed to run at once against the shared GPU, and re-testing.
+| Configuration | Translation slowdown while OCR runs |
+|---|---|
+| **Recommended (default) settings** | **+7.2%** |
+| Reduced OCR concurrency (more cautious) | +3.1% |
+| Reduced OCR concurrency + reduced large-document parallelism | +2.5%, but OCR itself took **~1.9x longer** |
+| Old (pre-rebuild) system, for comparison | +6.9% |
+
+- **Translation requests were never dropped or blocked**, in any
+  configuration, across all test runs.
+- All configurations comfortably beat our internal target (~20% maximum
+  acceptable slowdown) — including the recommended, default settings.
+- The more cautious settings shave a further few percentage points off the
+  slowdown, but cost real OCR throughput (documents take up to ~1.9x longer
+  to process) for a benefit that is within the test's own margin of error,
+  not a clear improvement.
+- **Decision: keep the default settings.** They give the best OCR
+  throughput while already comfortably meeting the translation-protection
+  target — there is no evidence the more cautious (and slower) settings are
+  worth their cost at current usage levels.
 
 **For small, everyday documents** (a few pages — the common case for
 interactive use), we also compared the new system directly against the old
 one on the same infrastructure: **processing time was effectively identical**,
 and translation slowdown was minor (roughly 8–11%, within target) for both
 the old and new systems. The extra safety machinery does not add overhead for
-typical, small documents — its benefit is specifically for large documents,
-which the old system could not even protect against without this rebuild
-(the old system's synchronous design cannot safely handle large documents at
-all, and would either time out or need to reject them outright).
+typical, small documents — its benefit is specifically for large documents.
+
+**Comparison against the old (pre-rebuild) system, same 45-page document:**
+the old system's slowdown (+6.9%) was, on this specific test, similar to the
+new system's default settings. However, this is not an apples-to-apples
+alternative: the old system has no safety mechanisms at all (no queue, no
+prioritisation, no concurrency limit) — its result reflects testing at the
+same size as everything else here, not a demonstration that it would remain
+safe on the large, real-world documents (hundreds of pages) the old system
+could not reliably handle in production. It also required two infrastructure
+workarounds during testing just to complete a single 45-page request without
+an outright failure — a fragility that does not exist in the new system, and
+is itself part of the case for the rebuild, independent of the numbers above.
 
 ## Bottom line
 
 - **No user-facing translation requests are lost or blocked** by OCR
-  activity, even under a realistic large-document load — this was the
-  primary risk we set out to eliminate, and it is eliminated.
-- **There is a residual, measurable slowdown** (~30% at the tail) for large
-  documents that exceeds our internal comfort margin (~20%), so this is
-  flagged as an open tuning item rather than a fully closed loop.
+  activity, under any configuration tested — this was the primary risk we
+  set out to eliminate, and it is eliminated.
+- **Translation slowdown under the recommended (default) settings is +7.2%,
+  comfortably within our ~20% target.** This closes out the tuning
+  exercise — no further concurrency reduction is recommended at this time.
 - **Everyday, small-document usage is unaffected** — no regression versus
   the previous system.
-- The next step is a further reduction of the OCR concurrency limit against
-  the shared GPU and re-measuring, to bring the large-document case within
-  the same margin already achieved for small documents.
+- **Recommended production configuration:** `VLM_MAX_CONCURRENCY=4`,
+  `OCR_LARGE_DOC_CONCURRENCY=2` (the defaults) — best OCR throughput of the
+  configurations tested, while already meeting the translation-protection
+  target with margin.
+- No further action is planned unless production traffic patterns change
+  materially (e.g. sustained higher concurrent OCR volume, or much larger
+  documents than tested here), in which case this benchmark suite can be
+  re-run against the new traffic profile.
 
-*Last updated: 2026-09-04. See `BENCHMARKS.md` for the full data, methodology,
-and an explanation of a gateway-level bug encountered (and worked around)
-during testing that is unrelated to this service.*
+*Last updated: 2026-09-09 — final round, including the old-system baseline
+and the concurrency-tuning comparison. See `BENCHMARKS.md` for the full
+data, methodology, and engineering detail.*

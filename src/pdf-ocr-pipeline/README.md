@@ -400,6 +400,19 @@ oc exec deployment/pdf-ocr-pipeline-predictor -n model-serving -c kserve-contain
   grep -n "async def predict\|jobs" /mnt/models/predictor.py
 ```
 
+**Required post-deploy patch.** The legacy synchronous `:predict` handler
+can take minutes on a multi-page document, but the auth sidecar
+(`kube-rbac-proxy`, injected by `security.opendatahub.io/enable-auth`)
+defaults to a 30s upstream timeout and will return a client-visible `502`
+even though the backend is healthy. This can't be set declaratively (see
+`main`'s `README.md` §5 for why); patch it imperatively after every fresh
+deploy:
+
+```bash
+oc patch deployment pdf-ocr-pipeline-predictor -n model-serving --type=json \
+  -p '[{"op":"add","path":"/spec/template/spec/containers/1/args/-","value":"--upstream-timeout=600s"}]'
+```
+
 ---
 
 ## Test harnesses
