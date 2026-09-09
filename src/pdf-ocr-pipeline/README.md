@@ -378,6 +378,30 @@ Three latent bugs surfaced while restructuring:
 
 ---
 
+## Deploying the legacy (pre-async) baseline for benchmarking
+
+To A/B benchmark this branch against the pre-async `main` pipeline without
+touching this deployment, deploy `main`'s manifests separately (same S3 model
+path — `models/pdf-ocr-pipeline` — already holds legacy-only artifacts, so no
+rebuild or re-sync is needed):
+
+```bash
+git worktree add ../pdf-ocr-pipeline-legacy main
+cd ../pdf-ocr-pipeline-legacy/src/pdf-ocr-pipeline
+oc apply -f manifests/serving-runtime.yaml -f manifests/inferenceservice.yaml -n model-serving
+oc rollout restart deployment/pdf-ocr-pipeline-predictor -n model-serving
+oc rollout status deployment/pdf-ocr-pipeline-predictor -n model-serving
+```
+
+Verify it's genuinely running legacy code (no job queue):
+
+```bash
+oc exec deployment/pdf-ocr-pipeline-predictor -n model-serving -c kserve-container -- \
+  grep -n "async def predict\|jobs" /mnt/models/predictor.py
+```
+
+---
+
 ## Test harnesses
 
 - `tests/test_client.py` — reference client (submit/poll/result/cancel)
