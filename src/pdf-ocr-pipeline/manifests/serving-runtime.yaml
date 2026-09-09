@@ -42,6 +42,20 @@ spec:
             name: pdf-ocr-pipeline-env
       ports:
         - containerPort: 8080
+      # The legacy synchronous :predict handler blocks the single asyncio
+      # event loop for the full OCR duration of one request (no worker
+      # pool) — the default tcpSocket probe's failureThreshold(3) *
+      # periodSeconds(10) = 30s window is not enough headroom for a
+      # multi-page document. Once the probe flips NotReady, the Router
+      # evicts the pod mid-request, turning a slow-but-healthy request
+      # into a client-visible 502. Widen the tolerance so a single
+      # long-running legacy request can't flap readiness.
+      readinessProbe:
+        tcpSocket:
+          port: 8080
+        periodSeconds: 10
+        timeoutSeconds: 1
+        failureThreshold: 30
       resources:
         requests:
           cpu: "1"
