@@ -4,3 +4,6 @@ src/eak-preprocessing/venv_eak_preprocessing
 src/intents-preprocessing
 src/utils
 config
+venv_preprocessing/
+__pycache__/
+*.pyc
