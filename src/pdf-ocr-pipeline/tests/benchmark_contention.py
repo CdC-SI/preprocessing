@@ -17,6 +17,11 @@ document, not a single synchronous HTTP round-trip.
 Run the baseline BEFORE deploying the new pipeline so the improvement is
 demonstrable.
 
+    # Test-only dep, not part of requirements.txt (the deployed image never
+    # needs it): httpx for the async HTTP client. pymupdf (cache-busting via
+    # _stamp_unique) is already a requirements.txt dependency.
+    pip install httpx
+
     export ZIA_TRANSLATION_URL="https://gateway-r.zas.admin.ch/zia-trad/api/translation"
     export ZIA_TRANSLATION_TOKEN="..."   # sent as: Blue: Bearer $TOKEN
     export PDF_OCR_URL="https://pdf-ocr-pipeline-model-serving.apps.openshift-ai.mgnt.zas.admin.ch"
@@ -42,54 +47,117 @@ import os
 import statistics
 import sys
 import time
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
 
 import httpx
+import pymupdf
 
 TRANSLATION_URL = os.environ.get("ZIA_TRANSLATION_URL", "").rstrip("/")
 TRANSLATION_TOKEN = os.environ.get("ZIA_TRANSLATION_TOKEN", "")
 PDF_OCR_URL = os.environ.get("PDF_OCR_URL", "http://127.0.0.1:8080")
 AUTH_TOKEN = os.environ.get("AUTH_TOKEN", "")
-
-# Small reference document repeatedly resubmitted for the translation-latency
-# samples. Any small PDF works; this one ships with the repo's test fixtures.
-TRANSLATION_SAMPLE_PDF = Path(__file__).parent / "fixtures" / "1-born-digital-plain-prose" / "31530_schlichtungskommission_formular.pdf"
 TRANSLATION_TARGET_LANGUAGE = os.environ.get("ZIA_TRANSLATION_TARGET_LANGUAGE", "de")
 TRANSLATION_STRATEGY = os.environ.get("ZIA_TRANSLATION_STRATEGY")  # optional; None -> service default
 
 # Terminal JobStatus values, per zia-translation's job.JobStatus enum.
 TRANSLATION_TERMINAL_STATUSES = {"COMPLETED", "FAILED"}
 
+# --------------------------------------------------------------------------
+# Cache-busting (KV / prefix-cache mitigation)
+# --------------------------------------------------------------------------
+# The shared vLLM server almost certainly has automatic prefix caching
+# enabled. Resubmitting the byte-identical PDF on every iteration means both
+# the OCR image-token prefixes and the translation text prompt increasingly
+# hit that cache after the first request, understating real contention
+# (production traffic is novel documents every time, with no cache hits at
+# all). `_stamp_unique()` defeats this cheaply: it overlays a random UUID in
+# the page margin of every page via reportlab + pypdf, which changes the
+# actual rendered pixels (busts the OCR/vision cache) and the extracted text
+# (busts the translation text-prompt cache) without changing page count,
+# layout, or OCR/translation difficulty, so results stay comparable across
+# benchmark runs.
+# the actual rendered pixels (busts the OCR/vision cache) and the extracted
+# text (busts the translation text-prompt cache) without changing page
+# count, layout, or OCR/translation difficulty, so results stay comparable
+# across benchmark runs. Uses pymupdf (already a project dependency, used
+# elsewhere for page rendering) rather than pypdf/reportlab: a pypdf
+# merge_page-based overlay was tried first and inflated some fixtures by
+# 10x+ (duplicated font/image resources per page on merge); pymupdf's
+# insert_text() edits content streams in place with no bloat.
+def _stamp_unique(pdf_bytes: bytes) -> bytes:
+    doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
+    for page in doc:
+        page.insert_text((4, 10), f"bench-{uuid.uuid4().hex}", fontsize=4)
+    return doc.tobytes(garbage=4, deflate=True)
+
+
+# Small pool of real, varied fixtures rotated through for translation load,
+# instead of always resubmitting the same document (mitigates prefix-cache
+# hits further, on top of per-call stamping). Excludes edge-case fixtures
+# (encrypted/corrupt/empty) and the 45-page OCR document (kept fixed-size for
+# the OCR side of the benchmark). fixture04.pdf (4-mixed-digital-scanned) was
+# excluded despite being a good content mix: at 1.8MB it exceeds the
+# translation service's upload size limit (confirmed via live 400 response,
+# "File size exceeds the maximum allowed limit").
+TRANSLATION_FIXTURE_POOL = [
+    Path(__file__).parent / "fixtures" / "1-born-digital-plain-prose" / "31530_schlichtungskommission_formular.pdf",
+    Path(__file__).parent / "fixtures" / "3-scan-with-bad-preexisting-ocr-layer" / "03b_bad_ocr_plausible.pdf",
+    Path(__file__).parent / "fixtures" / "9-multilingual-de-fr-it" / "CI-4-14.pdf",
+    Path(__file__).parent / "fixtures" / "6-no-spaces" / "06_no_space_extraction.pdf",
+]
+
 
 @dataclass
 class Latencies:
     values: List[float] = field(default_factory=list)
     errors: int = 0
+    # Per-fixture-name breakdown, so pooled percentiles (across differently
+    # sized documents) don't hide a per-size contention effect, and so an
+    # idle/load pair can be sanity-checked for a matched size distribution
+    # (see translate_once/translation_load: fixtures are now drawn via a
+    # deterministic round-robin, not random.choice, specifically so idle and
+    # load draw the identical sequence of fixture sizes).
+    by_fixture: dict = field(default_factory=dict)
 
-    def add(self, value: float) -> None:
+    def add(self, value: float, fixture_name: Optional[str] = None) -> None:
         self.values.append(value)
+        if fixture_name:
+            self.by_fixture.setdefault(fixture_name, []).append(value)
 
     def percentiles(self) -> dict:
         if not self.values:
             return {"count": 0, "errors": self.errors}
         ordered = sorted(self.values)
 
-        def pct(p: float) -> float:
-            index = min(int(len(ordered) * p), len(ordered) - 1)
-            return round(ordered[index], 3)
+        def pct(values: List[float], p: float) -> float:
+            ordered_v = sorted(values)
+            index = min(int(len(ordered_v) * p), len(ordered_v) - 1)
+            return round(ordered_v[index], 3)
 
-        return {
+        result = {
             "count": len(ordered),
             "errors": self.errors,
             "min": round(ordered[0], 3),
-            "p50": pct(0.50),
-            "p95": pct(0.95),
-            "p99": pct(0.99),
+            "p50": pct(ordered, 0.50),
+            "p95": pct(ordered, 0.95),
+            "p99": pct(ordered, 0.99),
             "max": round(ordered[-1], 3),
             "mean": round(statistics.mean(ordered), 3),
         }
+        if self.by_fixture:
+            result["by_fixture"] = {
+                name: {
+                    "count": len(vals),
+                    "p50": pct(vals, 0.50),
+                    "p95": pct(vals, 0.95),
+                    "mean": round(statistics.mean(vals), 3),
+                }
+                for name, vals in self.by_fixture.items()
+            }
+        return result
 
 
 async def translate_once(
@@ -150,7 +218,7 @@ async def translate_once(
 
         elapsed = time.time() - started
         if status == "COMPLETED":
-            latencies.add(elapsed)
+            latencies.add(elapsed, fixture_name=filename)
         else:
             latencies.errors += 1
             print(f"    translation job {job_id} ended {status}", file=sys.stderr)
@@ -162,19 +230,38 @@ async def translate_once(
 async def translation_load(
     duration: float, rate: float, stop_event: asyncio.Event
 ) -> Latencies:
-    """Drive translation requests at a steady rate until told to stop."""
+    """Drive translation requests at a steady rate until told to stop.
+
+    Each request rotates through TRANSLATION_FIXTURE_POOL and stamps a fresh
+    random UUID onto every page (see _stamp_unique) to avoid vLLM prefix-
+    cache hits from resubmitting identical content, which would understate
+    real contention.
+
+    Fixtures are drawn via a deterministic round-robin (cycling
+    TRANSLATION_FIXTURE_POOL in a fixed order from index 0), NOT
+    random.choice: this guarantees an idle run and a load run of the same
+    --rate/--duration issue the *identical sequence* of fixture sizes, so a
+    difference in percentiles between the two phases reflects OCR
+    contention rather than one phase happening to draw more of the larger
+    fixtures by chance. See Latencies.by_fixture for a per-size breakdown to
+    sanity-check this if run lengths ever diverge (e.g. one phase stopped
+    early on stop_event).
+    """
     latencies = Latencies()
     interval = 1.0 / rate
-    pdf_bytes = TRANSLATION_SAMPLE_PDF.read_bytes()
-    filename = TRANSLATION_SAMPLE_PDF.name
+    pool_bytes = [(p.name, p.read_bytes()) for p in TRANSLATION_FIXTURE_POOL]
 
     async with httpx.AsyncClient(verify=False) as client:
         pending: List[asyncio.Task] = []
         deadline = time.time() + duration
+        i = 0
 
         while time.time() < deadline and not stop_event.is_set():
+            filename, base_bytes = pool_bytes[i % len(pool_bytes)]
+            i += 1
+            stamped = _stamp_unique(base_bytes)
             pending.append(
-                asyncio.create_task(translate_once(client, pdf_bytes, filename, latencies))
+                asyncio.create_task(translate_once(client, stamped, filename, latencies))
             )
             pending = [task for task in pending if not task.done()]
             await asyncio.sleep(interval)
@@ -186,12 +273,18 @@ async def translation_load(
 
 
 async def drive_ocr_async(pdf: Path, stop_event: asyncio.Event) -> dict:
-    """Submit a PDF through the async /jobs API and poll to completion."""
+    """Submit a PDF through the async /jobs API and poll to completion.
+
+    Stamps a fresh random UUID onto every page first (see _stamp_unique) so
+    repeated runs against the same 45-page fixture don't hit the shared
+    vLLM's prefix cache on the rendered page images.
+    """
     headers = {"Authorization": f"Bearer {AUTH_TOKEN}"} if AUTH_TOKEN else {}
     started = time.time()
+    stamped_bytes = _stamp_unique(pdf.read_bytes())
 
     async with httpx.AsyncClient(base_url=PDF_OCR_URL, headers=headers, verify=False, timeout=120.0) as client:
-        files = {"file": (pdf.name, pdf.read_bytes(), "application/pdf")}
+        files = {"file": (pdf.name, stamped_bytes, "application/pdf")}
         data = {"user_uuid": "benchmark", "doc_title": "Contention Benchmark"}
         response = await client.post("/jobs", files=files, data=data)
         response.raise_for_status()
@@ -214,12 +307,17 @@ async def drive_ocr_async(pdf: Path, stop_event: asyncio.Event) -> dict:
 
 
 async def drive_ocr_legacy(pdf: Path, stop_event: asyncio.Event) -> dict:
-    """Submit through the old synchronous :predict path, for comparison."""
+    """Submit through the old synchronous :predict path, for comparison.
+
+    Stamps a fresh random UUID onto every page first, same rationale as
+    drive_ocr_async.
+    """
     headers = {"Authorization": f"Bearer {AUTH_TOKEN}"} if AUTH_TOKEN else {}
+    stamped_bytes = _stamp_unique(pdf.read_bytes())
     payload = {
         "instances": [
             {
-                "data_url": base64.b64encode(pdf.read_bytes()).decode(),
+                "data_url": base64.b64encode(stamped_bytes).decode(),
                 "user_uuid": "benchmark",
                 "doc_title": "Contention Benchmark (legacy)",
             }
