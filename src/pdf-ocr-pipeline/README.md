@@ -122,3 +122,41 @@ curl -X POST https://<inference-service-url>/v1/models/user-pdf-preprocessing:pr
 ```
 
 The response contains a `documents` array, one entry per chunk, each with `content`, `metadata`, and `embedding` fields.
+
+### 5 — Required post-deploy patch: `kube-rbac-proxy` upstream timeout
+
+When `security.opendatahub.io/enable-auth: "true"` is set on the
+InferenceService (as it is here), the ODH/KServe controller auto-injects a
+`kube-rbac-proxy` sidecar in front of `kserve-container` to enforce
+SubjectAccessReview auth. This sidecar defaults to `--upstream-timeout=30s`,
+which is far too short for this service's synchronous `:predict` endpoint —
+a single multi-page document can legitimately take minutes to process. If
+left at the default, the sidecar kills the client connection at 30s with a
+`502 Bad Gateway`, even though `kserve-container` is healthy and still
+working (confirmed via its own trace logs completing the request
+successfully well after the client already saw a 502). This is independent
+of, and in addition to, the Route's `haproxy.router.openshift.io/timeout`
+annotation and the `readinessProbe` settings — both of those were already
+correctly configured and are **not** the cause of this failure mode.
+
+**This sidecar is not exposed through `ServingRuntime.spec.containers` or
+`InferenceService.spec.predictor` overrides** — it's injected directly by
+the controller and any `kube-rbac-proxy` entry added to the ServingRuntime
+YAML is silently ignored (verified: `oc apply` succeeds, but the live pod's
+container args are unchanged). There is currently no known declarative way
+to configure it. Until one is found, it must be patched imperatively on the
+Deployment **after every fresh deploy or full pod recreation**:
+
+```bash
+oc patch deployment pdf-ocr-pipeline-predictor -n model-serving --type=json \
+  -p '[{"op":"add","path":"/spec/template/spec/containers/1/args/-","value":"--upstream-timeout=600s"}]'
+```
+
+This appends the flag to the already-injected sidecar's `args` list (index
+`1`, i.e. the second container — verify with
+`oc get deployment pdf-ocr-pipeline-predictor -n model-serving -o jsonpath='{.spec.template.spec.containers[*].name}'`
+if the container order ever changes). The patched Deployment persists
+across `oc rollout restart` in RawDeployment mode (it isn't continuously
+reconciled from the ServingRuntime), but is lost if the Deployment object
+itself is deleted/recreated (e.g. `oc delete inferenceservice` + reapply).
+
