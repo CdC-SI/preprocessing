@@ -115,7 +115,7 @@ MAX_PAGES = _int("MAX_PAGES", 1000)
 # Above this page count the legacy `:predict` endpoint refuses the request and
 # points the caller at the async /jobs API.
 LEGACY_MAX_PAGES = _int("LEGACY_MAX_PAGES", 10)
-LEGACY_TIMEOUT_SECONDS = _float("LEGACY_TIMEOUT_SECONDS", 540.0)
+LEGACY_TIMEOUT_SECONDS = _float("LEGACY_TIMEOUT_SECONDS", 270.0)
 
 
 # --------------------------------------------------------------------------

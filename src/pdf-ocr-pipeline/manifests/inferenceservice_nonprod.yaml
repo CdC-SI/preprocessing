@@ -9,14 +9,26 @@ metadata:
     haproxy.router.openshift.io/timeout: 300s
     openshift.io/display-name: pdf-ocr-pipeline
     serving.kserve.io/deploymentMode: RawDeployment
-    security.opendatahub.io/enable-auth: "true"
+    # model-serving-a (non-prod) has no auth token / gateway auth set up for
+    # this service yet, and every other InferenceService in this namespace
+    # (embedding-inference, reranker-inference, vlm-inference) already runs
+    # with enable-auth "false" — matching that convention here. This also
+    # means KServe/ODH will NOT inject the kube-rbac-proxy sidecar in this
+    # namespace, so the "--upstream-timeout=30s" 502 issue documented in
+    # README.md §5 / RUNBOOK.md §9i does NOT apply here and the imperative
+    # patch is NOT needed in model-serving-a — only in model-serving, where
+    # enable-auth is "true" and the sidecar is genuinely injected.
+    security.opendatahub.io/enable-auth: "false"
   labels:
     networking.kserve.io/visibility: exposed
     opendatahub.io/dashboard: "true"
 spec:
   predictor:
     automountServiceAccountToken: false
-    serviceAccountName: model-serving-sa
+    # Matches the convention already used by every other InferenceService in
+    # model-serving-a (embedding-inference, reranker-inference,
+    # vlm-inference), not model-serving's model-serving-sa.
+    serviceAccountName: s3-connection-a-sa
     # ---------------------------------------------------------------------
     # MUST remain exactly 1.
     #
@@ -47,5 +59,12 @@ spec:
           memory: 16Gi
       runtime: pdf-ocr-pipeline
       storage:
-        key: s3-connection
+        # Matches the convention already used by every other InferenceService
+        # in model-serving-a (embedding-inference, reranker-inference,
+        # vlm-inference uses s3-connection-a / s3-connection-a-sa), not
+        # model-serving's s3-connection. Same underlying bucket/creds as
+        # model-serving's s3-connection (verified identical
+        # AWS_S3_BUCKET/AWS_S3_ENDPOINT/AWS_ACCESS_KEY_ID), just a
+        # namespace-local copy of the secret.
+        key: s3-connection-a
         path: pdf-ocr-pipeline-v2
