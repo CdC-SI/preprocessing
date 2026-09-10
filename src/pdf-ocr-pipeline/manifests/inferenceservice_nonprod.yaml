@@ -67,4 +67,4 @@ spec:
         # AWS_S3_BUCKET/AWS_S3_ENDPOINT/AWS_ACCESS_KEY_ID), just a
         # namespace-local copy of the secret.
         key: s3-connection-a
-        path: pdf-ocr-pipeline-v2
+        path: models/pdf-ocr-pipeline-v2
