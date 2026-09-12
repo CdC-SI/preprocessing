@@ -400,18 +400,24 @@ oc exec deployment/pdf-ocr-pipeline-predictor -n model-serving -c kserve-contain
   grep -n "async def predict\|jobs" /mnt/models/predictor.py
 ```
 
-**Required post-deploy patch.** The legacy synchronous `:predict` handler
-can take minutes on a multi-page document, but the auth sidecar
-(`kube-rbac-proxy`, injected by `security.opendatahub.io/enable-auth`)
-defaults to a 30s upstream timeout and will return a client-visible `502`
-even though the backend is healthy. This can't be set declaratively (see
-`main`'s `README.md` §5 for why); patch it imperatively after every fresh
-deploy:
+**Correction (2026-09-10):** the `kube-rbac-proxy` patch below was
+previously (incorrectly) documented as required — it is not, and does not
+work reliably anyway (KServe's controller reconciles the Deployment and
+silently discards manually-patched sidecar args within ~1-2s of any write).
+The legacy manifest itself never uses this patch and runs fine for
+multi-minute requests; its actual fix for 502s under long requests is the
+widened `readinessProbe.tcpSocket.failureThreshold: 30` in
+`manifests/serving-runtime.yaml` (300s tolerance, vs the default 30s) —
+without it, the blocking sync predictor stalls the event loop long enough
+for the default readiness probe to flip NotReady and get the pod evicted
+from the Service's endpoints mid-request, producing a client-visible `502`
+even though the backend itself is healthy. No sidecar patch needed; leave
+`kube-rbac-proxy` at its defaults.
 
-```bash
-oc patch deployment pdf-ocr-pipeline-predictor -n model-serving --type=json \
-  -p '[{"op":"add","path":"/spec/template/spec/containers/1/args/-","value":"--upstream-timeout=600s"}]'
-```
+If "échoué"/502-like failures are seen against this async branch's
+deployment despite the non-blocking predictor design, check the
+frontend/backend HTTP client timeouts first (see `RUNBOOK.md` §4g) before
+suspecting anything in this manifest.
 
 ---
 
